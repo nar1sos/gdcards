@@ -3,7 +3,7 @@ const JSONBIN_BIN_ID = '6afc4b60ffd5d16053c85caa';
 const JSONBIN_MASTER_KEY = '$2a$10$eiZem/A1JhfYhF6bHWXE7uzoJ6D8QjuKpyPe5Hrg9i2osHoYhRrVK';
 const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
 
-// Стартовый пул (используется только если облачный пул ещё пустой)
+// Стартовый пул (используется только если облако ещё не настроено или в облаке вообще нет массива pool)
 const DEFAULT_POOL = [
   {
     id: 'lvl_1',
@@ -171,24 +171,31 @@ function isCloudConfigured() {
   );
 }
 
-// Загрузка общего пула карт для всех игроков
+// Возвращает { ok: boolean, pool: array | null }
 async function fetchSharedPool() {
-  if (!isCloudConfigured()) return null;
+  if (!isCloudConfigured()) {
+    return { ok: false, pool: null };
+  }
   try {
-    const res = await fetch(`${JSONBIN_URL}/latest`, {
+    // Добавляем метку времени, чтобы браузер и прокси не отдавали старый кэш
+    const res = await fetch(`${JSONBIN_URL}/latest?nocache=${Date.now()}`, {
+      cache: 'no-store',
       headers: {
         'X-Master-Key': JSONBIN_MASTER_KEY
       }
     });
-    if (!res.ok) throw new Error('Ошибка чтения общего пула');
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
     const data = await res.json();
     if (data.record && Array.isArray(data.record.pool)) {
-      return data.record.pool;
+      return { ok: true, pool: data.record.pool };
     }
+    return { ok: true, pool: [] };
   } catch (err) {
     console.error('Не удалось загрузить общий пул:', err);
+    return { ok: false, pool: null };
   }
-  return null;
 }
 
 // Сохранение общего пула карт из админки для всех игроков
@@ -206,12 +213,55 @@ async function pushSharedPool(newPool) {
       },
       body: JSON.stringify({ pool: newPool })
     });
-    if (!res.ok) throw new Error('Ошибка сохранения общего пула');
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
     return true;
   } catch (err) {
     console.error('Ошибка отправки общего пула:', err);
-    showToast('Не удалось сохранить пул в облако (проверь ключ или размер картинок)');
+    showToast('Не удалось сохранить пул в облако (проверь ключ, Bin ID или размер картинок)');
     return false;
+  }
+}
+
+function ensureAdminSyncButton() {
+  const adminPanel = document.getElementById('admin-panel');
+  if (!adminPanel || document.getElementById('sync-pool-now-btn')) return;
+
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin:16px 0 8px;';
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'sync-pool-now-btn';
+  btn.className = 'btn-secondary';
+  btn.textContent = 'Залить текущий пул в облако всем игрокам';
+  btn.addEventListener('click', async () => {
+    if (!state.pool || state.pool.length === 0) {
+      showToast('Пул пуст — нечего отправлять');
+      return;
+    }
+    const ok = await pushSharedPool(state.pool);
+    if (ok) {
+      showToast(`Пул (${state.pool.length} карт) сохранён в облако!`);
+    }
+  });
+
+  const status = document.createElement('span');
+  status.id = 'cloud-sync-status';
+  status.className = 'hint';
+  status.textContent = isCloudConfigured()
+    ? 'Облако подключено: изменения пула видят все игроки'
+    : 'Облако НЕ настроено: заполни JSONBIN_BIN_ID и JSONBIN_MASTER_KEY в app.js';
+
+  bar.appendChild(btn);
+  bar.appendChild(status);
+
+  const heading = adminPanel.querySelector('h3.sub-title');
+  if (heading) {
+    adminPanel.insertBefore(bar, heading);
+  } else {
+    adminPanel.prepend(bar);
   }
 }
 
@@ -232,30 +282,34 @@ async function init() {
     }
   }
 
-  // Подтягиваем актуальный общий пул с сервера для всех игроков
-  const sharedPool = await fetchSharedPool();
-  if (sharedPool && sharedPool.length > 0) {
-    state.pool = sharedPool;
-    saveState();
+  const cloudResult = await fetchSharedPool();
+  if (cloudResult.ok && Array.isArray(cloudResult.pool)) {
+    if (cloudResult.pool.length > 0) {
+      state.pool = cloudResult.pool;
+      saveState();
+    } else if (!state.pool || state.pool.length === 0) {
+      state.pool = [...DEFAULT_POOL];
+    }
   } else if (!state.pool || state.pool.length === 0) {
     state.pool = [...DEFAULT_POOL];
   }
 
   setupNavigation();
+  ensureAdminSyncButton();
   startPackTimer();
   updateHeader();
   renderCollection();
   renderAdminPreview();
   bindEvents();
 
-  // Автообновление пула раз в 20 секунд, чтобы игроки видели новые карты без перезагрузки
+  // Автообновление общего пула каждые 15 секунд
   if (isCloudConfigured()) {
     setInterval(async () => {
-      const freshPool = await fetchSharedPool();
-      if (freshPool && freshPool.length > 0) {
-        const changed = JSON.stringify(freshPool) !== JSON.stringify(state.pool);
+      const fresh = await fetchSharedPool();
+      if (fresh.ok && Array.isArray(fresh.pool) && fresh.pool.length > 0) {
+        const changed = JSON.stringify(fresh.pool) !== JSON.stringify(state.pool);
         if (changed) {
-          state.pool = freshPool;
+          state.pool = fresh.pool;
           saveState();
           renderAdminPool();
           if (document.getElementById('tab-upgrade').classList.contains('active') && !isSpinning) {
@@ -263,7 +317,7 @@ async function init() {
           }
         }
       }
-    }, 20000);
+    }, 15000);
   }
 }
 
@@ -300,7 +354,10 @@ function setupNavigation() {
       if (tab === 'collection') renderCollection();
       if (tab === 'upgrade') renderUpgradePage();
       if (tab === 'trades' && tradeActive) renderTradeWorkspace();
-      if (tab === 'admin') renderAdminPool();
+      if (tab === 'admin') {
+        ensureAdminSyncButton();
+        renderAdminPool();
+      }
     });
   });
 }
@@ -1006,6 +1063,7 @@ function bindEvents() {
     if (pass === '12356790') {
       document.getElementById('admin-lock').classList.add('hidden');
       document.getElementById('admin-panel').classList.remove('hidden');
+      ensureAdminSyncButton();
       renderAdminPool();
     } else {
       document.getElementById('admin-error').textContent = 'Неверный пароль!';
