@@ -4,8 +4,6 @@ const DEFAULT_POOL = [
     id: 'lvl_1',
     rank: 1,
     name: 'Tidal Wave',
-    verifier: 'Zoink',
-    publisher: 'OniLink',
     rarity: 'limit',
     price: 4500,
     image: 'https://i.ytimg.com/vi/9fsZ014qB3s/maxresdefault.jpg'
@@ -14,8 +12,6 @@ const DEFAULT_POOL = [
     id: 'lvl_2',
     rank: 2,
     name: 'Acheron',
-    verifier: 'Zoink',
-    publisher: 'ryamu',
     rarity: 'apex',
     price: 2200,
     image: 'https://i.ytimg.com/vi/sBKR6aUorzA/maxresdefault.jpg'
@@ -24,8 +20,6 @@ const DEFAULT_POOL = [
     id: 'lvl_3',
     rank: 3,
     name: 'Avernus',
-    verifier: 'Zoink',
-    publisher: 'PockeWindfish',
     rarity: 'apex',
     price: 1900,
     image: 'https://i.ytimg.com/vi/16Zh8hW264w/maxresdefault.jpg'
@@ -34,8 +28,6 @@ const DEFAULT_POOL = [
     id: 'lvl_4',
     rank: 4,
     name: 'Thinking Space II',
-    verifier: 'Zoink',
-    publisher: 'CairoX',
     rarity: 'mythic',
     price: 750,
     image: 'https://i.ytimg.com/vi/5M6h8f6bY5g/maxresdefault.jpg'
@@ -44,8 +36,6 @@ const DEFAULT_POOL = [
     id: 'lvl_5',
     rank: 5,
     name: 'Silent Clubstep',
-    verifier: 'Paqoe',
-    publisher: 'TheRealSailent',
     rarity: 'legendary',
     price: 1200,
     image: 'https://i.ytimg.com/vi/GR4Sn_dc83w/maxresdefault.jpg'
@@ -54,8 +44,6 @@ const DEFAULT_POOL = [
     id: 'lvl_6',
     rank: 6,
     name: 'Abyss of Darkness',
-    verifier: 'Cursed',
-    publisher: 'Exen',
     rarity: 'legendary',
     price: 1050,
     image: 'https://i.ytimg.com/vi/ejJ2220141A/maxresdefault.jpg'
@@ -64,8 +52,6 @@ const DEFAULT_POOL = [
     id: 'lvl_7',
     rank: 10,
     name: 'Antarctic Lights',
-    verifier: 'Axinity',
-    publisher: 'declanic',
     rarity: 'mythic',
     price: 680,
     image: 'https://i.ytimg.com/vi/8hH2H6-X1bU/maxresdefault.jpg'
@@ -74,8 +60,6 @@ const DEFAULT_POOL = [
     id: 'lvl_8',
     rank: 14,
     name: 'Slaughterhouse',
-    verifier: 'Doggie',
-    publisher: 'icedcave',
     rarity: 'epic',
     price: 340,
     image: 'https://i.ytimg.com/vi/kpcF1-6989M/maxresdefault.jpg'
@@ -84,8 +68,6 @@ const DEFAULT_POOL = [
     id: 'lvl_9',
     rank: 22,
     name: 'Kocmoc',
-    verifier: 'Zoink',
-    publisher: 'cherryteam',
     rarity: 'epic',
     price: 290,
     image: 'https://i.ytimg.com/vi/28091283910/maxresdefault.jpg'
@@ -94,8 +76,6 @@ const DEFAULT_POOL = [
     id: 'lvl_10',
     rank: 35,
     name: 'Kuzureta',
-    verifier: 'Teno',
-    publisher: 'Teno',
     rarity: 'common',
     price: 110,
     image: 'https://i.ytimg.com/vi/0rG15S9Z4zY/maxresdefault.jpg'
@@ -104,8 +84,6 @@ const DEFAULT_POOL = [
     id: 'lvl_11',
     rank: 48,
     name: 'Bloodlust',
-    verifier: 'Knobbelboy',
-    publisher: 'Knobbelboy',
     rarity: 'common',
     price: 95,
     image: 'https://i.ytimg.com/vi/5247258391/maxresdefault.jpg'
@@ -114,8 +92,6 @@ const DEFAULT_POOL = [
     id: 'lvl_12',
     rank: 75,
     name: 'Tartarus',
-    verifier: 'Dolphy',
-    publisher: 'Riot',
     rarity: 'common',
     price: 80,
     image: 'https://i.ytimg.com/vi/398123981/maxresdefault.jpg'
@@ -131,7 +107,8 @@ const RARITY_WEIGHTS = [
   { key: 'limit', weight: 1 }
 ];
 
-const HOLO_CHANCE = 0.12; // 12% шанс на HOLO
+const RARE_ANIM_TIERS = ['legendary', 'apex', 'limit'];
+const HOLO_CHANCE = 0.12;
 const HOLO_MULTIPLIER = 3.5;
 
 // Состояние приложения (сохраняется в localStorage)
@@ -145,7 +122,6 @@ let state = {
   droppedTemp: []
 };
 
-// Временные состояния для Трейда и Апгрейда
 let tradeActive = false;
 let userTradeIds = [];
 let botOfferCards = [];
@@ -154,8 +130,9 @@ let selectedUpgradeSourceId = null;
 let selectedUpgradeTarget = null;
 let upgradeTargetsPool = [];
 let isSpinning = false;
+let isOpeningPack = false;
+let uploadedAdminImageDataUrl = '';
 
-// Инициализация
 function init() {
   const saved = localStorage.getItem('gd_case_save_v1');
   if (saved) {
@@ -180,13 +157,17 @@ function init() {
 }
 
 function saveState() {
-  localStorage.setItem('gd_case_save_v1', JSON.stringify({
-    balance: state.balance,
-    packs: state.packs,
-    packsOpened: state.packsOpened,
-    pool: state.pool,
-    inventory: state.inventory
-  }));
+  try {
+    localStorage.setItem('gd_case_save_v1', JSON.stringify({
+      balance: state.balance,
+      packs: state.packs,
+      packsOpened: state.packsOpened,
+      pool: state.pool,
+      inventory: state.inventory
+    }));
+  } catch (e) {
+    showToast('Память браузера заполнена — удали часть тяжёлых картинок!');
+  }
 }
 
 function showToast(msg) {
@@ -196,7 +177,6 @@ function showToast(msg) {
   setTimeout(() => el.classList.remove('show'), 2600);
 }
 
-// Навигация
 function setupNavigation() {
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -219,10 +199,9 @@ function updateHeader() {
   document.getElementById('header-balance').textContent = Math.floor(state.balance);
   const openBtn = document.getElementById('open-pack-btn');
   openBtn.textContent = `Открыть пак (${state.packs})`;
-  openBtn.disabled = state.packs <= 0;
+  openBtn.disabled = state.packs <= 0 || isOpeningPack;
 }
 
-// Таймер фарма паков (1 пак каждую минуту пока открыт сайт)
 function startPackTimer() {
   setInterval(() => {
     state.secondsLeft--;
@@ -240,7 +219,6 @@ function startPackTimer() {
   }, 1000);
 }
 
-// Генерация случайной карточки из пула
 function rollSingleCard(customRarity = null) {
   let chosenRarity = customRarity;
   if (!chosenRarity) {
@@ -267,8 +245,6 @@ function rollSingleCard(customRarity = null) {
     templateId: base.id,
     rank: base.rank,
     name: base.name,
-    verifier: base.verifier,
-    publisher: base.publisher,
     rarity: base.rarity,
     image: base.image,
     isHolo,
@@ -277,10 +253,12 @@ function rollSingleCard(customRarity = null) {
   };
 }
 
-// Отрисовка HTML одной карточки
 function createCardElement(card, options = {}) {
+  const isRareAnim = options.animateDrop && (card.isHolo || RARE_ANIM_TIERS.includes(card.rarity));
+  const animClass = options.animateDrop ? (isRareAnim ? 'drop-anim-rare' : 'drop-anim') : '';
+
   const div = document.createElement('div');
-  div.className = `gd-card rarity-${card.rarity} ${card.isHolo ? 'is-holo' : ''}`;
+  div.className = `gd-card rarity-${card.rarity} ${card.isHolo ? 'is-holo' : ''} ${animClass}`;
 
   const fallbackImg = `https://placehold.co/400x225/141420/ffffff?text=${encodeURIComponent(card.name)}`;
 
@@ -294,10 +272,6 @@ function createCardElement(card, options = {}) {
     </div>
     <div class="card-info">
       <div class="card-title">${card.name}</div>
-      <div class="card-meta">
-        Verified by ${card.verifier}<br/>
-        Published by ${card.publisher}
-      </div>
     </div>
     <div class="card-footer">
       <div class="card-left-tags">
@@ -339,23 +313,65 @@ function createCardElement(card, options = {}) {
   return div;
 }
 
-// 1. ОТКРЫТИЕ ПАКА
+// 1. ОТКРЫТИЕ ПАКА С АНИМАЦИЕЙ
 function openPack() {
-  if (state.packs <= 0) return;
+  if (state.packs <= 0 || isOpeningPack) return;
+  isOpeningPack = true;
   state.packs--;
   state.packsOpened++;
 
-  state.droppedTemp = [];
+  const rolled = [];
   for (let i = 0; i < 5; i++) {
-    state.droppedTemp.push(rollSingleCard());
+    rolled.push(rollSingleCard());
   }
+  state.droppedTemp = [...rolled];
 
   saveState();
   updateHeader();
-  renderDroppedCards();
+
+  const packBox = document.getElementById('pack-box-visual');
+  packBox.classList.remove('opening');
+  void packBox.offsetWidth;
+  packBox.classList.add('opening');
+
+  const area = document.getElementById('pack-result-area');
+  const grid = document.getElementById('dropped-cards-grid');
+  area.classList.remove('hidden');
+  grid.innerHTML = '';
+
+  const total = rolled.reduce((s, c) => s + c.price, 0);
+  document.getElementById('dropped-total-price').textContent = total;
+
+  // Показываем 5 карт по очереди с задержкой
+  rolled.forEach((card, idx) => {
+    setTimeout(() => {
+      const cardEl = createCardElement(card, {
+        animateDrop: true,
+        actionLabel: `Продать за ${card.price} ₽`,
+        onAction: (c) => {
+          state.balance += c.price;
+          state.droppedTemp = state.droppedTemp.filter(x => x.uid !== c.uid);
+          saveState();
+          updateHeader();
+          renderDroppedCards(false);
+          showToast(`Продано за ${c.price} ₽`);
+        }
+      });
+      grid.appendChild(cardEl);
+
+      if (card.isHolo || RARE_ANIM_TIERS.includes(card.rarity)) {
+        showToast(`Выпал ${card.rarity.toUpperCase()}${card.isHolo ? ' HOLO' : ''}: ${card.name}!`);
+      }
+
+      if (idx === rolled.length - 1) {
+        isOpeningPack = false;
+        updateHeader();
+      }
+    }, idx * 220);
+  });
 }
 
-function renderDroppedCards() {
+function renderDroppedCards(animate = false) {
   const area = document.getElementById('pack-result-area');
   const grid = document.getElementById('dropped-cards-grid');
   if (state.droppedTemp.length === 0) {
@@ -369,13 +385,14 @@ function renderDroppedCards() {
   state.droppedTemp.forEach(card => {
     total += card.price;
     grid.appendChild(createCardElement(card, {
+      animateDrop: animate,
       actionLabel: `Продать за ${card.price} ₽`,
       onAction: (c) => {
         state.balance += c.price;
         state.droppedTemp = state.droppedTemp.filter(x => x.uid !== c.uid);
         saveState();
         updateHeader();
-        renderDroppedCards();
+        renderDroppedCards(false);
         showToast(`Продано за ${c.price} ₽`);
       }
     }));
@@ -404,7 +421,6 @@ function generateBotOffer() {
     return;
   }
 
-  // Бот подбирает 1-3 карты примерно на ту же сумму (от 85% до 115%)
   const targetMin = userSum * 0.85;
   const targetMax = userSum * 1.15;
   let bestOffer = [];
@@ -494,7 +510,6 @@ function generateUpgradeTargets() {
 function getUpgradeChance() {
   const src = state.inventory.find(c => c.uid === selectedUpgradeSourceId);
   if (!src || !selectedUpgradeTarget) return 0;
-  // Формула шанса: соотношение цен с небольшим запасом, максимум 80%, минимум 1%
   const raw = (src.price / selectedUpgradeTarget.price) * 82;
   return Math.max(1, Math.min(80, Number(raw.toFixed(1))));
 }
@@ -563,7 +578,6 @@ function runUpgrade() {
   const chance = getUpgradeChance();
   const win = Math.random() * 100 <= chance;
 
-  // Угол остановки стрелки сверху (0 deg = верх)
   const winAngle = Math.random() * ((chance / 100) * 350);
   const loseAngle = ((chance / 100) * 360) + 10 + Math.random() * (340 - (chance / 100) * 360);
   const targetSectorAngle = win ? winAngle : loseAngle;
@@ -573,7 +587,6 @@ function runUpgrade() {
   wheel.style.transform = `rotate(${finalRotation}deg)`;
 
   setTimeout(() => {
-    // Удаляем исходную карту в любом случае
     state.inventory = state.inventory.filter(c => c.uid !== srcCard.uid);
 
     if (win) {
@@ -591,7 +604,6 @@ function runUpgrade() {
     generateUpgradeTargets();
     saveState();
 
-    // Сброс вращения колеса без анимации для следующего раза
     setTimeout(() => {
       wheel.style.transition = 'none';
       wheel.style.transform = 'rotate(0deg)';
@@ -648,21 +660,26 @@ function renderCollection() {
   });
 }
 
+function getCurrentAdminImage() {
+  if (uploadedAdminImageDataUrl) return uploadedAdminImageDataUrl;
+  const urlVal = document.getElementById('card-image').value.trim();
+  if (urlVal) return urlVal;
+  return 'https://placehold.co/400x225/181825/fff?text=GD+Level';
+}
+
 // 5. АДМИНКА
 function renderAdminPreview() {
   const rank = document.getElementById('card-rank').value || 1;
   const name = document.getElementById('card-name').value || 'Название уровня';
-  const verifier = document.getElementById('card-verifier').value || 'Verifier';
-  const publisher = document.getElementById('card-publisher').value || 'Publisher';
   const rarity = document.getElementById('card-rarity').value || 'common';
   const price = Number(document.getElementById('card-price').value) || 100;
-  const image = document.getElementById('card-image').value || 'https://placehold.co/400x225/181825/fff?text=GD+Level';
+  const image = getCurrentAdminImage();
 
   const box = document.getElementById('admin-preview-box');
   box.innerHTML = '';
 
-  const normalSample = { rank, name, verifier, publisher, rarity, price, image, isHolo: false };
-  const holoSample = { rank, name, verifier, publisher, rarity, price: Math.round(price * HOLO_MULTIPLIER), image, isHolo: true };
+  const normalSample = { rank, name, rarity, price, image, isHolo: false };
+  const holoSample = { rank, name, rarity, price: Math.round(price * HOLO_MULTIPLIER), image, isHolo: true };
 
   box.appendChild(createCardElement(normalSample));
   box.appendChild(createCardElement(holoSample));
@@ -690,7 +707,6 @@ function renderAdminPool() {
   });
 }
 
-// Привязка событий
 function bindEvents() {
   document.getElementById('open-pack-btn').addEventListener('click', openPack);
 
@@ -710,7 +726,7 @@ function bindEvents() {
     state.inventory.push(...state.droppedTemp);
     state.droppedTemp = [];
     saveState();
-    renderDroppedCards();
+    renderDroppedCards(false);
     showToast('Все карточки добавлены в коллекцию!');
   });
 
@@ -720,7 +736,7 @@ function bindEvents() {
     state.droppedTemp = [];
     saveState();
     updateHeader();
-    renderDroppedCards();
+    renderDroppedCards(false);
     showToast(`Продано всё за ${sum} ₽`);
   });
 
@@ -772,27 +788,60 @@ function bindEvents() {
     }
   });
 
-  ['card-rank', 'card-name', 'card-verifier', 'card-publisher', 'card-rarity', 'card-price', 'card-image'].forEach(id => {
-    document.getElementById(id).addEventListener('input', renderAdminPreview);
+  document.getElementById('card-file').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) {
+      uploadedAdminImageDataUrl = '';
+      renderAdminPreview();
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('Файл больше 2 МБ — лучше сжать или взять URL');
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      uploadedAdminImageDataUrl = reader.result;
+      document.getElementById('card-image').value = '';
+      renderAdminPreview();
+    };
+    reader.readAsDataURL(file);
+  });
+
+  ['card-rank', 'card-name', 'card-rarity', 'card-price', 'card-image'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => {
+      if (id === 'card-image' && document.getElementById('card-image').value.trim()) {
+        uploadedAdminImageDataUrl = '';
+        document.getElementById('card-file').value = '';
+      }
+      renderAdminPreview();
+    });
   });
 
   document.getElementById('add-card-form').addEventListener('submit', (e) => {
     e.preventDefault();
+    const fileInput = document.getElementById('card-file');
+    const urlInput = document.getElementById('card-image').value.trim();
+
+    if (!uploadedAdminImageDataUrl && !urlInput) {
+      showToast('Выбери картинку с ПК или вставь URL!');
+      return;
+    }
+
     const newLevel = {
       id: 'lvl_' + Date.now(),
       rank: Number(document.getElementById('card-rank').value),
       name: document.getElementById('card-name').value.trim(),
-      verifier: document.getElementById('card-verifier').value.trim(),
-      publisher: document.getElementById('card-publisher').value.trim(),
       rarity: document.getElementById('card-rarity').value,
       price: Number(document.getElementById('card-price').value),
-      image: document.getElementById('card-image').value.trim()
+      image: uploadedAdminImageDataUrl || urlInput
     };
 
     state.pool.unshift(newLevel);
     saveState();
     renderAdminPool();
     e.target.reset();
+    fileInput.value = '';
+    uploadedAdminImageDataUrl = '';
     renderAdminPreview();
     showToast(`Уровень "${newLevel.name}" добавлен в паки!`);
   });
