@@ -5,13 +5,6 @@
   --border: #262636;
   --text-main: #ffffff;
   --text-muted: #9ca3af;
-
-  /* Цвета редкостей */
-  --c-common: #3b82f6;
-  --c-epic: #a855f7;
-  --c-mythic: #ef4444;
-  --c-legendary: #eab308;
-  --c-limit: #14b8a6;
 }
 
 * {
@@ -114,7 +107,7 @@ body {
   margin-top: 16px;
 }
 
-/* ДИЗАЙН КАРТОЧКИ КАК НА СКРИНШОТАХ */
+/* ДИЗАЙН КАРТОЧКИ */
 .gd-card {
   position: relative;
   width: 100%;
@@ -132,6 +125,58 @@ body {
 
 .gd-card:hover {
   transform: translateY(-5px);
+}
+
+/* Анимация выпадения обычной карточки */
+.gd-card.drop-anim {
+  animation: cardDropIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Усиленная анимация для Legendary, Apex, Limit и Holo */
+.gd-card.drop-anim-rare {
+  animation: cardDropRare 0.65s cubic-bezier(0.18, 0.9, 0.32, 1.15) both;
+}
+
+@keyframes cardDropIn {
+  0% {
+    opacity: 0;
+    transform: translateY(32px) scale(0.84) rotate(-2deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+}
+
+@keyframes cardDropRare {
+  0% {
+    opacity: 0;
+    transform: translateY(42px) scale(0.72) rotate(-4deg);
+    filter: brightness(2.4);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(-8px) scale(1.06) rotate(1deg);
+    filter: brightness(1.45);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+    filter: brightness(1);
+  }
+}
+
+/* Анимация самой коробки пака при нажатии */
+.pack-box.opening {
+  animation: packShakeOpen 0.55s ease;
+}
+
+@keyframes packShakeOpen {
+  0% { transform: scale(1) rotate(0deg); }
+  20% { transform: scale(1.04) rotate(-4deg); }
+  45% { transform: scale(1.07) rotate(4deg); }
+  70% { transform: scale(0.96) rotate(-2deg); }
+  100% { transform: scale(1) rotate(0deg); }
 }
 
 /* Цвета карточек по редкости */
@@ -152,21 +197,21 @@ body {
 }
 .gd-card.rarity-legendary {
   background: linear-gradient(180deg, #2b220e 0%, #141109 100%);
-  border-color: rgba(234, 179, 8, 0.7);
-  box-shadow: 0 0 22px rgba(234, 179, 8, 0.22);
+  border-color: rgba(234, 179, 8, 0.8);
+  box-shadow: 0 0 26px rgba(234, 179, 8, 0.35);
 }
 .gd-card.rarity-limit {
   background: linear-gradient(160deg, #061414 0%, #0b2e2b 55%, #040a0a 100%);
   border-color: #14b8a6;
-  box-shadow: 0 0 24px rgba(20, 184, 166, 0.35);
+  box-shadow: 0 0 30px rgba(20, 184, 166, 0.45);
 }
 .gd-card.rarity-apex {
   background: linear-gradient(145deg, #29142c, #17233b, #162e24, #332512);
   border-color: #f472b6;
-  box-shadow: 0 0 25px rgba(236, 72, 153, 0.3);
+  box-shadow: 0 0 30px rgba(236, 72, 153, 0.42);
 }
 
-/* HOLO ЭФФЕКТ (как на 2-м скриншоте) */
+/* HOLO ЭФФЕКТ */
 .gd-card.is-holo {
   border: 2px solid transparent;
   background-image: 
@@ -174,7 +219,7 @@ body {
     linear-gradient(180deg, #1b1826, #12101a);
   background-origin: border-box;
   background-clip: padding-box, border-box;
-  box-shadow: 0 0 25px rgba(167, 139, 250, 0.45);
+  box-shadow: 0 0 28px rgba(167, 139, 250, 0.5);
 }
 
 .gd-card.is-holo::before {
@@ -195,7 +240,6 @@ body {
   z-index: 2;
 }
 
-/* Белые точки-блики на Holo карточке */
 .gd-card.is-holo::after {
   content: "";
   position: absolute;
@@ -276,24 +320,16 @@ body {
 .card-info {
   position: relative;
   z-index: 3;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .card-title {
   font-size: 16px;
   font-weight: 800;
   color: #fff;
-  margin-bottom: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.card-meta {
-  font-size: 11px;
-  color: #cbd5e1;
-  line-height: 1.45;
-  opacity: 0.85;
 }
 
 .card-footer {
