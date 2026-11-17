@@ -136,16 +136,6 @@ const RARITY_WEIGHTS = [
   { key: 'limit', weight: 0.1 }
 ];
 
-// Веса редкостей для рандомных трейдов: жирное выпадает редко, но шанс есть всегда
-const TRADE_RARITY_WEIGHTS = [
-  { key: 'common', weight: 74 },
-  { key: 'epic', weight: 22.5 },
-  { key: 'mythic', weight: 2.0 },
-  { key: 'legendary', weight: 0.9 },
-  { key: 'apex', weight: 0.4 },
-  { key: 'limit', weight: 0.2 }
-];
-
 const RARITY_LABELS = {
   all: 'Все редкости',
   common: 'Common',
@@ -527,27 +517,25 @@ function buildCardInstance(base, isHolo = false, uidPrefix = 'card') {
   };
 }
 
-function pickWeightedRarity(weightsList) {
-  const totalWeight = weightsList.reduce((sum, item) => sum + item.weight, 0);
-  const roll = Math.random() * totalWeight;
-  let acc = 0;
-  for (const r of weightsList) {
-    acc += r.weight;
-    if (roll <= acc) {
-      return r.key;
+function rollSingleCard(customRarity = null) {
+  let chosenRarity = customRarity;
+  if (!chosenRarity) {
+    const roll = Math.random() * 100;
+    let acc = 0;
+    for (const r of RARITY_WEIGHTS) {
+      acc += r.weight;
+      if (roll <= acc) {
+        chosenRarity = r.key;
+        break;
+      }
     }
   }
-  return weightsList[0].key;
-}
-
-function rollSingleCard(customRarity = null, weightsList = RARITY_WEIGHTS, holoChance = HOLO_CHANCE) {
-  const chosenRarity = customRarity || pickWeightedRarity(weightsList);
 
   let candidates = state.pool.filter(c => c.rarity === chosenRarity);
   if (candidates.length === 0) candidates = state.pool;
 
   const base = candidates[Math.floor(Math.random() * candidates.length)];
-  const isHolo = Math.random() < holoChance;
+  const isHolo = Math.random() < HOLO_CHANCE;
   return buildCardInstance(base, isHolo, 'card');
 }
 
@@ -796,7 +784,7 @@ function renderDroppedCards(animate = false) {
   document.getElementById('dropped-total-price').textContent = total;
 }
 
-// 2. ТРЕЙДЫ С БОТОМ (полный рандом: можно выбить жирную карту за коммонку, но редкие падают редко)
+// 2. ТРЕЙДЫ С БОТОМ (плавный прогресс с шансом оверпея на +100..+500 и редко на +500..+1000 ₽)
 function startTrade() {
   tradeActive = true;
   userTradeIds = [];
@@ -807,23 +795,72 @@ function startTrade() {
   renderTradeWorkspace();
 }
 
+function getAllCatalogVariants() {
+  const list = [];
+  state.pool.forEach(base => {
+    list.push({ base, isHolo: false, price: Math.round(base.price) });
+    list.push({ base, isHolo: true, price: Math.round(base.price * HOLO_MULTIPLIER) });
+  });
+  return list;
+}
+
+function pickTradeTargetSum(userSum) {
+  const roll = Math.random();
+
+  // ~13%: редкий крупный оверпей (+500..+1000 ₽)
+  if (roll < 0.13) {
+    const bonus = 500 + Math.random() * 500;
+    return Math.round(userSum + bonus);
+  }
+
+  // ~22%: умеренный оверпей для постепенного подъёма (+100..+500 ₽)
+  if (roll < 0.35) {
+    const bonus = 100 + Math.random() * 400;
+    return Math.round(userSum + bonus);
+  }
+
+  // ~65%: близко к стоимости игрока (лёгкий плюс до +120 или небольшой минус до -120)
+  const delta = (Math.random() * 240) - 120;
+  return Math.max(10, Math.round(userSum + delta));
+}
+
 function generateBotOffer() {
   const userCards = state.inventory.filter(c => userTradeIds.includes(c.uid));
-  if (userCards.length === 0 || !state.pool || state.pool.length === 0) {
+  const userSum = userCards.reduce((s, c) => s + c.price, 0);
+
+  if (userSum === 0) {
     botOfferCards = [];
     return;
   }
 
-  const count = Math.floor(Math.random() * 3) + 1; // 1..3 случайные карты
-  const offer = [];
-  for (let i = 0; i < count; i++) {
-    const rolled = rollSingleCard(null, TRADE_RARITY_WEIGHTS, 0.08);
-    offer.push({
-      ...rolled,
-      uid: `trade_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 7)}`
-    });
+  const variants = getAllCatalogVariants();
+  if (variants.length === 0) {
+    botOfferCards = [];
+    return;
   }
-  botOfferCards = offer;
+
+  const targetSum = pickTradeTargetSum(userSum);
+  let bestCombo = [];
+  let bestDiff = Infinity;
+
+  // Перебираем комбинации из 1..4 карт и ищем ближайшую к targetSum
+  for (let i = 0; i < 800; i++) {
+    const count = Math.floor(Math.random() * 4) + 1;
+    const combo = [];
+    for (let k = 0; k < count; k++) {
+      combo.push(variants[Math.floor(Math.random() * variants.length)]);
+    }
+    const comboSum = combo.reduce((s, item) => s + item.price, 0);
+    const diff = Math.abs(comboSum - targetSum);
+
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestCombo = combo;
+      if (diff === 0) break;
+    }
+  }
+
+  botOfferCards = bestCombo.map(item => buildCardInstance(item.base, item.isHolo, 'trade'));
 }
 
 function renderTradeWorkspace() {
@@ -864,11 +901,14 @@ function renderTradeWorkspace() {
     statusText.textContent = 'Добавь свои карты в трейд';
   } else {
     confirmBtn.disabled = false;
-    statusText.textContent = 'Полный рандом: шанс на жир — низкий, но возможен';
+    const diff = botSum - userSum;
+    const diffLabel = diff > 0 ? `+${diff} ₽` : diff < 0 ? `${diff} ₽` : '0 ₽';
+    statusText.textContent = `Оффер: ${botSum} ₽ (${diffLabel} к твоим ${userSum} ₽)`;
   }
 
   state.inventory
     .filter(c => !userTradeIds.includes(c.uid))
+    .sort((a, b) => Number(a.rank) - Number(b.rank))
     .forEach(c => {
       invGrid.appendChild(createCardElement(c, {
         onClick: () => {
@@ -887,14 +927,16 @@ function renderTradeWorkspace() {
 // 3. АПГРЕЙДЫ
 function getUpgradeCatalog() {
   const items = [];
-  state.pool.forEach(base => {
-    ['normal', 'holo'].forEach(mode => {
-      const isHolo = mode === 'holo';
-      const card = buildCardInstance(base, isHolo, 'upg_cat');
-      card.catalogKey = `${base.id}__${mode}`;
-      items.push(card);
+  [...state.pool]
+    .sort((a, b) => Number(a.rank) - Number(b.rank))
+    .forEach(base => {
+      ['normal', 'holo'].forEach(mode => {
+        const isHolo = mode === 'holo';
+        const card = buildCardInstance(base, isHolo, 'upg_cat');
+        card.catalogKey = `${base.id}__${mode}`;
+        items.push(card);
+      });
     });
-  });
   return items;
 }
 
@@ -945,16 +987,18 @@ function renderUpgradePage() {
   if (state.inventory.length === 0) {
     userGrid.innerHTML = '<div class="empty-box" style="grid-column: 1/-1;">У тебя пока нет карт в инвентаре.</div>';
   } else {
-    state.inventory.forEach(c => {
-      userGrid.appendChild(createCardElement(c, {
-        selected: c.uid === selectedUpgradeSourceId,
-        onClick: () => {
-          if (isSpinning) return;
-          selectedUpgradeSourceId = c.uid;
-          renderUpgradePage();
-        }
-      }));
-    });
+    [...state.inventory]
+      .sort((a, b) => Number(a.rank) - Number(b.rank))
+      .forEach(c => {
+        userGrid.appendChild(createCardElement(c, {
+          selected: c.uid === selectedUpgradeSourceId,
+          onClick: () => {
+            if (isSpinning) return;
+            selectedUpgradeSourceId = c.uid;
+            renderUpgradePage();
+          }
+        }));
+      });
   }
 
   const query = (document.getElementById('upg-search-input').value || '').trim().toLowerCase();
@@ -1046,7 +1090,7 @@ function runUpgrade() {
   }, 2700);
 }
 
-// 4. КОЛЛЕКЦИЯ
+// 4. КОЛЛЕКЦИЯ (сортировка по топу: #1 первый, #2 второй и т.д.)
 function renderCollection() {
   ensureCollectionBulkSellControls();
 
@@ -1062,13 +1106,20 @@ function renderCollection() {
 
   updateCollectionBulkSellButton();
 
-  const filtered = state.inventory.filter(c => {
-    if (rarityFilter !== 'all' && c.rarity !== rarityFilter) return false;
-    if (typeFilter === 'holo' && !c.isHolo) return false;
-    if (typeFilter === 'normal' && c.isHolo) return false;
-    if (favOnly && !c.favorite) return false;
-    return true;
-  });
+  const filtered = state.inventory
+    .filter(c => {
+      if (rarityFilter !== 'all' && c.rarity !== rarityFilter) return false;
+      if (typeFilter === 'holo' && !c.isHolo) return false;
+      if (typeFilter === 'normal' && c.isHolo) return false;
+      if (favOnly && !c.favorite) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const rankDiff = (Number(a.rank) || 999999) - (Number(b.rank) || 999999);
+      if (rankDiff !== 0) return rankDiff;
+      if (a.isHolo !== b.isHolo) return a.isHolo ? -1 : 1;
+      return (Number(b.price) || 0) - (Number(a.price) || 0);
+    });
 
   const grid = document.getElementById('collection-grid');
   grid.innerHTML = '';
@@ -1145,27 +1196,29 @@ function renderAdminPool() {
   const grid = document.getElementById('admin-pool-grid');
   grid.innerHTML = '';
 
-  state.pool.forEach(lvl => {
-    grid.appendChild(createCardElement({ ...lvl, isHolo: false }, {
-      editLabel: 'Изменить',
-      onEdit: (c) => openEditModal(c),
-      actionLabel: 'Удалить',
-      onAction: async (c) => {
-        if (state.pool.length <= 1) {
-          showToast('В пуле должна остаться хотя бы 1 карта!');
-          return;
+  [...state.pool]
+    .sort((a, b) => Number(a.rank) - Number(b.rank))
+    .forEach(lvl => {
+      grid.appendChild(createCardElement({ ...lvl, isHolo: false }, {
+        editLabel: 'Изменить',
+        onEdit: (c) => openEditModal(c),
+        actionLabel: 'Удалить',
+        onAction: async (c) => {
+          if (state.pool.length <= 1) {
+            showToast('В пуле должна остаться хотя бы 1 карта!');
+            return;
+          }
+          const nextPool = state.pool.filter(x => x.id !== c.id);
+          const ok = await pushSharedPool(nextPool);
+          if (ok) {
+            state.pool = nextPool;
+            saveState();
+            renderAdminPool();
+            showToast('Карта удалена у всех игроков');
+          }
         }
-        const nextPool = state.pool.filter(x => x.id !== c.id);
-        const ok = await pushSharedPool(nextPool);
-        if (ok) {
-          state.pool = nextPool;
-          saveState();
-          renderAdminPool();
-          showToast('Карта удалена у всех игроков');
-        }
-      }
-    }));
-  });
+      }));
+    });
 }
 
 function bindEvents() {
