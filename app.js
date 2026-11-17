@@ -123,12 +123,12 @@ const DEFAULT_POOL = [
 ];
 
 const RARITY_WEIGHTS = [
-  { key: 'common', weight: 55 },
-  { key: 'epic', weight: 32 },
-  { key: 'mythic', weight: 5 },
-  { key: 'legendary', weight: 4 },
-  { key: 'apex', weight: 3 },
-  { key: 'limit', weight: 1 }
+  { key: 'common', weight: 67 },
+  { key: 'epic', weight: 31 },
+  { key: 'mythic', weight: 0.5 },
+  { key: 'legendary', weight: 0.5 },
+  { key: 'apex', weight: 0.5 },
+  { key: 'limit', weight: 0.5 }
 ];
 
 const RARE_ANIM_TIERS = ['legendary', 'apex', 'limit'];
