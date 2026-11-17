@@ -693,7 +693,7 @@ function renderDroppedCards(animate = false) {
   document.getElementById('dropped-total-price').textContent = total;
 }
 
-// 2. ТРЕЙДЫ С БОТОМ
+// 2. ТРЕЙДЫ С БОТОМ (плавный прогресс с шансом оверпея на +100..+500 и редко на +500..+1000 ₽)
 function startTrade() {
   tradeActive = true;
   userTradeIds = [];
@@ -713,6 +713,26 @@ function getAllCatalogVariants() {
   return list;
 }
 
+function pickTradeTargetSum(userSum) {
+  const roll = Math.random();
+
+  // ~13%: редкий крупный оверпей (+500..+1000 ₽)
+  if (roll < 0.13) {
+    const bonus = 500 + Math.random() * 500;
+    return Math.round(userSum + bonus);
+  }
+
+  // ~22%: умеренный оверпей для постепенного подъёма (+100..+500 ₽)
+  if (roll < 0.35) {
+    const bonus = 100 + Math.random() * 400;
+    return Math.round(userSum + bonus);
+  }
+
+  // ~65%: близко к стоимости игрока (лёгкий плюс до +120 или небольшой минус до -120)
+  const delta = (Math.random() * 240) - 120;
+  return Math.max(10, Math.round(userSum + delta));
+}
+
 function generateBotOffer() {
   const userCards = state.inventory.filter(c => userTradeIds.includes(c.uid));
   const userSum = userCards.reduce((s, c) => s + c.price, 0);
@@ -723,17 +743,24 @@ function generateBotOffer() {
   }
 
   const variants = getAllCatalogVariants();
+  if (variants.length === 0) {
+    botOfferCards = [];
+    return;
+  }
+
+  const targetSum = pickTradeTargetSum(userSum);
   let bestCombo = [];
   let bestDiff = Infinity;
 
-  for (let i = 0; i < 400; i++) {
-    const count = Math.floor(Math.random() * 3) + 1;
+  // Перебираем комбинации из 1..4 карт и ищем ближайшую к targetSum
+  for (let i = 0; i < 800; i++) {
+    const count = Math.floor(Math.random() * 4) + 1;
     const combo = [];
     for (let k = 0; k < count; k++) {
       combo.push(variants[Math.floor(Math.random() * variants.length)]);
     }
     const comboSum = combo.reduce((s, item) => s + item.price, 0);
-    const diff = Math.abs(comboSum - userSum);
+    const diff = Math.abs(comboSum - targetSum);
 
     if (diff < bestDiff) {
       bestDiff = diff;
@@ -783,7 +810,9 @@ function renderTradeWorkspace() {
     statusText.textContent = 'Добавь свои карты в трейд';
   } else {
     confirmBtn.disabled = false;
-    statusText.textContent = `Оффер на ${botSum} ₽ (твоё: ${userSum} ₽)`;
+    const diff = botSum - userSum;
+    const diffLabel = diff > 0 ? `+${diff} ₽` : diff < 0 ? `${diff} ₽` : '0 ₽';
+    statusText.textContent = `Оффер: ${botSum} ₽ (${diffLabel} к твоим ${userSum} ₽)`;
   }
 
   state.inventory
