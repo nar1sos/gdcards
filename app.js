@@ -171,13 +171,11 @@ function isCloudConfigured() {
   );
 }
 
-// Возвращает { ok: boolean, pool: array | null }
 async function fetchSharedPool() {
   if (!isCloudConfigured()) {
     return { ok: false, pool: null };
   }
   try {
-    // Добавляем метку времени, чтобы браузер и прокси не отдавали старый кэш
     const res = await fetch(`${JSONBIN_URL}/latest?nocache=${Date.now()}`, {
       cache: 'no-store',
       headers: {
@@ -198,7 +196,6 @@ async function fetchSharedPool() {
   }
 }
 
-// Сохранение общего пула карт из админки для всех игроков
 async function pushSharedPool(newPool) {
   if (!isCloudConfigured()) {
     showToast('Укажи JSONBIN_BIN_ID и JSONBIN_MASTER_KEY в начале app.js!');
@@ -222,6 +219,25 @@ async function pushSharedPool(newPool) {
     showToast('Не удалось сохранить пул в облако (проверь ключ, Bin ID или размер картинок)');
     return false;
   }
+}
+
+function ensureOpenAllPacksButton() {
+  const openBtn = document.getElementById('open-pack-btn');
+  if (!openBtn || document.getElementById('open-all-packs-btn')) return;
+
+  const actionsWrap = openBtn.parentElement;
+  if (actionsWrap) {
+    actionsWrap.style.flexWrap = 'wrap';
+  }
+
+  const allBtn = document.createElement('button');
+  allBtn.type = 'button';
+  allBtn.id = 'open-all-packs-btn';
+  allBtn.className = 'btn-secondary';
+  allBtn.textContent = 'Открыть все';
+  allBtn.addEventListener('click', openAllPacks);
+
+  openBtn.insertAdjacentElement('afterend', allBtn);
 }
 
 function ensureAdminSyncButton() {
@@ -295,6 +311,7 @@ async function init() {
   }
 
   setupNavigation();
+  ensureOpenAllPacksButton();
   ensureAdminSyncButton();
   startPackTimer();
   updateHeader();
@@ -302,7 +319,6 @@ async function init() {
   renderAdminPreview();
   bindEvents();
 
-  // Автообновление общего пула каждые 15 секунд
   if (isCloudConfigured()) {
     setInterval(async () => {
       const fresh = await fetchSharedPool();
@@ -368,6 +384,12 @@ function updateHeader() {
   const openBtn = document.getElementById('open-pack-btn');
   openBtn.textContent = `Открыть пак (${state.packs})`;
   openBtn.disabled = state.packs <= 0 || isOpeningPack;
+
+  const openAllBtn = document.getElementById('open-all-packs-btn');
+  if (openAllBtn) {
+    openAllBtn.textContent = state.packs > 1 ? `Открыть все (${state.packs})` : 'Открыть все';
+    openAllBtn.disabled = state.packs <= 0 || isOpeningPack;
+  }
 }
 
 function startPackTimer() {
@@ -507,18 +529,34 @@ function createCardElement(card, options = {}) {
   return div;
 }
 
-// 1. ОТКРЫТИЕ ПАКА С АНИМАЦИЕЙ
+function appendDroppedCardElement(grid, card, animate = true) {
+  const cardEl = createCardElement(card, {
+    animateDrop: animate,
+    actionLabel: `Продать за ${card.price} ₽`,
+    onAction: (c) => {
+      state.balance += c.price;
+      state.droppedTemp = state.droppedTemp.filter(x => x.uid !== c.uid);
+      saveState();
+      updateHeader();
+      renderDroppedCards(false);
+      showToast(`Продано за ${c.price} ₽`);
+    }
+  });
+  grid.appendChild(cardEl);
+}
+
+// 1. ОТКРЫТИЕ ОДНОГО ПАКА
 function openPack() {
   if (state.packs <= 0 || isOpeningPack) return;
   isOpeningPack = true;
-  state.packs--;
-  state.packsOpened++;
+  state.packs -= 1;
+  state.packsOpened += 1;
 
   const rolled = [];
   for (let i = 0; i < 5; i++) {
     rolled.push(rollSingleCard());
   }
-  state.droppedTemp = [...rolled];
+  state.droppedTemp.push(...rolled);
 
   saveState();
   updateHeader();
@@ -531,26 +569,13 @@ function openPack() {
   const area = document.getElementById('pack-result-area');
   const grid = document.getElementById('dropped-cards-grid');
   area.classList.remove('hidden');
-  grid.innerHTML = '';
 
-  const total = rolled.reduce((s, c) => s + c.price, 0);
+  const total = state.droppedTemp.reduce((s, c) => s + c.price, 0);
   document.getElementById('dropped-total-price').textContent = total;
 
   rolled.forEach((card, idx) => {
     setTimeout(() => {
-      const cardEl = createCardElement(card, {
-        animateDrop: true,
-        actionLabel: `Продать за ${card.price} ₽`,
-        onAction: (c) => {
-          state.balance += c.price;
-          state.droppedTemp = state.droppedTemp.filter(x => x.uid !== c.uid);
-          saveState();
-          updateHeader();
-          renderDroppedCards(false);
-          showToast(`Продано за ${c.price} ₽`);
-        }
-      });
-      grid.appendChild(cardEl);
+      appendDroppedCardElement(grid, card, true);
 
       if (card.isHolo || RARE_ANIM_TIERS.includes(card.rarity)) {
         showToast(`Выпал ${card.rarity.toUpperCase()}${card.isHolo ? ' HOLO' : ''}: ${card.name}!`);
@@ -560,8 +585,79 @@ function openPack() {
         isOpeningPack = false;
         updateHeader();
       }
-    }, idx * 220);
+    }, idx * 180);
   });
+}
+
+// ОТКРЫТИЕ ВСЕХ ПАКОВ СРАЗУ
+function openAllPacks() {
+  if (state.packs <= 0 || isOpeningPack) return;
+  isOpeningPack = true;
+
+  const packsToOpen = state.packs;
+  state.packs = 0;
+  state.packsOpened += packsToOpen;
+
+  const rolled = [];
+  for (let p = 0; p < packsToOpen; p++) {
+    for (let i = 0; i < 5; i++) {
+      rolled.push(rollSingleCard());
+    }
+  }
+  state.droppedTemp.push(...rolled);
+
+  saveState();
+  updateHeader();
+
+  const packBox = document.getElementById('pack-box-visual');
+  packBox.classList.remove('opening');
+  void packBox.offsetWidth;
+  packBox.classList.add('opening');
+
+  const area = document.getElementById('pack-result-area');
+  const grid = document.getElementById('dropped-cards-grid');
+  area.classList.remove('hidden');
+
+  const total = state.droppedTemp.reduce((s, c) => s + c.price, 0);
+  document.getElementById('dropped-total-price').textContent = total;
+
+  const rareCount = rolled.filter(c => c.isHolo || RARE_ANIM_TIERS.includes(c.rarity)).length;
+  showToast(`Открыто паков: ${packsToOpen} (${rolled.length} карт${rareCount ? `, редких/Holo: ${rareCount}` : ''})`);
+
+  const batchSize = 15;
+  const shouldAnimate = rolled.length <= 40;
+  let index = 0;
+
+  function renderNextBatch() {
+    const fragment = document.createDocumentFragment();
+    const end = Math.min(index + batchSize, rolled.length);
+    for (let i = index; i < end; i++) {
+      const cardEl = createCardElement(rolled[i], {
+        animateDrop: shouldAnimate,
+        actionLabel: `Продать за ${rolled[i].price} ₽`,
+        onAction: (c) => {
+          state.balance += c.price;
+          state.droppedTemp = state.droppedTemp.filter(x => x.uid !== c.uid);
+          saveState();
+          updateHeader();
+          renderDroppedCards(false);
+          showToast(`Продано за ${c.price} ₽`);
+        }
+      });
+      fragment.appendChild(cardEl);
+    }
+    grid.appendChild(fragment);
+    index = end;
+
+    if (index < rolled.length) {
+      setTimeout(renderNextBatch, shouldAnimate ? 70 : 15);
+    } else {
+      isOpeningPack = false;
+      updateHeader();
+    }
+  }
+
+  renderNextBatch();
 }
 
 function renderDroppedCards(animate = false) {
@@ -569,15 +665,17 @@ function renderDroppedCards(animate = false) {
   const grid = document.getElementById('dropped-cards-grid');
   if (state.droppedTemp.length === 0) {
     area.classList.add('hidden');
+    grid.innerHTML = '';
     return;
   }
   area.classList.remove('hidden');
   grid.innerHTML = '';
 
   let total = 0;
+  const fragment = document.createDocumentFragment();
   state.droppedTemp.forEach(card => {
     total += card.price;
-    grid.appendChild(createCardElement(card, {
+    fragment.appendChild(createCardElement(card, {
       animateDrop: animate,
       actionLabel: `Продать за ${card.price} ₽`,
       onAction: (c) => {
@@ -590,6 +688,7 @@ function renderDroppedCards(animate = false) {
       }
     }));
   });
+  grid.appendChild(fragment);
 
   document.getElementById('dropped-total-price').textContent = total;
 }
