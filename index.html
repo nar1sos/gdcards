@@ -143,21 +143,38 @@
 
         <div class="upgrade-box">
           <h3>Цель апгрейда</h3>
-          <div id="upg-target-slot" class="upg-slot">Выбери цель справа/снизу</div>
+          <div id="upg-target-slot" class="upg-slot">Выбери карту справа/снизу</div>
         </div>
       </div>
 
       <div class="upgrade-lists">
         <div>
           <h3 class="sub-title">1. Выбери свою карту для апгрейда:</h3>
-          <div id="upg-user-cards" class="cards-grid compact-grid"></div>
+          <div id="upg-user-cards" class="cards-grid compact-grid scroll-grid"></div>
         </div>
         <div>
           <div class="sub-title-row">
-            <h3 class="sub-title">2. Выбери 1 из 15 случайных карт:</h3>
-            <button id="refresh-targets-btn" class="btn-small">Обновить 15 карт</button>
+            <h3 class="sub-title">2. Выбери любую карту (Обычные и Holo):</h3>
+            <span class="hint" id="upg-catalog-count">0 карт</span>
           </div>
-          <div id="upg-target-cards" class="cards-grid compact-grid"></div>
+          <div class="upgrade-search-row">
+            <input type="text" id="upg-search-input" placeholder="Поиск по названию или #топу..." />
+            <select id="upg-type-filter">
+              <option value="all">Все (Обычные + Holo)</option>
+              <option value="holo">Только Holo</option>
+              <option value="normal">Только Обычные</option>
+            </select>
+            <select id="upg-rarity-filter">
+              <option value="all">Все редкости</option>
+              <option value="limit">Limit</option>
+              <option value="apex">Apex</option>
+              <option value="legendary">Legendary</option>
+              <option value="mythic">Mythic</option>
+              <option value="epic">Epic</option>
+              <option value="common">Common</option>
+            </select>
+          </div>
+          <div id="upg-target-cards" class="cards-grid compact-grid scroll-grid"></div>
         </div>
       </div>
     </section>
