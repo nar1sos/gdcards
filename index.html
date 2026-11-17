@@ -256,6 +256,54 @@
     </section>
   </main>
 
+  <!-- Модалка редактирования карточки в админке -->
+  <div id="edit-card-modal" class="modal-backdrop hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Изменить карточку</h3>
+        <button id="close-edit-modal-btn" class="btn-small">✕</button>
+      </div>
+      <form id="edit-card-form" class="admin-form">
+        <input type="hidden" id="edit-card-id" />
+        <label>Топ в Demon List (#)
+          <input type="number" id="edit-card-rank" min="1" required />
+        </label>
+        <label>Название уровня
+          <input type="text" id="edit-card-name" required />
+        </label>
+        <label>Verified by (необязательно)
+          <input type="text" id="edit-card-verifier" />
+        </label>
+        <label>Published by (необязательно)
+          <input type="text" id="edit-card-publisher" />
+        </label>
+        <label>Редкость
+          <select id="edit-card-rarity">
+            <option value="common">Common (Синяя)</option>
+            <option value="epic">Epic (Фиолетовая)</option>
+            <option value="mythic">Mythic (Красная)</option>
+            <option value="legendary">Legendary (Желтая)</option>
+            <option value="apex">Apex (Разноцветная)</option>
+            <option value="limit">Limit (Черно-бирюзовая)</option>
+          </select>
+        </label>
+        <label>Базовая цена (₽)
+          <input type="number" id="edit-card-price" min="10" required />
+        </label>
+        <label>Новая картинка с компьютера (оставь пустым, чтобы не менять)
+          <input type="file" id="edit-card-file" accept="image/*" />
+        </label>
+        <label>ИЛИ новый URL картинки
+          <input type="url" id="edit-card-image" placeholder="https://..." />
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="cancel-edit-btn" class="btn-secondary">Отмена</button>
+          <button type="submit" class="btn-primary">Сохранить изменения</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div id="toast" class="toast"></div>
   <script src="app.js"></script>
 </body>
