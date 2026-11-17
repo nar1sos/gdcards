@@ -151,8 +151,7 @@ let userTradeIds = [];
 let botOfferCards = [];
 
 let selectedUpgradeSourceId = null;
-let selectedUpgradeTarget = null;
-let upgradeTargetsPool = [];
+let selectedUpgradeTargetKey = null;
 let isSpinning = false;
 let isOpeningPack = false;
 let uploadedAdminImageDataUrl = '';
@@ -174,7 +173,6 @@ function init() {
 
   setupNavigation();
   startPackTimer();
-  generateUpgradeTargets();
   updateHeader();
   renderCollection();
   renderAdminPreview();
@@ -244,6 +242,23 @@ function startPackTimer() {
   }, 1000);
 }
 
+function buildCardInstance(base, isHolo = false, uidPrefix = 'card') {
+  const finalPrice = Math.round(base.price * (isHolo ? HOLO_MULTIPLIER : 1));
+  return {
+    uid: `${uidPrefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    templateId: base.id,
+    rank: base.rank,
+    name: base.name,
+    verifier: base.verifier || '',
+    publisher: base.publisher || '',
+    rarity: base.rarity,
+    image: base.image,
+    isHolo,
+    price: finalPrice,
+    favorite: false
+  };
+}
+
 function rollSingleCard(customRarity = null) {
   let chosenRarity = customRarity;
   if (!chosenRarity) {
@@ -263,29 +278,16 @@ function rollSingleCard(customRarity = null) {
 
   const base = candidates[Math.floor(Math.random() * candidates.length)];
   const isHolo = Math.random() < HOLO_CHANCE;
-  const finalPrice = Math.round(base.price * (isHolo ? HOLO_MULTIPLIER : 1));
-
-  return {
-    uid: 'card_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
-    templateId: base.id,
-    rank: base.rank,
-    name: base.name,
-    verifier: base.verifier || '',
-    publisher: base.publisher || '',
-    rarity: base.rarity,
-    image: base.image,
-    isHolo,
-    price: finalPrice,
-    favorite: false
-  };
+  return buildCardInstance(base, isHolo, 'card');
 }
 
 function createCardElement(card, options = {}) {
   const isRareAnim = options.animateDrop && (card.isHolo || RARE_ANIM_TIERS.includes(card.rarity));
   const animClass = options.animateDrop ? (isRareAnim ? 'drop-anim-rare' : 'drop-anim') : '';
+  const selectedClass = options.selected ? 'selected-card' : '';
 
   const div = document.createElement('div');
-  div.className = `gd-card rarity-${card.rarity} ${card.isHolo ? 'is-holo' : ''} ${animClass}`;
+  div.className = `gd-card rarity-${card.rarity} ${card.isHolo ? 'is-holo' : ''} ${animClass} ${selectedClass}`;
 
   const fallbackImg = `https://placehold.co/400x225/141420/ffffff?text=${encodeURIComponent(card.name)}`;
 
@@ -447,7 +449,7 @@ function renderDroppedCards(animate = false) {
   document.getElementById('dropped-total-price').textContent = total;
 }
 
-// 2. ТРЕЙДЫ С БОТОМ
+// 2. ТРЕЙДЫ С БОТОМ (подбор оффера примерно той же стоимости)
 function startTrade() {
   tradeActive = true;
   userTradeIds = [];
@@ -456,6 +458,15 @@ function startTrade() {
   document.getElementById('trade-workspace').classList.remove('hidden');
   document.getElementById('trade-inventory-block').classList.remove('hidden');
   renderTradeWorkspace();
+}
+
+function getAllCatalogVariants() {
+  const list = [];
+  state.pool.forEach(base => {
+    list.push({ base, isHolo: false, price: Math.round(base.price) });
+    list.push({ base, isHolo: true, price: Math.round(base.price * HOLO_MULTIPLIER) });
+  });
+  return list;
 }
 
 function generateBotOffer() {
@@ -467,23 +478,28 @@ function generateBotOffer() {
     return;
   }
 
-  const targetMin = userSum * 0.85;
-  const targetMax = userSum * 1.15;
-  let bestOffer = [];
+  const variants = getAllCatalogVariants();
+  let bestCombo = [];
+  let bestDiff = Infinity;
 
-  for (let attempt = 0; attempt < 40; attempt++) {
+  // Перебираем случайные комбинации из 1, 2 или 3 карт и выбираем ближайшую по цене к userSum
+  for (let i = 0; i < 400; i++) {
     const count = Math.floor(Math.random() * 3) + 1;
-    const temp = [];
-    for (let i = 0; i < count; i++) temp.push(rollSingleCard());
-    const sum = temp.reduce((s, c) => s + c.price, 0);
-    if (sum >= targetMin && sum <= targetMax) {
-      bestOffer = temp;
-      break;
+    const combo = [];
+    for (let k = 0; k < count; k++) {
+      combo.push(variants[Math.floor(Math.random() * variants.length)]);
     }
-    if (bestOffer.length === 0) bestOffer = temp;
+    const comboSum = combo.reduce((s, item) => s + item.price, 0);
+    const diff = Math.abs(comboSum - userSum);
+
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      bestCombo = combo;
+      if (diff === 0) break;
+    }
   }
 
-  botOfferCards = bestOffer;
+  botOfferCards = bestCombo.map(item => buildCardInstance(item.base, item.isHolo, 'trade'));
 }
 
 function renderTradeWorkspace() {
@@ -524,7 +540,7 @@ function renderTradeWorkspace() {
     statusText.textContent = 'Добавь свои карты в трейд';
   } else {
     confirmBtn.disabled = false;
-    statusText.textContent = 'Бот готов к обмену!';
+    statusText.textContent = `Оффер на ${botSum} ₽ (твоё: ${userSum} ₽)`;
   }
 
   state.inventory
@@ -544,19 +560,30 @@ function renderTradeWorkspace() {
     });
 }
 
-// 3. АПГРЕЙДЫ
-function generateUpgradeTargets() {
-  upgradeTargetsPool = [];
-  for (let i = 0; i < 15; i++) {
-    upgradeTargetsPool.push(rollSingleCard());
-  }
-  selectedUpgradeTarget = null;
+// 3. АПГРЕЙДЫ (все карты + Holo-версии, поиск и фильтры)
+function getUpgradeCatalog() {
+  const items = [];
+  state.pool.forEach(base => {
+    ['normal', 'holo'].forEach(mode => {
+      const isHolo = mode === 'holo';
+      const card = buildCardInstance(base, isHolo, 'upg_cat');
+      card.catalogKey = `${base.id}__${mode}`;
+      items.push(card);
+    });
+  });
+  return items;
+}
+
+function getSelectedUpgradeTarget() {
+  if (!selectedUpgradeTargetKey) return null;
+  return getUpgradeCatalog().find(item => item.catalogKey === selectedUpgradeTargetKey) || null;
 }
 
 function getUpgradeChance() {
   const src = state.inventory.find(c => c.uid === selectedUpgradeSourceId);
-  if (!src || !selectedUpgradeTarget) return 0;
-  const raw = (src.price / selectedUpgradeTarget.price) * 82;
+  const tgt = getSelectedUpgradeTarget();
+  if (!src || !tgt) return 0;
+  const raw = (src.price / tgt.price) * 82;
   return Math.max(1, Math.min(80, Number(raw.toFixed(1))));
 }
 
@@ -574,11 +601,12 @@ function renderUpgradePage() {
     srcSlot.textContent = 'Выбери карту ниже';
   }
 
+  const tgtCard = getSelectedUpgradeTarget();
   tgtSlot.innerHTML = '';
-  if (selectedUpgradeTarget) {
-    tgtSlot.appendChild(createCardElement(selectedUpgradeTarget));
+  if (tgtCard) {
+    tgtSlot.appendChild(createCardElement(tgtCard));
   } else {
-    tgtSlot.textContent = 'Выбери цель из 15 карт';
+    tgtSlot.textContent = 'Выбери любую карту из списка';
   }
 
   const chance = getUpgradeChance();
@@ -587,25 +615,54 @@ function renderUpgradePage() {
   const wheel = document.getElementById('upgrade-wheel');
   wheel.style.background = `conic-gradient(#22c55e 0deg ${deg}deg, #1e293b ${deg}deg 360deg)`;
 
-  document.getElementById('run-upgrade-btn').disabled = !(srcCard && selectedUpgradeTarget) || isSpinning;
+  document.getElementById('run-upgrade-btn').disabled = !(srcCard && tgtCard) || isSpinning;
 
   userGrid.innerHTML = '';
-  state.inventory.forEach(c => {
-    userGrid.appendChild(createCardElement(c, {
-      onClick: () => {
-        if (isSpinning) return;
-        selectedUpgradeSourceId = c.uid;
-        renderUpgradePage();
-      }
-    }));
+  if (state.inventory.length === 0) {
+    userGrid.innerHTML = '<div class="empty-box" style="grid-column: 1/-1;">У тебя пока нет карт в инвентаре.</div>';
+  } else {
+    state.inventory.forEach(c => {
+      userGrid.appendChild(createCardElement(c, {
+        selected: c.uid === selectedUpgradeSourceId,
+        onClick: () => {
+          if (isSpinning) return;
+          selectedUpgradeSourceId = c.uid;
+          renderUpgradePage();
+        }
+      }));
+    });
+  }
+
+  const query = (document.getElementById('upg-search-input').value || '').trim().toLowerCase();
+  const typeFilter = document.getElementById('upg-type-filter').value;
+  const rarityFilter = document.getElementById('upg-rarity-filter').value;
+
+  const filteredCatalog = getUpgradeCatalog().filter(c => {
+    if (typeFilter === 'holo' && !c.isHolo) return false;
+    if (typeFilter === 'normal' && c.isHolo) return false;
+    if (rarityFilter !== 'all' && c.rarity !== rarityFilter) return false;
+    if (query) {
+      const matchName = c.name.toLowerCase().includes(query);
+      const matchRank = `#${c.rank}`.includes(query) || String(c.rank) === query;
+      if (!matchName && !matchRank) return false;
+    }
+    return true;
   });
 
+  document.getElementById('upg-catalog-count').textContent = `${filteredCatalog.length} карт`;
+
   targetGrid.innerHTML = '';
-  upgradeTargetsPool.forEach(c => {
+  if (filteredCatalog.length === 0) {
+    targetGrid.innerHTML = '<div class="empty-box" style="grid-column: 1/-1;">Ничего не найдено.</div>';
+    return;
+  }
+
+  filteredCatalog.forEach(c => {
     targetGrid.appendChild(createCardElement(c, {
+      selected: c.catalogKey === selectedUpgradeTargetKey,
       onClick: () => {
         if (isSpinning) return;
-        selectedUpgradeTarget = c;
+        selectedUpgradeTargetKey = c.catalogKey;
         renderUpgradePage();
       }
     }));
@@ -614,7 +671,8 @@ function renderUpgradePage() {
 
 function runUpgrade() {
   const srcCard = state.inventory.find(c => c.uid === selectedUpgradeSourceId);
-  if (!srcCard || !selectedUpgradeTarget || isSpinning) return;
+  const tgtCard = getSelectedUpgradeTarget();
+  if (!srcCard || !tgtCard || isSpinning) return;
 
   isSpinning = true;
   document.getElementById('run-upgrade-btn').disabled = true;
@@ -636,9 +694,12 @@ function runUpgrade() {
     state.inventory = state.inventory.filter(c => c.uid !== srcCard.uid);
 
     if (win) {
-      state.inventory.push({ ...selectedUpgradeTarget, uid: 'upg_' + Date.now() });
+      state.inventory.push({
+        ...tgtCard,
+        uid: 'upg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)
+      });
       statusEl.style.color = '#4ade80';
-      statusEl.textContent = `УСПЕХ! Получена карта ${selectedUpgradeTarget.name}`;
+      statusEl.textContent = `УСПЕХ! Получена карта ${tgtCard.name}${tgtCard.isHolo ? ' [HOLO]' : ''}`;
       showToast('Апгрейд прошёл успешно!');
     } else {
       statusEl.style.color = '#f87171';
@@ -647,7 +708,6 @@ function runUpgrade() {
     }
 
     selectedUpgradeSourceId = null;
-    generateUpgradeTargets();
     saveState();
 
     setTimeout(() => {
@@ -833,10 +893,14 @@ function bindEvents() {
   });
 
   // Апгрейды
-  document.getElementById('refresh-targets-btn').addEventListener('click', () => {
-    if (isSpinning) return;
-    generateUpgradeTargets();
-    renderUpgradePage();
+  document.getElementById('upg-search-input').addEventListener('input', () => {
+    if (!isSpinning) renderUpgradePage();
+  });
+  document.getElementById('upg-type-filter').addEventListener('change', () => {
+    if (!isSpinning) renderUpgradePage();
+  });
+  document.getElementById('upg-rarity-filter').addEventListener('change', () => {
+    if (!isSpinning) renderUpgradePage();
   });
   document.getElementById('run-upgrade-btn').addEventListener('click', runUpgrade);
 
