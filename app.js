@@ -123,11 +123,11 @@ const DEFAULT_POOL = [
 ];
 
 const RARITY_WEIGHTS = [
-  { key: 'common', weight: 48 },
-  { key: 'epic', weight: 26 },
-  { key: 'mythic', weight: 14 },
-  { key: 'legendary', weight: 7.5 },
-  { key: 'apex', weight: 3.5 },
+  { key: 'common', weight: 55 },
+  { key: 'epic', weight: 32 },
+  { key: 'mythic', weight: 5 },
+  { key: 'legendary', weight: 4 },
+  { key: 'apex', weight: 3 },
   { key: 'limit', weight: 1 }
 ];
 
