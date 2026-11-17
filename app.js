@@ -136,6 +136,26 @@ const RARITY_WEIGHTS = [
   { key: 'limit', weight: 0.1 }
 ];
 
+// Веса редкостей для рандомных трейдов: жирное выпадает редко, но шанс есть всегда
+const TRADE_RARITY_WEIGHTS = [
+  { key: 'common', weight: 74 },
+  { key: 'epic', weight: 22.5 },
+  { key: 'mythic', weight: 2.0 },
+  { key: 'legendary', weight: 0.9 },
+  { key: 'apex', weight: 0.4 },
+  { key: 'limit', weight: 0.2 }
+];
+
+const RARITY_LABELS = {
+  all: 'Все редкости',
+  common: 'Common',
+  epic: 'Epic',
+  mythic: 'Mythic',
+  legendary: 'Legendary',
+  apex: 'Apex',
+  limit: 'Limit'
+};
+
 const RARE_ANIM_TIERS = ['legendary', 'apex', 'limit'];
 const HOLO_CHANCE = 0.12;
 const HOLO_MULTIPLIER = 3.5;
@@ -240,6 +260,86 @@ function ensureOpenAllPacksButton() {
   openBtn.insertAdjacentElement('afterend', allBtn);
 }
 
+function ensureCollectionBulkSellControls() {
+  const filtersBar = document.querySelector('#tab-collection .filters-bar');
+  if (!filtersBar || document.getElementById('sell-bulk-btn')) return;
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-left:auto;';
+
+  const select = document.createElement('select');
+  select.id = 'sell-rarity-select';
+  select.title = 'Выбери редкость для массовой продажи';
+  [
+    ['all', 'Все редкости'],
+    ['common', 'Common'],
+    ['epic', 'Epic'],
+    ['mythic', 'Mythic'],
+    ['legendary', 'Legendary'],
+    ['apex', 'Apex'],
+    ['limit', 'Limit']
+  ].forEach(([val, label]) => {
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = label;
+    select.appendChild(opt);
+  });
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'sell-bulk-btn';
+  btn.className = 'btn-danger';
+  btn.textContent = 'Продать всё (0 ₽)';
+
+  select.addEventListener('change', updateCollectionBulkSellButton);
+  btn.addEventListener('click', sellCollectionByRarity);
+
+  wrap.appendChild(select);
+  wrap.appendChild(btn);
+  filtersBar.appendChild(wrap);
+}
+
+function getCollectionSellCandidates(rarity = 'all') {
+  if (rarity === 'all') {
+    return [...state.inventory];
+  }
+  return state.inventory.filter(c => c.rarity === rarity);
+}
+
+function updateCollectionBulkSellButton() {
+  const select = document.getElementById('sell-rarity-select');
+  const btn = document.getElementById('sell-bulk-btn');
+  if (!select || !btn) return;
+
+  const rarity = select.value;
+  const targets = getCollectionSellCandidates(rarity);
+  const sum = targets.reduce((s, c) => s + c.price, 0);
+  const label = rarity === 'all' ? 'Продать всё' : `Продать ${RARITY_LABELS[rarity] || rarity}`;
+  btn.textContent = `${label} (${sum} ₽)`;
+  btn.disabled = targets.length === 0;
+}
+
+function sellCollectionByRarity() {
+  const select = document.getElementById('sell-rarity-select');
+  const rarity = select ? select.value : 'all';
+  const targets = getCollectionSellCandidates(rarity);
+  if (targets.length === 0) return;
+
+  const targetUidSet = new Set(targets.map(c => c.uid));
+  const sum = targets.reduce((s, c) => s + c.price, 0);
+
+  state.inventory = state.inventory.filter(c => !targetUidSet.has(c.uid));
+  state.balance += sum;
+  saveState();
+  updateHeader();
+  renderCollection();
+
+  const desc = rarity === 'all'
+    ? `Проданы все карты (${targets.length} шт.) за ${sum} ₽`
+    : `Проданы карты редкости ${RARITY_LABELS[rarity] || rarity} (${targets.length} шт.) за ${sum} ₽`;
+  showToast(desc);
+}
+
 function ensureAdminSyncButton() {
   const adminPanel = document.getElementById('admin-panel');
   if (!adminPanel || document.getElementById('sync-pool-now-btn')) return;
@@ -312,6 +412,7 @@ async function init() {
 
   setupNavigation();
   ensureOpenAllPacksButton();
+  ensureCollectionBulkSellControls();
   ensureAdminSyncButton();
   startPackTimer();
   updateHeader();
@@ -426,25 +527,27 @@ function buildCardInstance(base, isHolo = false, uidPrefix = 'card') {
   };
 }
 
-function rollSingleCard(customRarity = null) {
-  let chosenRarity = customRarity;
-  if (!chosenRarity) {
-    const roll = Math.random() * 100;
-    let acc = 0;
-    for (const r of RARITY_WEIGHTS) {
-      acc += r.weight;
-      if (roll <= acc) {
-        chosenRarity = r.key;
-        break;
-      }
+function pickWeightedRarity(weightsList) {
+  const totalWeight = weightsList.reduce((sum, item) => sum + item.weight, 0);
+  const roll = Math.random() * totalWeight;
+  let acc = 0;
+  for (const r of weightsList) {
+    acc += r.weight;
+    if (roll <= acc) {
+      return r.key;
     }
   }
+  return weightsList[0].key;
+}
+
+function rollSingleCard(customRarity = null, weightsList = RARITY_WEIGHTS, holoChance = HOLO_CHANCE) {
+  const chosenRarity = customRarity || pickWeightedRarity(weightsList);
 
   let candidates = state.pool.filter(c => c.rarity === chosenRarity);
   if (candidates.length === 0) candidates = state.pool;
 
   const base = candidates[Math.floor(Math.random() * candidates.length)];
-  const isHolo = Math.random() < HOLO_CHANCE;
+  const isHolo = Math.random() < holoChance;
   return buildCardInstance(base, isHolo, 'card');
 }
 
@@ -693,7 +796,7 @@ function renderDroppedCards(animate = false) {
   document.getElementById('dropped-total-price').textContent = total;
 }
 
-// 2. ТРЕЙДЫ С БОТОМ (плавный прогресс с шансом оверпея на +100..+500 и редко на +500..+1000 ₽)
+// 2. ТРЕЙДЫ С БОТОМ (полный рандом: можно выбить жирную карту за коммонку, но редкие падают редко)
 function startTrade() {
   tradeActive = true;
   userTradeIds = [];
@@ -704,72 +807,23 @@ function startTrade() {
   renderTradeWorkspace();
 }
 
-function getAllCatalogVariants() {
-  const list = [];
-  state.pool.forEach(base => {
-    list.push({ base, isHolo: false, price: Math.round(base.price) });
-    list.push({ base, isHolo: true, price: Math.round(base.price * HOLO_MULTIPLIER) });
-  });
-  return list;
-}
-
-function pickTradeTargetSum(userSum) {
-  const roll = Math.random();
-
-  // ~13%: редкий крупный оверпей (+500..+1000 ₽)
-  if (roll < 0.13) {
-    const bonus = 500 + Math.random() * 500;
-    return Math.round(userSum + bonus);
-  }
-
-  // ~22%: умеренный оверпей для постепенного подъёма (+100..+500 ₽)
-  if (roll < 0.35) {
-    const bonus = 100 + Math.random() * 400;
-    return Math.round(userSum + bonus);
-  }
-
-  // ~65%: близко к стоимости игрока (лёгкий плюс до +120 или небольшой минус до -120)
-  const delta = (Math.random() * 240) - 120;
-  return Math.max(10, Math.round(userSum + delta));
-}
-
 function generateBotOffer() {
   const userCards = state.inventory.filter(c => userTradeIds.includes(c.uid));
-  const userSum = userCards.reduce((s, c) => s + c.price, 0);
-
-  if (userSum === 0) {
+  if (userCards.length === 0 || !state.pool || state.pool.length === 0) {
     botOfferCards = [];
     return;
   }
 
-  const variants = getAllCatalogVariants();
-  if (variants.length === 0) {
-    botOfferCards = [];
-    return;
+  const count = Math.floor(Math.random() * 3) + 1; // 1..3 случайные карты
+  const offer = [];
+  for (let i = 0; i < count; i++) {
+    const rolled = rollSingleCard(null, TRADE_RARITY_WEIGHTS, 0.08);
+    offer.push({
+      ...rolled,
+      uid: `trade_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 7)}`
+    });
   }
-
-  const targetSum = pickTradeTargetSum(userSum);
-  let bestCombo = [];
-  let bestDiff = Infinity;
-
-  // Перебираем комбинации из 1..4 карт и ищем ближайшую к targetSum
-  for (let i = 0; i < 800; i++) {
-    const count = Math.floor(Math.random() * 4) + 1;
-    const combo = [];
-    for (let k = 0; k < count; k++) {
-      combo.push(variants[Math.floor(Math.random() * variants.length)]);
-    }
-    const comboSum = combo.reduce((s, item) => s + item.price, 0);
-    const diff = Math.abs(comboSum - targetSum);
-
-    if (diff < bestDiff) {
-      bestDiff = diff;
-      bestCombo = combo;
-      if (diff === 0) break;
-    }
-  }
-
-  botOfferCards = bestCombo.map(item => buildCardInstance(item.base, item.isHolo, 'trade'));
+  botOfferCards = offer;
 }
 
 function renderTradeWorkspace() {
@@ -810,9 +864,7 @@ function renderTradeWorkspace() {
     statusText.textContent = 'Добавь свои карты в трейд';
   } else {
     confirmBtn.disabled = false;
-    const diff = botSum - userSum;
-    const diffLabel = diff > 0 ? `+${diff} ₽` : diff < 0 ? `${diff} ₽` : '0 ₽';
-    statusText.textContent = `Оффер: ${botSum} ₽ (${diffLabel} к твоим ${userSum} ₽)`;
+    statusText.textContent = 'Полный рандом: шанс на жир — низкий, но возможен';
   }
 
   state.inventory
@@ -996,6 +1048,8 @@ function runUpgrade() {
 
 // 4. КОЛЛЕКЦИЯ
 function renderCollection() {
+  ensureCollectionBulkSellControls();
+
   const rarityFilter = document.getElementById('filter-rarity').value;
   const typeFilter = document.getElementById('filter-type').value;
   const favOnly = document.getElementById('filter-fav').checked;
@@ -1005,6 +1059,8 @@ function renderCollection() {
   const totalVal = state.inventory.reduce((s, c) => s + c.price, 0);
   document.getElementById('stat-inv-value').textContent = `${totalVal} ₽`;
   document.getElementById('stat-packs-opened').textContent = state.packsOpened;
+
+  updateCollectionBulkSellButton();
 
   const filtered = state.inventory.filter(c => {
     if (rarityFilter !== 'all' && c.rarity !== rarityFilter) return false;
