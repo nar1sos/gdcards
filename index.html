@@ -211,16 +211,22 @@
           <form id="add-card-form" class="admin-form">
             <h3>Добавить новую карточку в пак</h3>
             <label>Топ в Demon List (#)
-              <input type="number" id="card-rank" min="1" value="1" required />
+              <input type="number" id="card-rank" min="1" value="9" required />
             </label>
             <label>Название уровня
-              <input type="text" id="card-name" placeholder="Например: Tidal Wave" required />
+              <input type="text" id="card-name" placeholder="Например: ORBIT" required />
+            </label>
+            <label>Verified by (необязательно)
+              <input type="text" id="card-verifier" placeholder="Например: Zoink" />
+            </label>
+            <label>Published by (необязательно)
+              <input type="text" id="card-publisher" placeholder="Например: MindCap" />
             </label>
             <label>Редкость
               <select id="card-rarity">
                 <option value="common">Common (Синяя)</option>
                 <option value="epic">Epic (Фиолетовая)</option>
-                <option value="mythic">Mythic (Красная)</option>
+                <option value="mythic" selected>Mythic (Красная)</option>
                 <option value="legendary">Legendary (Желтая)</option>
                 <option value="apex">Apex (Разноцветная)</option>
                 <option value="limit">Limit (Черно-бирюзовая)</option>
