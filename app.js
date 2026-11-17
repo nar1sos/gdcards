@@ -4,6 +4,8 @@ const DEFAULT_POOL = [
     id: 'lvl_1',
     rank: 1,
     name: 'Tidal Wave',
+    verifier: 'Zoink',
+    publisher: 'OniLink',
     rarity: 'limit',
     price: 4500,
     image: 'https://i.ytimg.com/vi/9fsZ014qB3s/maxresdefault.jpg'
@@ -12,6 +14,8 @@ const DEFAULT_POOL = [
     id: 'lvl_2',
     rank: 2,
     name: 'Acheron',
+    verifier: 'Zoink',
+    publisher: 'ryamu',
     rarity: 'apex',
     price: 2200,
     image: 'https://i.ytimg.com/vi/sBKR6aUorzA/maxresdefault.jpg'
@@ -20,6 +24,8 @@ const DEFAULT_POOL = [
     id: 'lvl_3',
     rank: 3,
     name: 'Avernus',
+    verifier: 'Zoink',
+    publisher: 'PockeWindfish',
     rarity: 'apex',
     price: 1900,
     image: 'https://i.ytimg.com/vi/16Zh8hW264w/maxresdefault.jpg'
@@ -28,6 +34,8 @@ const DEFAULT_POOL = [
     id: 'lvl_4',
     rank: 4,
     name: 'Thinking Space II',
+    verifier: 'Zoink',
+    publisher: 'CairoX',
     rarity: 'mythic',
     price: 750,
     image: 'https://i.ytimg.com/vi/5M6h8f6bY5g/maxresdefault.jpg'
@@ -36,6 +44,8 @@ const DEFAULT_POOL = [
     id: 'lvl_5',
     rank: 5,
     name: 'Silent Clubstep',
+    verifier: 'Paqoe',
+    publisher: 'TheRealSailent',
     rarity: 'legendary',
     price: 1200,
     image: 'https://i.ytimg.com/vi/GR4Sn_dc83w/maxresdefault.jpg'
@@ -44,14 +54,28 @@ const DEFAULT_POOL = [
     id: 'lvl_6',
     rank: 6,
     name: 'Abyss of Darkness',
+    verifier: 'Cursed',
+    publisher: 'Exen',
     rarity: 'legendary',
     price: 1050,
     image: 'https://i.ytimg.com/vi/ejJ2220141A/maxresdefault.jpg'
   },
   {
+    id: 'lvl_9',
+    rank: 9,
+    name: 'ORBIT',
+    verifier: 'Zoink',
+    publisher: 'MindCap',
+    rarity: 'mythic',
+    price: 720,
+    image: 'https://placehold.co/400x225/1a1025/ffffff?text=ORBIT'
+  },
+  {
     id: 'lvl_7',
     rank: 10,
     name: 'Antarctic Lights',
+    verifier: 'Axinity',
+    publisher: 'declanic',
     rarity: 'mythic',
     price: 680,
     image: 'https://i.ytimg.com/vi/8hH2H6-X1bU/maxresdefault.jpg'
@@ -60,22 +84,18 @@ const DEFAULT_POOL = [
     id: 'lvl_8',
     rank: 14,
     name: 'Slaughterhouse',
+    verifier: 'Doggie',
+    publisher: 'icedcave',
     rarity: 'epic',
     price: 340,
     image: 'https://i.ytimg.com/vi/kpcF1-6989M/maxresdefault.jpg'
   },
   {
-    id: 'lvl_9',
-    rank: 22,
-    name: 'Kocmoc',
-    rarity: 'epic',
-    price: 290,
-    image: 'https://i.ytimg.com/vi/28091283910/maxresdefault.jpg'
-  },
-  {
     id: 'lvl_10',
     rank: 35,
     name: 'Kuzureta',
+    verifier: 'Teno',
+    publisher: 'Teno',
     rarity: 'common',
     price: 110,
     image: 'https://i.ytimg.com/vi/0rG15S9Z4zY/maxresdefault.jpg'
@@ -84,6 +104,8 @@ const DEFAULT_POOL = [
     id: 'lvl_11',
     rank: 48,
     name: 'Bloodlust',
+    verifier: 'Knobbelboy',
+    publisher: 'Knobbelboy',
     rarity: 'common',
     price: 95,
     image: 'https://i.ytimg.com/vi/5247258391/maxresdefault.jpg'
@@ -92,6 +114,8 @@ const DEFAULT_POOL = [
     id: 'lvl_12',
     rank: 75,
     name: 'Tartarus',
+    verifier: 'Dolphy',
+    publisher: 'Riot',
     rarity: 'common',
     price: 80,
     image: 'https://i.ytimg.com/vi/398123981/maxresdefault.jpg'
@@ -245,6 +269,8 @@ function rollSingleCard(customRarity = null) {
     templateId: base.id,
     rank: base.rank,
     name: base.name,
+    verifier: base.verifier || '',
+    publisher: base.publisher || '',
     rarity: base.rarity,
     image: base.image,
     isHolo,
@@ -262,6 +288,10 @@ function createCardElement(card, options = {}) {
 
   const fallbackImg = `https://placehold.co/400x225/141420/ffffff?text=${encodeURIComponent(card.name)}`;
 
+  const verifierLine = card.verifier ? `<div>Verified by ${card.verifier}</div>` : '';
+  const publisherLine = card.publisher ? `<div>Published by ${card.publisher}</div>` : '';
+  const metaBlock = (verifierLine || publisherLine) ? `<div class="card-meta">${verifierLine}${publisherLine}</div>` : '';
+
   div.innerHTML = `
     <div class="card-top">
       <span class="card-rank">#${card.rank}</span>
@@ -272,6 +302,7 @@ function createCardElement(card, options = {}) {
     </div>
     <div class="card-info">
       <div class="card-title">${card.name}</div>
+      ${metaBlock}
     </div>
     <div class="card-footer">
       <div class="card-left-tags">
@@ -342,7 +373,6 @@ function openPack() {
   const total = rolled.reduce((s, c) => s + c.price, 0);
   document.getElementById('dropped-total-price').textContent = total;
 
-  // Показываем 5 карт по очереди с задержкой
   rolled.forEach((card, idx) => {
     setTimeout(() => {
       const cardEl = createCardElement(card, {
@@ -671,6 +701,8 @@ function getCurrentAdminImage() {
 function renderAdminPreview() {
   const rank = document.getElementById('card-rank').value || 1;
   const name = document.getElementById('card-name').value || 'Название уровня';
+  const verifier = document.getElementById('card-verifier').value.trim();
+  const publisher = document.getElementById('card-publisher').value.trim();
   const rarity = document.getElementById('card-rarity').value || 'common';
   const price = Number(document.getElementById('card-price').value) || 100;
   const image = getCurrentAdminImage();
@@ -678,8 +710,8 @@ function renderAdminPreview() {
   const box = document.getElementById('admin-preview-box');
   box.innerHTML = '';
 
-  const normalSample = { rank, name, rarity, price, image, isHolo: false };
-  const holoSample = { rank, name, rarity, price: Math.round(price * HOLO_MULTIPLIER), image, isHolo: true };
+  const normalSample = { rank, name, verifier, publisher, rarity, price, image, isHolo: false };
+  const holoSample = { rank, name, verifier, publisher, rarity, price: Math.round(price * HOLO_MULTIPLIER), image, isHolo: true };
 
   box.appendChild(createCardElement(normalSample));
   box.appendChild(createCardElement(holoSample));
@@ -807,7 +839,7 @@ function bindEvents() {
     reader.readAsDataURL(file);
   });
 
-  ['card-rank', 'card-name', 'card-rarity', 'card-price', 'card-image'].forEach(id => {
+  ['card-rank', 'card-name', 'card-verifier', 'card-publisher', 'card-rarity', 'card-price', 'card-image'].forEach(id => {
     document.getElementById(id).addEventListener('input', () => {
       if (id === 'card-image' && document.getElementById('card-image').value.trim()) {
         uploadedAdminImageDataUrl = '';
@@ -831,6 +863,8 @@ function bindEvents() {
       id: 'lvl_' + Date.now(),
       rank: Number(document.getElementById('card-rank').value),
       name: document.getElementById('card-name').value.trim(),
+      verifier: document.getElementById('card-verifier').value.trim(),
+      publisher: document.getElementById('card-publisher').value.trim(),
       rarity: document.getElementById('card-rarity').value,
       price: Number(document.getElementById('card-price').value),
       image: uploadedAdminImageDataUrl || urlInput
