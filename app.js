@@ -1,4 +1,9 @@
-// Стартовый пул Extreme Demon уровней (можно дополнять и редактировать в Админке)
+// === НАСТРОЙКИ ОБЩЕГО ПУЛА КАРТ (JSONBin.io) ===
+const JSONBIN_BIN_ID = '6afc4b60ffd5d16053c85caa';
+const JSONBIN_MASTER_KEY = '$2a$10$eiZem/A1JhfYhF6bHWXE7uzoJ6D8QjuKpyPe5Hrg9i2osHoYhRrVK';
+const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
+
+// Стартовый пул (используется только если облачный пул ещё пустой)
 const DEFAULT_POOL = [
   {
     id: 'lvl_1',
@@ -135,7 +140,7 @@ const RARE_ANIM_TIERS = ['legendary', 'apex', 'limit'];
 const HOLO_CHANCE = 0.12;
 const HOLO_MULTIPLIER = 3.5;
 
-// Состояние приложения (сохраняется в localStorage)
+// Личный прогресс игрока хранится локально, а pool синхронизируется с облаком
 let state = {
   balance: 500,
   packs: 1,
@@ -157,17 +162,82 @@ let isOpeningPack = false;
 let uploadedAdminImageDataUrl = '';
 let editingCardImageDataUrl = '';
 
-function init() {
+function isCloudConfigured() {
+  return (
+    JSONBIN_BIN_ID &&
+    !JSONBIN_BIN_ID.includes('ВСТАВЬ_СЮДА') &&
+    JSONBIN_MASTER_KEY &&
+    !JSONBIN_MASTER_KEY.includes('ВСТАВЬ_СЮДА')
+  );
+}
+
+// Загрузка общего пула карт для всех игроков
+async function fetchSharedPool() {
+  if (!isCloudConfigured()) return null;
+  try {
+    const res = await fetch(`${JSONBIN_URL}/latest`, {
+      headers: {
+        'X-Master-Key': JSONBIN_MASTER_KEY
+      }
+    });
+    if (!res.ok) throw new Error('Ошибка чтения общего пула');
+    const data = await res.json();
+    if (data.record && Array.isArray(data.record.pool)) {
+      return data.record.pool;
+    }
+  } catch (err) {
+    console.error('Не удалось загрузить общий пул:', err);
+  }
+  return null;
+}
+
+// Сохранение общего пула карт из админки для всех игроков
+async function pushSharedPool(newPool) {
+  if (!isCloudConfigured()) {
+    showToast('Укажи JSONBIN_BIN_ID и JSONBIN_MASTER_KEY в начале app.js!');
+    return false;
+  }
+  try {
+    const res = await fetch(JSONBIN_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Master-Key': JSONBIN_MASTER_KEY
+      },
+      body: JSON.stringify({ pool: newPool })
+    });
+    if (!res.ok) throw new Error('Ошибка сохранения общего пула');
+    return true;
+  } catch (err) {
+    console.error('Ошибка отправки общего пула:', err);
+    showToast('Не удалось сохранить пул в облако (проверь ключ или размер картинок)');
+    return false;
+  }
+}
+
+async function init() {
   const saved = localStorage.getItem('gd_case_save_v1');
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
-      state = { ...state, ...parsed };
+      state.balance = parsed.balance ?? 500;
+      state.packs = parsed.packs ?? 1;
+      state.packsOpened = parsed.packsOpened ?? 0;
+      state.inventory = Array.isArray(parsed.inventory) ? parsed.inventory : [];
+      if (Array.isArray(parsed.pool) && parsed.pool.length > 0) {
+        state.pool = parsed.pool;
+      }
     } catch (e) {
       console.error(e);
     }
   }
-  if (!state.pool || state.pool.length === 0) {
+
+  // Подтягиваем актуальный общий пул с сервера для всех игроков
+  const sharedPool = await fetchSharedPool();
+  if (sharedPool && sharedPool.length > 0) {
+    state.pool = sharedPool;
+    saveState();
+  } else if (!state.pool || state.pool.length === 0) {
     state.pool = [...DEFAULT_POOL];
   }
 
@@ -177,6 +247,24 @@ function init() {
   renderCollection();
   renderAdminPreview();
   bindEvents();
+
+  // Автообновление пула раз в 20 секунд, чтобы игроки видели новые карты без перезагрузки
+  if (isCloudConfigured()) {
+    setInterval(async () => {
+      const freshPool = await fetchSharedPool();
+      if (freshPool && freshPool.length > 0) {
+        const changed = JSON.stringify(freshPool) !== JSON.stringify(state.pool);
+        if (changed) {
+          state.pool = freshPool;
+          saveState();
+          renderAdminPool();
+          if (document.getElementById('tab-upgrade').classList.contains('active') && !isSpinning) {
+            renderUpgradePage();
+          }
+        }
+      }
+    }, 20000);
+  }
 }
 
 function saveState() {
@@ -449,7 +537,7 @@ function renderDroppedCards(animate = false) {
   document.getElementById('dropped-total-price').textContent = total;
 }
 
-// 2. ТРЕЙДЫ С БОТОМ (подбор оффера примерно той же стоимости)
+// 2. ТРЕЙДЫ С БОТОМ
 function startTrade() {
   tradeActive = true;
   userTradeIds = [];
@@ -482,7 +570,6 @@ function generateBotOffer() {
   let bestCombo = [];
   let bestDiff = Infinity;
 
-  // Перебираем случайные комбинации из 1, 2 или 3 карт и выбираем ближайшую по цене к userSum
   for (let i = 0; i < 400; i++) {
     const count = Math.floor(Math.random() * 3) + 1;
     const combo = [];
@@ -560,7 +647,7 @@ function renderTradeWorkspace() {
     });
 }
 
-// 3. АПГРЕЙДЫ (все карты + Holo-версии, поиск и фильтры)
+// 3. АПГРЕЙДЫ
 function getUpgradeCatalog() {
   const items = [];
   state.pool.forEach(base => {
@@ -822,15 +909,19 @@ function renderAdminPool() {
       editLabel: 'Изменить',
       onEdit: (c) => openEditModal(c),
       actionLabel: 'Удалить',
-      onAction: (c) => {
+      onAction: async (c) => {
         if (state.pool.length <= 1) {
           showToast('В пуле должна остаться хотя бы 1 карта!');
           return;
         }
-        state.pool = state.pool.filter(x => x.id !== c.id);
-        saveState();
-        renderAdminPool();
-        showToast('Карта удалена из пула');
+        const nextPool = state.pool.filter(x => x.id !== c.id);
+        const ok = await pushSharedPool(nextPool);
+        if (ok) {
+          state.pool = nextPool;
+          saveState();
+          renderAdminPool();
+          showToast('Карта удалена у всех игроков');
+        }
       }
     }));
   });
@@ -928,8 +1019,8 @@ function bindEvents() {
       renderAdminPreview();
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      showToast('Файл больше 2 МБ — лучше сжать или взять URL');
+    if (file.size > 80 * 1024) {
+      showToast('Файл больше 80 КБ — для общего пула лучше вставить URL картинки!');
     }
     const reader = new FileReader();
     reader.onload = () => {
@@ -950,7 +1041,7 @@ function bindEvents() {
     });
   });
 
-  document.getElementById('add-card-form').addEventListener('submit', (e) => {
+  document.getElementById('add-card-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const fileInput = document.getElementById('card-file');
     const urlInput = document.getElementById('card-image').value.trim();
@@ -971,14 +1062,18 @@ function bindEvents() {
       image: uploadedAdminImageDataUrl || urlInput
     };
 
-    state.pool.unshift(newLevel);
+    const nextPool = [newLevel, ...state.pool];
+    const ok = await pushSharedPool(nextPool);
+    if (!ok) return;
+
+    state.pool = nextPool;
     saveState();
     renderAdminPool();
     e.target.reset();
     fileInput.value = '';
     uploadedAdminImageDataUrl = '';
     renderAdminPreview();
-    showToast(`Уровень "${newLevel.name}" добавлен в паки!`);
+    showToast(`Уровень "${newLevel.name}" добавлен всем игрокам!`);
   });
 
   // Модалка редактирования карточки
@@ -999,7 +1094,7 @@ function bindEvents() {
     reader.readAsDataURL(file);
   });
 
-  document.getElementById('edit-card-form').addEventListener('submit', (e) => {
+  document.getElementById('edit-card-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = document.getElementById('edit-card-id').value;
     const idx = state.pool.findIndex(c => c.id === id);
@@ -1009,7 +1104,8 @@ function bindEvents() {
     const urlVal = document.getElementById('edit-card-image').value.trim();
     const nextImage = editingCardImageDataUrl || urlVal || current.image;
 
-    state.pool[idx] = {
+    const nextPool = [...state.pool];
+    nextPool[idx] = {
       ...current,
       rank: Number(document.getElementById('edit-card-rank').value),
       name: document.getElementById('edit-card-name').value.trim(),
@@ -1020,10 +1116,14 @@ function bindEvents() {
       image: nextImage
     };
 
+    const ok = await pushSharedPool(nextPool);
+    if (!ok) return;
+
+    state.pool = nextPool;
     saveState();
     renderAdminPool();
     closeEditModal();
-    showToast(`Карточка "${state.pool[idx].name}" обновлена!`);
+    showToast(`Карточка "${state.pool[idx].name}" обновлена для всех!`);
   });
 }
 
