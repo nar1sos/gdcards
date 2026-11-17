@@ -1,4 +1,4 @@
-// Стартовый пул Extreme Demon уровней (можно дополнять в Админке)
+// Стартовый пул Extreme Demon уровней (можно дополнять и редактировать в Админке)
 const DEFAULT_POOL = [
   {
     id: 'lvl_1',
@@ -156,6 +156,7 @@ let upgradeTargetsPool = [];
 let isSpinning = false;
 let isOpeningPack = false;
 let uploadedAdminImageDataUrl = '';
+let editingCardImageDataUrl = '';
 
 function init() {
   const saved = localStorage.getItem('gd_case_save_v1');
@@ -323,16 +324,31 @@ function createCardElement(card, options = {}) {
     });
   }
 
-  if (options.actionLabel) {
+  if (options.actionLabel || options.editLabel) {
     const row = document.createElement('div');
     row.className = 'card-actions-row';
-    const btn = document.createElement('button');
-    btn.textContent = options.actionLabel;
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      options.onAction(card);
-    });
-    row.appendChild(btn);
+
+    if (options.editLabel) {
+      const editBtn = document.createElement('button');
+      editBtn.textContent = options.editLabel;
+      editBtn.className = 'btn-edit-card';
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        options.onEdit(card);
+      });
+      row.appendChild(editBtn);
+    }
+
+    if (options.actionLabel) {
+      const btn = document.createElement('button');
+      btn.textContent = options.actionLabel;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        options.onAction(card);
+      });
+      row.appendChild(btn);
+    }
+
     div.appendChild(row);
   }
 
@@ -717,6 +733,25 @@ function renderAdminPreview() {
   box.appendChild(createCardElement(holoSample));
 }
 
+function openEditModal(card) {
+  editingCardImageDataUrl = '';
+  document.getElementById('edit-card-id').value = card.id;
+  document.getElementById('edit-card-rank').value = card.rank;
+  document.getElementById('edit-card-name').value = card.name;
+  document.getElementById('edit-card-verifier').value = card.verifier || '';
+  document.getElementById('edit-card-publisher').value = card.publisher || '';
+  document.getElementById('edit-card-rarity').value = card.rarity;
+  document.getElementById('edit-card-price').value = card.price;
+  document.getElementById('edit-card-file').value = '';
+  document.getElementById('edit-card-image').value = card.image.startsWith('data:') ? '' : card.image;
+  document.getElementById('edit-card-modal').classList.remove('hidden');
+}
+
+function closeEditModal() {
+  editingCardImageDataUrl = '';
+  document.getElementById('edit-card-modal').classList.add('hidden');
+}
+
 function renderAdminPool() {
   document.getElementById('pool-count').textContent = state.pool.length;
   const grid = document.getElementById('admin-pool-grid');
@@ -724,7 +759,9 @@ function renderAdminPool() {
 
   state.pool.forEach(lvl => {
     grid.appendChild(createCardElement({ ...lvl, isHolo: false }, {
-      actionLabel: 'Удалить из пула',
+      editLabel: 'Изменить',
+      onEdit: (c) => openEditModal(c),
+      actionLabel: 'Удалить',
       onAction: (c) => {
         if (state.pool.length <= 1) {
           showToast('В пуле должна остаться хотя бы 1 карта!');
@@ -878,6 +915,51 @@ function bindEvents() {
     uploadedAdminImageDataUrl = '';
     renderAdminPreview();
     showToast(`Уровень "${newLevel.name}" добавлен в паки!`);
+  });
+
+  // Модалка редактирования карточки
+  document.getElementById('close-edit-modal-btn').addEventListener('click', closeEditModal);
+  document.getElementById('cancel-edit-btn').addEventListener('click', closeEditModal);
+
+  document.getElementById('edit-card-file').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) {
+      editingCardImageDataUrl = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      editingCardImageDataUrl = reader.result;
+      document.getElementById('edit-card-image').value = '';
+    };
+    reader.readAsDataURL(file);
+  });
+
+  document.getElementById('edit-card-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const id = document.getElementById('edit-card-id').value;
+    const idx = state.pool.findIndex(c => c.id === id);
+    if (idx === -1) return;
+
+    const current = state.pool[idx];
+    const urlVal = document.getElementById('edit-card-image').value.trim();
+    const nextImage = editingCardImageDataUrl || urlVal || current.image;
+
+    state.pool[idx] = {
+      ...current,
+      rank: Number(document.getElementById('edit-card-rank').value),
+      name: document.getElementById('edit-card-name').value.trim(),
+      verifier: document.getElementById('edit-card-verifier').value.trim(),
+      publisher: document.getElementById('edit-card-publisher').value.trim(),
+      rarity: document.getElementById('edit-card-rarity').value,
+      price: Number(document.getElementById('edit-card-price').value),
+      image: nextImage
+    };
+
+    saveState();
+    renderAdminPool();
+    closeEditModal();
+    showToast(`Карточка "${state.pool[idx].name}" обновлена!`);
   });
 }
 
