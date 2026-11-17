@@ -102,22 +102,23 @@ body {
 /* Сетка карточек */
 .cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(235px, 1fr));
+  gap: 20px;
   margin-top: 16px;
 }
 
-/* ДИЗАЙН КАРТОЧКИ */
+/* ДИЗАЙН КАРТОЧКИ В СТИЛЕ РЕФЕРЕНСА */
 .gd-card {
   position: relative;
   width: 100%;
-  border-radius: 16px;
-  padding: 14px;
+  min-height: 355px;
+  border-radius: 18px;
+  padding: 16px;
   background: #18131a;
   border: 2px solid #332938;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
   transition: transform 0.22s ease, box-shadow 0.22s ease;
   overflow: hidden;
   user-select: none;
@@ -191,9 +192,9 @@ body {
   box-shadow: 0 0 18px rgba(168, 85, 247, 0.18);
 }
 .gd-card.rarity-mythic {
-  background: linear-gradient(180deg, #291218 0%, #140b0e 100%);
-  border-color: rgba(239, 68, 68, 0.65);
-  box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
+  background: linear-gradient(180deg, #2b1218 0%, #160c10 55%, #110b0e 100%);
+  border-color: rgba(239, 68, 68, 0.55);
+  box-shadow: 0 0 22px rgba(239, 68, 68, 0.18);
 }
 .gd-card.rarity-legendary {
   background: linear-gradient(180deg, #2b220e 0%, #141109 100%);
@@ -264,7 +265,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
   position: relative;
   z-index: 3;
 }
@@ -273,6 +274,7 @@ body {
   font-size: 22px;
   font-weight: 900;
   color: #fff;
+  letter-spacing: -0.5px;
   text-shadow: 0 2px 8px rgba(0,0,0,0.6);
 }
 
@@ -280,16 +282,16 @@ body {
   font-size: 10px;
   font-weight: 800;
   text-transform: uppercase;
-  padding: 4px 9px;
-  border-radius: 6px;
-  letter-spacing: 0.6px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  letter-spacing: 0.7px;
   border: 1px solid currentColor;
   background: rgba(0, 0, 0, 0.35);
 }
 
 .rarity-common .rarity-badge { color: #60a5fa; }
 .rarity-epic .rarity-badge { color: #c084fc; }
-.rarity-mythic .rarity-badge { color: #f87171; }
+.rarity-mythic .rarity-badge { color: #f87171; background: rgba(127, 29, 29, 0.35); border-color: rgba(248, 113, 113, 0.5); }
 .rarity-legendary .rarity-badge { color: #facc15; }
 .rarity-limit .rarity-badge { color: #2dd4bf; background: #042f2e; }
 .rarity-apex .rarity-badge {
@@ -300,11 +302,11 @@ body {
 
 .card-thumb {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 16 / 9.5;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,0.12);
-  margin-bottom: 10px;
+  margin-bottom: 14px;
   position: relative;
   z-index: 3;
   background: #0a0a0f;
@@ -324,21 +326,29 @@ body {
 }
 
 .card-title {
-  font-size: 16px;
-  font-weight: 800;
+  font-size: 18px;
+  font-weight: 900;
   color: #fff;
+  margin-bottom: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.card-meta {
+  font-size: 12px;
+  color: #9ca3af;
+  line-height: 1.4;
+}
+
 .card-footer {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-end;
   position: relative;
   z-index: 3;
   margin-top: auto;
+  padding-top: 8px;
 }
 
 .card-left-tags {
@@ -367,20 +377,21 @@ body {
 }
 
 .fav-btn {
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  background: rgba(15, 15, 20, 0.85);
+  background: rgba(15, 15, 20, 0.9);
   border: 1.5px solid #eab308;
   color: #6b7280;
-  font-size: 16px;
+  font-size: 17px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: 0.2s;
+  flex-shrink: 0;
 }
-.fav-btn.active { color: #facc15; box-shadow: 0 0 10px rgba(250, 204, 21, 0.4); }
+.fav-btn.active { color: #facc15; box-shadow: 0 0 12px rgba(250, 204, 21, 0.45); }
 
 .card-actions-row {
   display: flex;
@@ -490,8 +501,8 @@ body {
 .panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .trade-slots {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
 }
 .trade-middle {
   display: flex;
@@ -518,7 +529,7 @@ body {
 .upgrade-box { text-align: center; }
 .upg-slot {
   margin-top: 12px;
-  min-height: 280px;
+  min-height: 360px;
   border: 2px dashed #2e2e42;
   border-radius: 16px;
   display: flex;
@@ -567,7 +578,7 @@ body {
 .wheel-inner span { font-size: 28px; font-weight: 900; }
 .upgrade-status { font-weight: 700; font-size: 14px; min-height: 20px; text-align: center; }
 .upgrade-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-.compact-grid { grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); }
+.compact-grid { grid-template-columns: repeat(auto-fill, minmax(195px, 1fr)); }
 
 /* Коллекция */
 .stats-bar {
@@ -614,7 +625,7 @@ select, input[type="text"], input[type="number"], input[type="url"], input[type=
 
 .admin-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1.2fr;
   gap: 24px;
   background: var(--bg-panel);
   padding: 24px;
@@ -626,7 +637,7 @@ select, input[type="text"], input[type="number"], input[type="url"], input[type=
 .preview-pair {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  gap: 16px;
   margin-top: 14px;
 }
 
