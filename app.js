@@ -499,7 +499,6 @@ function renderLiveDropsFeed() {
     const aRare = a.isHolo || RARE_ANIM_TIERS.includes(a.rarity) || a.rarity === 'mythic';
     const bRare = b.isHolo || RARE_ANIM_TIERS.includes(b.rarity) || b.rarity === 'mythic';
 
-    // Свежие дропы идут первыми, а среди недавних крутые дропы приподнимаются вверх
     const timeDiff = (b.ts || 0) - (a.ts || 0);
     if (Math.abs(timeDiff) < 4000) {
       if (aRare !== bRare) return aRare ? -1 : 1;
@@ -655,7 +654,7 @@ function ensureCasesPageUI() {
     btn.dataset.tab = 'cases';
     btn.textContent = 'Кейсы';
     const adminBtn = nav.querySelector('[data-tab="admin"]');
-    if (adminBtn) {
+    if (adminBtn && adminBtn.parentNode === nav) {
       nav.insertBefore(btn, adminBtn);
     } else {
       nav.appendChild(btn);
@@ -663,7 +662,8 @@ function ensureCasesPageUI() {
   }
 
   if (!document.getElementById('tab-cases')) {
-    const main = document.querySelector('main') || document.body;
+    const adminTab = document.getElementById('tab-admin');
+    const main = (adminTab && adminTab.parentElement) || document.querySelector('main') || document.body;
     const section = document.createElement('section');
     section.id = 'tab-cases';
     section.className = 'tab-section';
@@ -690,8 +690,7 @@ function ensureCasesPageUI() {
         <div id="active-case-items-grid" class="cards-grid"></div>
       </div>
     `;
-    const adminTab = document.getElementById('tab-admin');
-    if (adminTab && adminTab.parentElement === main) {
+    if (adminTab && adminTab.parentNode === main) {
       main.insertBefore(section, adminTab);
     } else {
       main.appendChild(section);
@@ -1219,7 +1218,6 @@ function prependDroppedCardElement(grid, card, animate = true) {
       showToast(`Продано за ${c.price} ₽`);
     }
   });
-  // Крутые/последние карточки отображаются первыми (слева сверху)
   grid.prepend(cardEl);
 }
 
@@ -1399,7 +1397,6 @@ function openPack() {
   for (let i = 0; i < 5; i++) {
     rolledRaw.push(rollSingleCard());
   }
-  // Крутые карточки ставим в начало, чтобы они появлялись слева первыми
   const rolled = sortCardsBestFirst(rolledRaw);
   state.droppedTemp.unshift(...rolled);
   rolled.forEach(c => recordDropToFeed(c, 'Пак'));
