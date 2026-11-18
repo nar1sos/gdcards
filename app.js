@@ -1,4 +1,4 @@
-// === НАСТРОЙКИ ОБЩЕГО ПУЛА КАРТ (JSONBin.io) ===
+// === НАСТРОЙКИ ОБЩЕГО ПУЛА КАРТ, КЕЙСОВ И ЛАЙВ-ДРОПОВ (JSONBin.io) ===
 const JSONBIN_BIN_ID = '6afc4b60ffd5d16053c85caa';
 const JSONBIN_MASTER_KEY = '$2a$10$eiZem/A1JhfYhF6bHWXE7uzoJ6D8QjuKpyPe5Hrg9i2osHoYhRrVK';
 const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
@@ -127,6 +127,23 @@ const DEFAULT_POOL = [
   }
 ];
 
+const DEFAULT_CASES = [
+  {
+    id: 'case_starter',
+    name: 'Starter Demon Case',
+    price: 350,
+    image: 'https://placehold.co/480x270/171a2b/ffffff?text=STARTER+CASE',
+    itemIds: ['lvl_10', 'lvl_11', 'lvl_12', 'lvl_8', 'lvl_7']
+  },
+  {
+    id: 'case_top_list',
+    name: 'Main List Overload Case',
+    price: 1400,
+    image: 'https://placehold.co/480x270/2a1226/ffffff?text=MAIN+LIST+CASE',
+    itemIds: ['lvl_1', 'lvl_2', 'lvl_3', 'lvl_4', 'lvl_5', 'lvl_6', 'lvl_9']
+  }
+];
+
 const RARITY_WEIGHTS = [
   { key: 'common', weight: 67.5 },
   { key: 'epic', weight: 31.5 },
@@ -135,6 +152,15 @@ const RARITY_WEIGHTS = [
   { key: 'apex', weight: 0.2 },
   { key: 'limit', weight: 0.1 }
 ];
+
+const RARITY_RANK_ORDER = {
+  limit: 6,
+  apex: 5,
+  legendary: 4,
+  mythic: 3,
+  epic: 2,
+  common: 1
+};
 
 const RARITY_LABELS = {
   all: 'Все редкости',
@@ -149,18 +175,22 @@ const RARITY_LABELS = {
 const RARE_ANIM_TIERS = ['legendary', 'apex', 'limit'];
 const HOLO_CHANCE = 0.12;
 const HOLO_MULTIPLIER = 3.5;
+const PACK_PRICE = 250;
 
-// Личный прогресс игрока хранится локально, а pool синхронизируется с облаком
 let state = {
+  playerId: '',
+  playerName: 'nar1',
   balance: 500,
-  packs: 1,
+  packs: 0,
   packsOpened: 0,
-  secondsLeft: 60,
   pool: [],
+  cases: [],
   inventory: [],
-  droppedTemp: []
+  droppedTemp: [],
+  recentDrops: []
 };
 
+let selectedCaseId = null;
 let tradeActive = false;
 let userTradeIds = [];
 let botOfferCards = [];
@@ -169,7 +199,9 @@ let selectedUpgradeSourceId = null;
 let selectedUpgradeTargetKey = null;
 let isSpinning = false;
 let isOpeningPack = false;
+let isOpeningCase = false;
 let uploadedAdminImageDataUrl = '';
+let uploadedCaseImageDataUrl = '';
 let editingCardImageDataUrl = '';
 
 function isCloudConfigured() {
@@ -181,9 +213,327 @@ function isCloudConfigured() {
   );
 }
 
-async function fetchSharedPool() {
+function injectCaseBattleStyles() {
+  if (document.getElementById('cb-theme-style')) return;
+  const style = document.createElement('style');
+  style.id = 'cb-theme-style';
+  style.textContent = `
+    :root {
+      --cb-bg: #111521;
+      --cb-panel: #171c2b;
+      --cb-panel-2: #1e2438;
+      --cb-border: #283049;
+      --cb-accent: #8cc63f;
+      --cb-accent-hover: #9cd64c;
+      --cb-text: #eef2ff;
+      --cb-muted: #8f9bb7;
+    }
+
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 50% -10%, #1d253b 0%, var(--cb-bg) 55%);
+      color: var(--cb-text);
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+
+    .cb-shell {
+      display: flex;
+      min-height: calc(100vh - 64px);
+    }
+
+    .cb-live-sidebar {
+      width: 112px;
+      flex-shrink: 0;
+      background: #131724;
+      border-right: 1px solid var(--cb-border);
+      padding: 10px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .cb-live-header {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--cb-accent);
+      text-align: center;
+      padding: 4px 2px 6px;
+      border-bottom: 1px solid var(--cb-border);
+    }
+
+    .cb-live-feed {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: calc(100vh - 115px);
+      overflow-y: auto;
+      scrollbar-width: thin;
+    }
+
+    .cb-live-item {
+      background: var(--cb-panel);
+      border: 1px solid var(--cb-border);
+      border-radius: 8px;
+      padding: 6px;
+      text-align: center;
+      font-size: 11px;
+      transition: transform 0.18s ease, border-color 0.18s ease;
+    }
+
+    .cb-live-item:hover {
+      transform: translateY(-1px);
+      border-color: #3c486e;
+    }
+
+    .cb-live-item.rare-glow {
+      border-color: #f59e0b;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+    }
+
+    .cb-live-item img {
+      width: 100%;
+      height: 48px;
+      object-fit: cover;
+      border-radius: 5px;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .cb-live-name {
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #fff;
+    }
+
+    .cb-live-who {
+      font-size: 10px;
+      color: var(--cb-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+
+    .cb-live-price {
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--cb-accent);
+      margin-top: 2px;
+    }
+
+    .cb-main-area {
+      flex: 1;
+      min-width: 0;
+      padding: 20px 24px 48px;
+    }
+
+    .tab-section,
+    .case-opener-box,
+    .empty-box {
+      background: rgba(23, 28, 43, 0.88);
+      border: 1px solid var(--cb-border);
+      border-radius: 12px;
+    }
+
+    .btn-primary,
+    #open-pack-btn,
+    #buy-pack-btn,
+    #open-selected-case-btn,
+    #run-upgrade-btn,
+    #confirm-trade-btn {
+      background: linear-gradient(180deg, #98d448 0%, #7cb332 100%);
+      color: #0e1406;
+      font-weight: 700;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .btn-primary:hover:not(:disabled),
+    #open-pack-btn:hover:not(:disabled),
+    #buy-pack-btn:hover:not(:disabled),
+    #open-selected-case-btn:hover:not(:disabled) {
+      filter: brightness(1.06);
+    }
+
+    .btn-secondary {
+      background: var(--cb-panel-2);
+      color: var(--cb-text);
+      border: 1px solid var(--cb-border);
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .btn-danger,
+    #sell-bulk-btn {
+      background: #7f1d1d;
+      color: #fecaca;
+      border: 1px solid #b91c1c;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .gd-card {
+      background: var(--cb-panel);
+      border: 1px solid var(--cb-border);
+      border-radius: 10px;
+      overflow: hidden;
+      transition: transform 0.16s ease, box-shadow 0.16s ease;
+    }
+
+    .gd-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .gd-card.rarity-epic { border-color: #a855f7; }
+    .gd-card.rarity-mythic { border-color: #ec4899; }
+    .gd-card.rarity-legendary { border-color: #f59e0b; }
+    .gd-card.rarity-apex { border-color: #ef4444; }
+    .gd-card.rarity-limit {
+      border-color: #38bdf8;
+      box-shadow: 0 0 16px rgba(56, 189, 248, 0.25);
+    }
+
+    .gd-card.is-holo {
+      box-shadow: 0 0 16px rgba(250, 204, 21, 0.35);
+    }
+
+    @media (max-width: 760px) {
+      .cb-shell {
+        flex-direction: column;
+      }
+      .cb-live-sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--cb-border);
+      }
+      .cb-live-feed {
+        flex-direction: row;
+        max-height: none;
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding-bottom: 4px;
+      }
+      .cb-live-item {
+        min-width: 108px;
+        flex-shrink: 0;
+      }
+      .cb-main-area {
+        padding: 14px;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function ensureCaseBattleLayout() {
+  injectCaseBattleStyles();
+
+  const main = document.querySelector('main');
+  if (main && !main.parentElement.classList.contains('cb-shell')) {
+    const shell = document.createElement('div');
+    shell.className = 'cb-shell';
+
+    const sidebar = document.createElement('aside');
+    sidebar.className = 'cb-live-sidebar';
+    sidebar.innerHTML = `
+      <div class="cb-live-header">LIVE ДРОПЫ</div>
+      <div id="cb-live-feed" class="cb-live-feed"></div>
+    `;
+
+    const mainWrap = document.createElement('div');
+    mainWrap.className = 'cb-main-area';
+
+    main.parentElement.insertBefore(shell, main);
+    mainWrap.appendChild(main);
+    shell.appendChild(sidebar);
+    shell.appendChild(mainWrap);
+  }
+}
+
+function getCardPowerScore(card) {
+  const rScore = RARITY_RANK_ORDER[card.rarity] || 1;
+  const holoBonus = card.isHolo ? 10 : 0;
+  return rScore * 100 + holoBonus + (Number(card.price) || 0) / 10000;
+}
+
+function sortCardsBestFirst(cards) {
+  return [...cards].sort((a, b) => getCardPowerScore(b) - getCardPowerScore(a));
+}
+
+function recordDropToFeed(card, sourceLabel = 'Пак') {
+  const entry = {
+    uid: `drop_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    playerId: state.playerId,
+    playerName: state.playerName,
+    source: sourceLabel,
+    name: card.name,
+    rank: card.rank,
+    rarity: card.rarity,
+    price: card.price,
+    image: card.image,
+    isHolo: Boolean(card.isHolo),
+    ts: Date.now()
+  };
+
+  state.recentDrops = [entry, ...state.recentDrops].slice(0, 35);
+  renderLiveDropsFeed();
+
+  if (isCloudConfigured()) {
+    pushSharedData(state.pool, state.cases, state.recentDrops);
+  }
+}
+
+function renderLiveDropsFeed() {
+  const feedEl = document.getElementById('cb-live-feed');
+  if (!feedEl) return;
+
+  const sorted = [...state.recentDrops].sort((a, b) => {
+    const aIsMine = a.playerId === state.playerId;
+    const bIsMine = b.playerId === state.playerId;
+    const aRare = a.isHolo || RARE_ANIM_TIERS.includes(a.rarity) || a.rarity === 'mythic';
+    const bRare = b.isHolo || RARE_ANIM_TIERS.includes(b.rarity) || b.rarity === 'mythic';
+
+    // Свежие дропы идут первыми, а среди недавних крутые дропы приподнимаются вверх
+    const timeDiff = (b.ts || 0) - (a.ts || 0);
+    if (Math.abs(timeDiff) < 4000) {
+      if (aRare !== bRare) return aRare ? -1 : 1;
+      if (aIsMine !== bIsMine) return aIsMine ? -1 : 1;
+    }
+    return timeDiff;
+  });
+
+  feedEl.innerHTML = '';
+  if (sorted.length === 0) {
+    feedEl.innerHTML = '<div class="cb-live-item"><div class="cb-live-who">Пока пусто</div></div>';
+    return;
+  }
+
+  sorted.slice(0, 22).forEach(item => {
+    const div = document.createElement('div');
+    const isRare = item.isHolo || RARE_ANIM_TIERS.includes(item.rarity) || item.rarity === 'mythic';
+    div.className = `cb-live-item rarity-${item.rarity} ${isRare ? 'rare-glow' : ''}`;
+    const whoText = item.playerId === state.playerId ? `Ты (${item.source})` : `${item.playerName}`;
+    const fallbackImg = `https://placehold.co/160x90/171c2b/ffffff?text=${encodeURIComponent(item.name)}`;
+
+    div.innerHTML = `
+      <img src="${item.image}" alt="${item.name}" onerror="this.src='${fallbackImg}'" />
+      <div class="cb-live-name">${item.isHolo ? '✦ ' : ''}${item.name}</div>
+      <div class="cb-live-price">${item.price} ₽</div>
+      <div class="cb-live-who">${whoText}</div>
+    `;
+    feedEl.appendChild(div);
+  });
+}
+
+async function fetchSharedData() {
   if (!isCloudConfigured()) {
-    return { ok: false, pool: null };
+    return { ok: false, pool: null, cases: null, recentDrops: null };
   }
   try {
     const res = await fetch(`${JSONBIN_URL}/latest?nocache=${Date.now()}`, {
@@ -196,19 +546,25 @@ async function fetchSharedPool() {
       throw new Error(`HTTP ${res.status}`);
     }
     const data = await res.json();
-    if (data.record && Array.isArray(data.record.pool)) {
-      return { ok: true, pool: data.record.pool };
-    }
-    return { ok: true, pool: [] };
+    const rec = data.record || {};
+    return {
+      ok: true,
+      pool: Array.isArray(rec.pool) ? rec.pool : null,
+      cases: Array.isArray(rec.cases) ? rec.cases : null,
+      recentDrops: Array.isArray(rec.recentDrops) ? rec.recentDrops : null
+    };
   } catch (err) {
-    console.error('Не удалось загрузить общий пул:', err);
-    return { ok: false, pool: null };
+    console.error('Не удалось загрузить общие данные:', err);
+    return { ok: false, pool: null, cases: null, recentDrops: null };
   }
 }
 
-async function pushSharedPool(newPool) {
+async function pushSharedData(
+  nextPool = state.pool,
+  nextCases = state.cases,
+  nextDrops = state.recentDrops
+) {
   if (!isCloudConfigured()) {
-    showToast('Укажи JSONBIN_BIN_ID и JSONBIN_MASTER_KEY в начале app.js!');
     return false;
   }
   try {
@@ -218,17 +574,57 @@ async function pushSharedPool(newPool) {
         'Content-Type': 'application/json',
         'X-Master-Key': JSONBIN_MASTER_KEY
       },
-      body: JSON.stringify({ pool: newPool })
+      body: JSON.stringify({
+        pool: nextPool,
+        cases: nextCases,
+        recentDrops: nextDrops
+      })
     });
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
     }
     return true;
   } catch (err) {
-    console.error('Ошибка отправки общего пула:', err);
-    showToast('Не удалось сохранить пул в облако (проверь ключ, Bin ID или размер картинок)');
+    console.error('Ошибка отправки общих данных:', err);
     return false;
   }
+}
+
+function hideFreePackTimerUI() {
+  const timerEl = document.getElementById('pack-timer');
+  const progressEl = document.getElementById('pack-progress');
+  if (timerEl) {
+    const wrapper = timerEl.closest('.pack-timer-box, .timer-box, .pack-cooldown, [id*="timer"]');
+    if (wrapper && wrapper !== timerEl) {
+      wrapper.style.display = 'none';
+    } else {
+      timerEl.style.display = 'none';
+    }
+  }
+  if (progressEl) {
+    const progWrap = progressEl.parentElement;
+    if (progWrap && progWrap.children.length === 1) {
+      progWrap.style.display = 'none';
+    } else {
+      progressEl.style.display = 'none';
+    }
+  }
+}
+
+function ensureBuyPackButtonVisible() {
+  const buyBtn = document.getElementById('buy-pack-btn');
+  const openBtn = document.getElementById('open-pack-btn');
+  if (buyBtn) return;
+
+  const targetParent = (openBtn && openBtn.parentElement) || document.getElementById('tab-packs');
+  if (!targetParent) return;
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.id = 'buy-pack-btn';
+  btn.className = 'btn-primary';
+  btn.textContent = `Купить пак (${PACK_PRICE} ₽)`;
+  targetParent.appendChild(btn);
 }
 
 function ensureOpenAllPacksButton() {
@@ -248,6 +644,115 @@ function ensureOpenAllPacksButton() {
   allBtn.addEventListener('click', openAllPacks);
 
   openBtn.insertAdjacentElement('afterend', allBtn);
+}
+
+function ensureCasesPageUI() {
+  const nav = document.querySelector('nav, .nav-bar, .navbar, .tabs-nav');
+  if (nav && !nav.querySelector('[data-tab="cases"]')) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'nav-btn';
+    btn.dataset.tab = 'cases';
+    btn.textContent = 'Кейсы';
+    const adminBtn = nav.querySelector('[data-tab="admin"]');
+    if (adminBtn) {
+      nav.insertBefore(btn, adminBtn);
+    } else {
+      nav.appendChild(btn);
+    }
+  }
+
+  if (!document.getElementById('tab-cases')) {
+    const main = document.querySelector('main') || document.body;
+    const section = document.createElement('section');
+    section.id = 'tab-cases';
+    section.className = 'tab-section';
+    section.innerHTML = `
+      <div class="section-header">
+        <h2 class="section-title">Кейсы</h2>
+        <p class="hint">Выбери кейс и открой его за баланс. Содержимое и шансы редкостей работают как в паках.</p>
+      </div>
+      <div id="cases-list-grid" class="cards-grid"></div>
+      <div id="selected-case-panel" class="case-opener-box hidden" style="margin-top:24px; padding:18px;">
+        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px;">
+          <div style="display:flex; align-items:center; gap:14px;">
+            <img id="active-case-img" src="" alt="" style="width:128px; height:72px; object-fit:cover; border-radius:10px; border:1px solid var(--cb-border);" />
+            <div>
+              <h3 id="active-case-title" style="margin:0 0 4px;"></h3>
+              <div id="active-case-price" class="hint"></div>
+            </div>
+          </div>
+          <div style="display:flex; gap:10px;">
+            <button type="button" id="open-selected-case-btn" class="btn-primary">Открыть кейс</button>
+          </div>
+        </div>
+        <div style="margin-bottom:10px; font-weight:600;">Содержимое кейса:</div>
+        <div id="active-case-items-grid" class="cards-grid"></div>
+      </div>
+    `;
+    const adminTab = document.getElementById('tab-admin');
+    if (adminTab && adminTab.parentElement === main) {
+      main.insertBefore(section, adminTab);
+    } else {
+      main.appendChild(section);
+    }
+  }
+}
+
+function ensureAdminCaseBuilderUI() {
+  const adminPanel = document.getElementById('admin-panel');
+  if (!adminPanel || document.getElementById('add-case-form')) return;
+
+  const container = document.createElement('div');
+  container.id = 'admin-cases-builder';
+  container.style.cssText = 'margin-top:32px; padding-top:24px; border-top:1px solid var(--cb-border);';
+  container.innerHTML = `
+    <h3 class="sub-title">Создать новый кейс</h3>
+    <form id="add-case-form" style="display:grid; gap:12px; max-width:680px;">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+        <label style="display:flex; flex-direction:column; gap:6px;">
+          <span>Название кейса</span>
+          <input type="text" id="case-name-input" placeholder="Например: Extreme Demon Case" required />
+        </label>
+        <label style="display:flex; flex-direction:column; gap:6px;">
+          <span>Цена открытия (₽)</span>
+          <input type="number" id="case-price-input" min="10" step="10" value="500" required />
+        </label>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+        <label style="display:flex; flex-direction:column; gap:6px;">
+          <span>Картинка кейса с ПК</span>
+          <input type="file" id="case-file-input" accept="image/*" />
+        </label>
+        <label style="display:flex; flex-direction:column; gap:6px;">
+          <span>Или ссылка (URL) на картинку кейса</span>
+          <input type="url" id="case-image-input" placeholder="https://..." />
+        </label>
+      </div>
+
+      <div>
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px;">
+          <span>Содержимое кейса (выбери уровни из пула; если ничего не отмечено — войдёт весь пул):</span>
+          <button type="button" id="case-select-all-btn" class="btn-secondary" style="padding:4px 10px; font-size:12px;">Выбрать все</button>
+        </div>
+        <div id="case-pool-checkboxes" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:8px; max-height:240px; overflow:auto; padding:10px; border-radius:10px; border:1px solid var(--cb-border); background:rgba(15,15,24,0.6);"></div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+        <button type="submit" class="btn-primary">Добавить кейс</button>
+        <div id="case-preview-box" style="display:flex; align-items:center; gap:10px;">
+          <img id="case-preview-img" src="https://placehold.co/160x90/181825/fff?text=Case+Preview" alt="Превью кейса" style="width:128px; height:72px; object-fit:cover; border-radius:8px; border:1px solid var(--cb-border);" />
+          <span id="case-preview-label" class="hint">Превью кейса</span>
+        </div>
+      </div>
+    </form>
+
+    <h3 class="sub-title" style="margin-top:24px;">Список кейсов (<span id="admin-cases-count">0</span>)</h3>
+    <div id="admin-cases-list" class="cards-grid"></div>
+  `;
+
+  adminPanel.appendChild(container);
 }
 
 function ensureCollectionBulkSellControls() {
@@ -341,15 +846,15 @@ function ensureAdminSyncButton() {
   btn.type = 'button';
   btn.id = 'sync-pool-now-btn';
   btn.className = 'btn-secondary';
-  btn.textContent = 'Залить текущий пул в облако всем игрокам';
+  btn.textContent = 'Залить пул и кейсы в облако всем игрокам';
   btn.addEventListener('click', async () => {
     if (!state.pool || state.pool.length === 0) {
       showToast('Пул пуст — нечего отправлять');
       return;
     }
-    const ok = await pushSharedPool(state.pool);
+    const ok = await pushSharedData(state.pool, state.cases, state.recentDrops);
     if (ok) {
-      showToast(`Пул (${state.pool.length} карт) сохранён в облако!`);
+      showToast(`Сохранено в облако: ${state.pool.length} карт, ${state.cases.length} кейсов`);
     }
   });
 
@@ -357,7 +862,7 @@ function ensureAdminSyncButton() {
   status.id = 'cloud-sync-status';
   status.className = 'hint';
   status.textContent = isCloudConfigured()
-    ? 'Облако подключено: изменения пула видят все игроки'
+    ? 'Облако подключено: изменения пула, кейсов и дропов видят все игроки'
     : 'Облако НЕ настроено: заполни JSONBIN_BIN_ID и JSONBIN_MASTER_KEY в app.js';
 
   bar.appendChild(btn);
@@ -372,70 +877,140 @@ function ensureAdminSyncButton() {
 }
 
 async function init() {
+  state.playerId = localStorage.getItem('gd_player_id_v1') || `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  localStorage.setItem('gd_player_id_v1', state.playerId);
+
   const saved = localStorage.getItem('gd_case_save_v1');
   if (saved) {
     try {
       const parsed = JSON.parse(saved);
+      state.playerName = parsed.playerName || 'nar1';
       state.balance = parsed.balance ?? 500;
-      state.packs = parsed.packs ?? 1;
+      state.packs = parsed.packs ?? 0;
       state.packsOpened = parsed.packsOpened ?? 0;
       state.inventory = Array.isArray(parsed.inventory) ? parsed.inventory : [];
       if (Array.isArray(parsed.pool) && parsed.pool.length > 0) {
         state.pool = parsed.pool;
+      }
+      if (Array.isArray(parsed.cases) && parsed.cases.length > 0) {
+        state.cases = parsed.cases;
+      }
+      if (Array.isArray(parsed.recentDrops)) {
+        state.recentDrops = parsed.recentDrops;
       }
     } catch (e) {
       console.error(e);
     }
   }
 
-  const cloudResult = await fetchSharedPool();
-  if (cloudResult.ok && Array.isArray(cloudResult.pool)) {
-    if (cloudResult.pool.length > 0) {
+  const cloudResult = await fetchSharedData();
+  if (cloudResult.ok) {
+    if (Array.isArray(cloudResult.pool) && cloudResult.pool.length > 0) {
       state.pool = cloudResult.pool;
-      saveState();
     } else if (!state.pool || state.pool.length === 0) {
       state.pool = [...DEFAULT_POOL];
     }
-  } else if (!state.pool || state.pool.length === 0) {
-    state.pool = [...DEFAULT_POOL];
+
+    if (Array.isArray(cloudResult.cases) && cloudResult.cases.length > 0) {
+      state.cases = cloudResult.cases;
+    } else if (!state.cases || state.cases.length === 0) {
+      state.cases = [...DEFAULT_CASES];
+    }
+
+    if (Array.isArray(cloudResult.recentDrops) && cloudResult.recentDrops.length > 0) {
+      state.recentDrops = cloudResult.recentDrops;
+    }
+    saveState();
+  } else {
+    if (!state.pool || state.pool.length === 0) state.pool = [...DEFAULT_POOL];
+    if (!state.cases || state.cases.length === 0) state.cases = [...DEFAULT_CASES];
   }
 
-  setupNavigation();
+  if (state.cases.length > 0 && !selectedCaseId) {
+    selectedCaseId = state.cases[0].id;
+  }
+
+  ensureCaseBattleLayout();
+  ensureCasesPageUI();
+  ensureBuyPackButtonVisible();
   ensureOpenAllPacksButton();
   ensureCollectionBulkSellControls();
+  ensureAdminCaseBuilderUI();
   ensureAdminSyncButton();
-  startPackTimer();
+  hideFreePackTimerUI();
+
+  setupNavigation();
   updateHeader();
+  renderLiveDropsFeed();
+  renderCasesPage();
   renderCollection();
   renderAdminPreview();
+  renderAdminCasePoolCheckboxes();
+  renderCaseBuilderPreview();
+  renderAdminCasesList();
   bindEvents();
 
   if (isCloudConfigured()) {
     setInterval(async () => {
-      const fresh = await fetchSharedPool();
-      if (fresh.ok && Array.isArray(fresh.pool) && fresh.pool.length > 0) {
-        const changed = JSON.stringify(fresh.pool) !== JSON.stringify(state.pool);
-        if (changed) {
+      const fresh = await fetchSharedData();
+      if (!fresh.ok) return;
+
+      let updated = false;
+      if (Array.isArray(fresh.pool) && fresh.pool.length > 0) {
+        if (JSON.stringify(fresh.pool) !== JSON.stringify(state.pool)) {
           state.pool = fresh.pool;
-          saveState();
-          renderAdminPool();
-          if (document.getElementById('tab-upgrade').classList.contains('active') && !isSpinning) {
-            renderUpgradePage();
-          }
+          updated = true;
         }
       }
-    }, 15000);
+      if (Array.isArray(fresh.cases) && fresh.cases.length > 0) {
+        if (JSON.stringify(fresh.cases) !== JSON.stringify(state.cases)) {
+          state.cases = fresh.cases;
+          if (!state.cases.some(c => c.id === selectedCaseId)) {
+            selectedCaseId = state.cases[0].id;
+          }
+          updated = true;
+        }
+      }
+      if (Array.isArray(fresh.recentDrops)) {
+        const mergedMap = new Map();
+        [...fresh.recentDrops, ...state.recentDrops].forEach(d => {
+          if (d && d.uid) mergedMap.set(d.uid, d);
+        });
+        const mergedDrops = Array.from(mergedMap.values())
+          .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+          .slice(0, 35);
+        if (JSON.stringify(mergedDrops) !== JSON.stringify(state.recentDrops)) {
+          state.recentDrops = mergedDrops;
+          renderLiveDropsFeed();
+          updated = true;
+        }
+      }
+
+      if (updated) {
+        saveState();
+        renderAdminPool();
+        renderAdminCasePoolCheckboxes();
+        renderAdminCasesList();
+        renderCasesPage();
+        if (document.getElementById('tab-upgrade').classList.contains('active') && !isSpinning) {
+          renderUpgradePage();
+        }
+      }
+    }, 8000);
   }
 }
 
 function saveState() {
   try {
     localStorage.setItem('gd_case_save_v1', JSON.stringify({
+      playerName: state.playerName,
       balance: state.balance,
       packs: state.packs,
       packsOpened: state.packsOpened,
       pool: state.pool,
-      inventory: state.inventory
+      cases: state.cases,
+      inventory: state.inventory,
+      recentDrops: state.recentDrops
     }));
   } catch (e) {
     showToast('Память браузера заполнена — удали часть тяжёлых картинок!');
@@ -444,6 +1019,7 @@ function saveState() {
 
 function showToast(msg) {
   const el = document.getElementById('toast');
+  if (!el) return;
   el.textContent = msg;
   el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), 2600);
@@ -456,48 +1032,55 @@ function setupNavigation() {
       document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
       btn.classList.add('active');
       const tab = btn.dataset.tab;
-      document.getElementById(`tab-${tab}`).classList.add('active');
+      const targetSec = document.getElementById(`tab-${tab}`);
+      if (targetSec) targetSec.classList.add('active');
 
+      if (tab === 'cases') renderCasesPage();
       if (tab === 'collection') renderCollection();
       if (tab === 'upgrade') renderUpgradePage();
       if (tab === 'trades' && tradeActive) renderTradeWorkspace();
       if (tab === 'admin') {
+        ensureAdminCaseBuilderUI();
         ensureAdminSyncButton();
         renderAdminPool();
+        renderAdminCasePoolCheckboxes();
+        renderAdminCasesList();
       }
     });
   });
 }
 
 function updateHeader() {
-  document.getElementById('header-packs').textContent = state.packs;
-  document.getElementById('header-balance').textContent = Math.floor(state.balance);
+  const packsEl = document.getElementById('header-packs');
+  if (packsEl) packsEl.textContent = state.packs;
+
+  const balEl = document.getElementById('header-balance');
+  if (balEl) balEl.textContent = Math.floor(state.balance);
+
   const openBtn = document.getElementById('open-pack-btn');
-  openBtn.textContent = `Открыть пак (${state.packs})`;
-  openBtn.disabled = state.packs <= 0 || isOpeningPack;
+  if (openBtn) {
+    openBtn.textContent = `Открыть пак (${state.packs})`;
+    openBtn.disabled = state.packs <= 0 || isOpeningPack;
+  }
 
   const openAllBtn = document.getElementById('open-all-packs-btn');
   if (openAllBtn) {
     openAllBtn.textContent = state.packs > 1 ? `Открыть все (${state.packs})` : 'Открыть все';
     openAllBtn.disabled = state.packs <= 0 || isOpeningPack;
   }
-}
 
-function startPackTimer() {
-  setInterval(() => {
-    state.secondsLeft--;
-    if (state.secondsLeft <= 0) {
-      state.packs += 1;
-      state.secondsLeft = 60;
-      saveState();
-      updateHeader();
-      showToast('+1 бесплатный пак начислен!');
-    }
-    const sec = String(state.secondsLeft).padStart(2, '0');
-    document.getElementById('pack-timer').textContent = `00:${sec}`;
-    const pct = ((60 - state.secondsLeft) / 60) * 100;
-    document.getElementById('pack-progress').style.width = `${pct}%`;
-  }, 1000);
+  const buyBtn = document.getElementById('buy-pack-btn');
+  if (buyBtn) {
+    buyBtn.textContent = `Купить пак (${PACK_PRICE} ₽)`;
+    buyBtn.disabled = state.balance < PACK_PRICE || isOpeningPack;
+  }
+
+  const openCaseBtn = document.getElementById('open-selected-case-btn');
+  const activeCase = state.cases.find(c => c.id === selectedCaseId);
+  if (openCaseBtn && activeCase) {
+    openCaseBtn.textContent = `Открыть кейс (${activeCase.price} ₽)`;
+    openCaseBtn.disabled = state.balance < activeCase.price || isOpeningCase;
+  }
 }
 
 function buildCardInstance(base, isHolo = false, uidPrefix = 'card') {
@@ -517,7 +1100,10 @@ function buildCardInstance(base, isHolo = false, uidPrefix = 'card') {
   };
 }
 
-function rollSingleCard(customRarity = null) {
+function rollSingleCard(customRarity = null, poolOverride = null) {
+  const sourcePool = Array.isArray(poolOverride) && poolOverride.length > 0 ? poolOverride : state.pool;
+  if (!sourcePool || sourcePool.length === 0) return null;
+
   let chosenRarity = customRarity;
   if (!chosenRarity) {
     const roll = Math.random() * 100;
@@ -531,8 +1117,8 @@ function rollSingleCard(customRarity = null) {
     }
   }
 
-  let candidates = state.pool.filter(c => c.rarity === chosenRarity);
-  if (candidates.length === 0) candidates = state.pool;
+  let candidates = sourcePool.filter(c => c.rarity === chosenRarity);
+  if (candidates.length === 0) candidates = sourcePool;
 
   const base = candidates[Math.floor(Math.random() * candidates.length)];
   const isHolo = Math.random() < HOLO_CHANCE;
@@ -620,7 +1206,7 @@ function createCardElement(card, options = {}) {
   return div;
 }
 
-function appendDroppedCardElement(grid, card, animate = true) {
+function prependDroppedCardElement(grid, card, animate = true) {
   const cardEl = createCardElement(card, {
     animateDrop: animate,
     actionLabel: `Продать за ${card.price} ₽`,
@@ -633,7 +1219,173 @@ function appendDroppedCardElement(grid, card, animate = true) {
       showToast(`Продано за ${c.price} ₽`);
     }
   });
-  grid.appendChild(cardEl);
+  // Крутые/последние карточки отображаются первыми (слева сверху)
+  grid.prepend(cardEl);
+}
+
+// 0. КЕЙСЫ
+function getCasePool(caseObj) {
+  if (!caseObj) return state.pool;
+  if (!Array.isArray(caseObj.itemIds) || caseObj.itemIds.length === 0) {
+    return state.pool;
+  }
+  const matched = state.pool.filter(lvl => caseObj.itemIds.includes(lvl.id));
+  return matched.length > 0 ? matched : state.pool;
+}
+
+function createCaseCardElement(caseObj, options = {}) {
+  const div = document.createElement('div');
+  div.className = `gd-card case-card ${options.selected ? 'selected-card' : ''}`;
+  const fallbackImg = `https://placehold.co/480x270/181825/ffffff?text=${encodeURIComponent(caseObj.name)}`;
+  const itemsCount = getCasePool(caseObj).length;
+
+  div.innerHTML = `
+    <div class="card-top">
+      <span class="card-rank">CASE</span>
+      <span class="rarity-badge">${itemsCount} уровней</span>
+    </div>
+    <div class="card-thumb">
+      <img src="${caseObj.image}" alt="${caseObj.name}" onerror="this.src='${fallbackImg}'" />
+    </div>
+    <div class="card-info">
+      <div class="card-title">${caseObj.name}</div>
+      <div class="card-meta"><div>Открытие за баланс</div></div>
+    </div>
+    <div class="card-footer">
+      <div class="card-left-tags">
+        <span class="card-price-tag">${caseObj.price} ₽</span>
+      </div>
+    </div>
+  `;
+
+  if (options.actionLabel) {
+    const row = document.createElement('div');
+    row.className = 'card-actions-row';
+    const btn = document.createElement('button');
+    btn.textContent = options.actionLabel;
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      options.onAction(caseObj);
+    });
+    row.appendChild(btn);
+    div.appendChild(row);
+  }
+
+  if (options.onClick) {
+    div.style.cursor = 'pointer';
+    div.addEventListener('click', () => options.onClick(caseObj));
+  }
+
+  return div;
+}
+
+function renderCasesPage() {
+  ensureCasesPageUI();
+  const listGrid = document.getElementById('cases-list-grid');
+  const panel = document.getElementById('selected-case-panel');
+  if (!listGrid || !panel) return;
+
+  listGrid.innerHTML = '';
+  if (!state.cases || state.cases.length === 0) {
+    listGrid.innerHTML = '<div class="empty-box" style="grid-column: 1/-1;">Кейсов пока нет. Добавь первый кейс в админке!</div>';
+    panel.classList.add('hidden');
+    return;
+  }
+
+  if (!state.cases.some(c => c.id === selectedCaseId)) {
+    selectedCaseId = state.cases[0].id;
+  }
+
+  state.cases.forEach(caseObj => {
+    listGrid.appendChild(createCaseCardElement(caseObj, {
+      selected: caseObj.id === selectedCaseId,
+      onClick: (c) => {
+        selectedCaseId = c.id;
+        renderCasesPage();
+      }
+    }));
+  });
+
+  const activeCase = state.cases.find(c => c.id === selectedCaseId);
+  if (!activeCase) {
+    panel.classList.add('hidden');
+    return;
+  }
+
+  panel.classList.remove('hidden');
+  const imgEl = document.getElementById('active-case-img');
+  const titleEl = document.getElementById('active-case-title');
+  const priceEl = document.getElementById('active-case-price');
+  const itemsGrid = document.getElementById('active-case-items-grid');
+
+  const fallbackImg = `https://placehold.co/480x270/181825/ffffff?text=${encodeURIComponent(activeCase.name)}`;
+  if (imgEl) {
+    imgEl.src = activeCase.image || fallbackImg;
+    imgEl.alt = activeCase.name;
+    imgEl.onerror = () => { imgEl.src = fallbackImg; };
+  }
+  if (titleEl) titleEl.textContent = activeCase.name;
+  if (priceEl) priceEl.textContent = `Стоимость открытия: ${activeCase.price} ₽`;
+
+  if (itemsGrid) {
+    itemsGrid.innerHTML = '';
+    const poolItems = [...getCasePool(activeCase)].sort((a, b) => Number(a.rank) - Number(b.rank));
+    poolItems.forEach(lvl => {
+      itemsGrid.appendChild(createCardElement({ ...lvl, isHolo: false }));
+    });
+  }
+
+  updateHeader();
+}
+
+function openSelectedCase() {
+  if (isOpeningCase) return;
+  const activeCase = state.cases.find(c => c.id === selectedCaseId);
+  if (!activeCase) return;
+
+  if (state.balance < activeCase.price) {
+    showToast(`Недостаточно ₽ (нужно ${activeCase.price} ₽)`);
+    return;
+  }
+
+  const casePool = getCasePool(activeCase);
+  if (!casePool || casePool.length === 0) {
+    showToast('В этом кейсе нет карточек');
+    return;
+  }
+
+  isOpeningCase = true;
+  state.balance -= activeCase.price;
+
+  const rolledCard = rollSingleCard(null, casePool);
+  if (rolledCard) {
+    state.droppedTemp.unshift(rolledCard);
+    recordDropToFeed(rolledCard, activeCase.name);
+  }
+
+  saveState();
+  updateHeader();
+
+  const area = document.getElementById('pack-result-area');
+  const grid = document.getElementById('dropped-cards-grid');
+  if (area && grid && rolledCard) {
+    area.classList.remove('hidden');
+    prependDroppedCardElement(grid, rolledCard, true);
+    const total = state.droppedTemp.reduce((s, c) => s + c.price, 0);
+    const totalEl = document.getElementById('dropped-total-price');
+    if (totalEl) totalEl.textContent = total;
+  }
+
+  if (rolledCard && (rolledCard.isHolo || RARE_ANIM_TIERS.includes(rolledCard.rarity))) {
+    showToast(`Кейс! Выпал ${rolledCard.rarity.toUpperCase()}${rolledCard.isHolo ? ' HOLO' : ''}: ${rolledCard.name}!`);
+  } else if (rolledCard) {
+    showToast(`Из кейса "${activeCase.name}" выпал ${rolledCard.name}`);
+  }
+
+  setTimeout(() => {
+    isOpeningCase = false;
+    updateHeader();
+  }, 220);
 }
 
 // 1. ОТКРЫТИЕ ОДНОГО ПАКА
@@ -643,19 +1395,24 @@ function openPack() {
   state.packs -= 1;
   state.packsOpened += 1;
 
-  const rolled = [];
+  const rolledRaw = [];
   for (let i = 0; i < 5; i++) {
-    rolled.push(rollSingleCard());
+    rolledRaw.push(rollSingleCard());
   }
-  state.droppedTemp.push(...rolled);
+  // Крутые карточки ставим в начало, чтобы они появлялись слева первыми
+  const rolled = sortCardsBestFirst(rolledRaw);
+  state.droppedTemp.unshift(...rolled);
+  rolled.forEach(c => recordDropToFeed(c, 'Пак'));
 
   saveState();
   updateHeader();
 
   const packBox = document.getElementById('pack-box-visual');
-  packBox.classList.remove('opening');
-  void packBox.offsetWidth;
-  packBox.classList.add('opening');
+  if (packBox) {
+    packBox.classList.remove('opening');
+    void packBox.offsetWidth;
+    packBox.classList.add('opening');
+  }
 
   const area = document.getElementById('pack-result-area');
   const grid = document.getElementById('dropped-cards-grid');
@@ -666,7 +1423,7 @@ function openPack() {
 
   rolled.forEach((card, idx) => {
     setTimeout(() => {
-      appendDroppedCardElement(grid, card, true);
+      prependDroppedCardElement(grid, card, true);
 
       if (card.isHolo || RARE_ANIM_TIERS.includes(card.rarity)) {
         showToast(`Выпал ${card.rarity.toUpperCase()}${card.isHolo ? ' HOLO' : ''}: ${card.name}!`);
@@ -676,7 +1433,7 @@ function openPack() {
         isOpeningPack = false;
         updateHeader();
       }
-    }, idx * 180);
+    }, idx * 140);
   });
 }
 
@@ -689,21 +1446,25 @@ function openAllPacks() {
   state.packs = 0;
   state.packsOpened += packsToOpen;
 
-  const rolled = [];
+  const rolledRaw = [];
   for (let p = 0; p < packsToOpen; p++) {
     for (let i = 0; i < 5; i++) {
-      rolled.push(rollSingleCard());
+      rolledRaw.push(rollSingleCard());
     }
   }
-  state.droppedTemp.push(...rolled);
+  const rolled = sortCardsBestFirst(rolledRaw);
+  state.droppedTemp.unshift(...rolled);
+  rolled.slice(0, 8).forEach(c => recordDropToFeed(c, 'Все паки'));
 
   saveState();
   updateHeader();
 
   const packBox = document.getElementById('pack-box-visual');
-  packBox.classList.remove('opening');
-  void packBox.offsetWidth;
-  packBox.classList.add('opening');
+  if (packBox) {
+    packBox.classList.remove('opening');
+    void packBox.offsetWidth;
+    packBox.classList.add('opening');
+  }
 
   const area = document.getElementById('pack-result-area');
   const grid = document.getElementById('dropped-cards-grid');
@@ -715,17 +1476,18 @@ function openAllPacks() {
   const rareCount = rolled.filter(c => c.isHolo || RARE_ANIM_TIERS.includes(c.rarity)).length;
   showToast(`Открыто паков: ${packsToOpen} (${rolled.length} карт${rareCount ? `, редких/Holo: ${rareCount}` : ''})`);
 
+  const toRender = [...rolled].reverse();
   const batchSize = 15;
-  const shouldAnimate = rolled.length <= 40;
+  const shouldAnimate = toRender.length <= 40;
   let index = 0;
 
   function renderNextBatch() {
     const fragment = document.createDocumentFragment();
-    const end = Math.min(index + batchSize, rolled.length);
+    const end = Math.min(index + batchSize, toRender.length);
     for (let i = index; i < end; i++) {
-      const cardEl = createCardElement(rolled[i], {
+      const cardEl = createCardElement(toRender[i], {
         animateDrop: shouldAnimate,
-        actionLabel: `Продать за ${rolled[i].price} ₽`,
+        actionLabel: `Продать за ${toRender[i].price} ₽`,
         onAction: (c) => {
           state.balance += c.price;
           state.droppedTemp = state.droppedTemp.filter(x => x.uid !== c.uid);
@@ -735,12 +1497,12 @@ function openAllPacks() {
           showToast(`Продано за ${c.price} ₽`);
         }
       });
-      fragment.appendChild(cardEl);
+      fragment.prepend(cardEl);
     }
-    grid.appendChild(fragment);
+    grid.prepend(fragment);
     index = end;
 
-    if (index < rolled.length) {
+    if (index < toRender.length) {
       setTimeout(renderNextBatch, shouldAnimate ? 70 : 15);
     } else {
       isOpeningPack = false;
@@ -784,7 +1546,7 @@ function renderDroppedCards(animate = false) {
   document.getElementById('dropped-total-price').textContent = total;
 }
 
-// 2. ТРЕЙДЫ С БОТОМ (плавный прогресс с шансом оверпея на +100..+500 и редко на +500..+1000 ₽)
+// 2. ТРЕЙДЫ С БОТОМ
 function startTrade() {
   tradeActive = true;
   userTradeIds = [];
@@ -807,19 +1569,16 @@ function getAllCatalogVariants() {
 function pickTradeTargetSum(userSum) {
   const roll = Math.random();
 
-  // ~13%: редкий крупный оверпей (+500..+1000 ₽)
   if (roll < 0.13) {
     const bonus = 500 + Math.random() * 500;
     return Math.round(userSum + bonus);
   }
 
-  // ~22%: умеренный оверпей для постепенного подъёма (+100..+500 ₽)
   if (roll < 0.35) {
     const bonus = 100 + Math.random() * 400;
     return Math.round(userSum + bonus);
   }
 
-  // ~65%: близко к стоимости игрока (лёгкий плюс до +120 или небольшой минус до -120)
   const delta = (Math.random() * 240) - 120;
   return Math.max(10, Math.round(userSum + delta));
 }
@@ -843,7 +1602,6 @@ function generateBotOffer() {
   let bestCombo = [];
   let bestDiff = Infinity;
 
-  // Перебираем комбинации из 1..4 карт и ищем ближайшую к targetSum
   for (let i = 0; i < 800; i++) {
     const count = Math.floor(Math.random() * 4) + 1;
     const combo = [];
@@ -860,7 +1618,9 @@ function generateBotOffer() {
     }
   }
 
-  botOfferCards = bestCombo.map(item => buildCardInstance(item.base, item.isHolo, 'trade'));
+  botOfferCards = sortCardsBestFirst(
+    bestCombo.map(item => buildCardInstance(item.base, item.isHolo, 'trade'))
+  );
 }
 
 function renderTradeWorkspace() {
@@ -979,7 +1739,7 @@ function renderUpgradePage() {
   document.getElementById('upg-chance-text').textContent = `${chance}%`;
   const deg = (chance / 100) * 360;
   const wheel = document.getElementById('upgrade-wheel');
-  wheel.style.background = `conic-gradient(#22c55e 0deg ${deg}deg, #1e293b ${deg}deg 360deg)`;
+  wheel.style.background = `conic-gradient(#8cc63f 0deg ${deg}deg, #1e2438 ${deg}deg 360deg)`;
 
   document.getElementById('run-upgrade-btn').disabled = !(srcCard && tgtCard) || isSpinning;
 
@@ -1062,11 +1822,13 @@ function runUpgrade() {
     state.inventory = state.inventory.filter(c => c.uid !== srcCard.uid);
 
     if (win) {
-      state.inventory.push({
+      const wonCard = {
         ...tgtCard,
         uid: 'upg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)
-      });
-      statusEl.style.color = '#4ade80';
+      };
+      state.inventory.push(wonCard);
+      recordDropToFeed(wonCard, 'Апгрейд');
+      statusEl.style.color = '#8cc63f';
       statusEl.textContent = `УСПЕХ! Получена карта ${tgtCard.name}${tgtCard.isHolo ? ' [HOLO]' : ''}`;
       showToast('Апгрейд прошёл успешно!');
     } else {
@@ -1152,6 +1914,92 @@ function getCurrentAdminImage() {
   return 'https://placehold.co/400x225/181825/fff?text=GD+Level';
 }
 
+function getCurrentCaseImage() {
+  if (uploadedCaseImageDataUrl) return uploadedCaseImageDataUrl;
+  const urlInput = document.getElementById('case-image-input');
+  const urlVal = urlInput ? urlInput.value.trim() : '';
+  if (urlVal) return urlVal;
+  return 'https://placehold.co/480x270/181825/fff?text=GD+Case';
+}
+
+function renderCaseBuilderPreview() {
+  const imgEl = document.getElementById('case-preview-img');
+  const labelEl = document.getElementById('case-preview-label');
+  if (!imgEl) return;
+
+  const nameInput = document.getElementById('case-name-input');
+  const priceInput = document.getElementById('case-price-input');
+  const nameVal = (nameInput && nameInput.value.trim()) || 'Новый кейс';
+  const priceVal = Number(priceInput && priceInput.value) || 0;
+  const src = getCurrentCaseImage();
+
+  imgEl.src = src;
+  imgEl.onerror = () => {
+    imgEl.src = `https://placehold.co/480x270/181825/fff?text=${encodeURIComponent(nameVal)}`;
+  };
+  if (labelEl) {
+    labelEl.textContent = `${nameVal} — ${priceVal} ₽`;
+  }
+}
+
+function renderAdminCasePoolCheckboxes() {
+  const wrap = document.getElementById('case-pool-checkboxes');
+  if (!wrap) return;
+
+  const prevSelected = new Set(
+    Array.from(wrap.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value)
+  );
+
+  wrap.innerHTML = '';
+  const sortedPool = [...state.pool].sort((a, b) => Number(a.rank) - Number(b.rank));
+
+  sortedPool.forEach(lvl => {
+    const label = document.createElement('label');
+    label.style.cssText = 'display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; background:rgba(255,255,255,0.04); cursor:pointer; font-size:13px;';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = lvl.id;
+    cb.checked = prevSelected.has(lvl.id);
+
+    const span = document.createElement('span');
+    span.textContent = `#${lvl.rank} ${lvl.name} (${lvl.rarity})`;
+
+    label.appendChild(cb);
+    label.appendChild(span);
+    wrap.appendChild(label);
+  });
+}
+
+function renderAdminCasesList() {
+  const countEl = document.getElementById('admin-cases-count');
+  const listEl = document.getElementById('admin-cases-list');
+  if (!listEl) return;
+
+  if (countEl) countEl.textContent = state.cases.length;
+  listEl.innerHTML = '';
+
+  state.cases.forEach(caseObj => {
+    listEl.appendChild(createCaseCardElement(caseObj, {
+      actionLabel: 'Удалить',
+      onAction: async (c) => {
+        const nextCases = state.cases.filter(x => x.id !== c.id);
+        const ok = await pushSharedData(state.pool, nextCases, state.recentDrops);
+        if (ok) {
+          state.cases = nextCases;
+          if (selectedCaseId === c.id) {
+            selectedCaseId = state.cases[0] ? state.cases[0].id : null;
+          }
+          saveState();
+          renderAdminCasesList();
+          renderCasesPage();
+          showToast(`Кейс "${c.name}" удалён`);
+        }
+      }
+    }));
+  });
+}
+
 // 5. АДМИНКА
 function renderAdminPreview() {
   const rank = document.getElementById('card-rank').value || 1;
@@ -1209,11 +2057,13 @@ function renderAdminPool() {
             return;
           }
           const nextPool = state.pool.filter(x => x.id !== c.id);
-          const ok = await pushSharedPool(nextPool);
+          const ok = await pushSharedData(nextPool, state.cases, state.recentDrops);
           if (ok) {
             state.pool = nextPool;
             saveState();
             renderAdminPool();
+            renderAdminCasePoolCheckboxes();
+            renderCasesPage();
             showToast('Карта удалена у всех игроков');
           }
         }
@@ -1222,19 +2072,28 @@ function renderAdminPool() {
 }
 
 function bindEvents() {
-  document.getElementById('open-pack-btn').addEventListener('click', openPack);
+  const openPackBtn = document.getElementById('open-pack-btn');
+  if (openPackBtn) openPackBtn.addEventListener('click', openPack);
 
-  document.getElementById('buy-pack-btn').addEventListener('click', () => {
-    if (state.balance < 250) {
-      showToast('Недостаточно ₽ (нужно 250 ₽)');
-      return;
-    }
-    state.balance -= 250;
-    state.packs += 1;
-    saveState();
-    updateHeader();
-    showToast('Куплен 1 пак!');
-  });
+  const buyPackBtn = document.getElementById('buy-pack-btn');
+  if (buyPackBtn) {
+    buyPackBtn.addEventListener('click', () => {
+      if (state.balance < PACK_PRICE) {
+        showToast(`Недостаточно ₽ (нужно ${PACK_PRICE} ₽)`);
+        return;
+      }
+      state.balance -= PACK_PRICE;
+      state.packs += 1;
+      saveState();
+      updateHeader();
+      showToast(`Куплен 1 пак за ${PACK_PRICE} ₽!`);
+    });
+  }
+
+  const openSelectedCaseBtn = document.getElementById('open-selected-case-btn');
+  if (openSelectedCaseBtn) {
+    openSelectedCaseBtn.addEventListener('click', openSelectedCase);
+  }
 
   document.getElementById('keep-all-dropped-btn').addEventListener('click', () => {
     state.inventory.push(...state.droppedTemp);
@@ -1270,6 +2129,7 @@ function bindEvents() {
     if (userTradeIds.length === 0) return;
     state.inventory = state.inventory.filter(c => !userTradeIds.includes(c.uid));
     state.inventory.push(...botOfferCards);
+    botOfferCards.forEach(c => recordDropToFeed(c, 'Трейд'));
     userTradeIds = [];
     botOfferCards = [];
     saveState();
@@ -1294,19 +2154,24 @@ function bindEvents() {
     document.getElementById(id).addEventListener('change', renderCollection);
   });
 
-  // Админка
+  // Админка: логин
   document.getElementById('admin-login-btn').addEventListener('click', () => {
     const pass = document.getElementById('admin-pass-input').value;
     if (pass === '12356790') {
       document.getElementById('admin-lock').classList.add('hidden');
       document.getElementById('admin-panel').classList.remove('hidden');
+      ensureAdminCaseBuilderUI();
       ensureAdminSyncButton();
       renderAdminPool();
+      renderAdminCasePoolCheckboxes();
+      renderCaseBuilderPreview();
+      renderAdminCasesList();
     } else {
       document.getElementById('admin-error').textContent = 'Неверный пароль!';
     }
   });
 
+  // Админка: добавление карточки
   document.getElementById('card-file').addEventListener('change', (e) => {
     const file = e.target.files && e.target.files[0];
     if (!file) {
@@ -1358,18 +2223,122 @@ function bindEvents() {
     };
 
     const nextPool = [newLevel, ...state.pool];
-    const ok = await pushSharedPool(nextPool);
+    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops);
     if (!ok) return;
 
     state.pool = nextPool;
     saveState();
     renderAdminPool();
+    renderAdminCasePoolCheckboxes();
+    renderCasesPage();
     e.target.reset();
     fileInput.value = '';
     uploadedAdminImageDataUrl = '';
     renderAdminPreview();
     showToast(`Уровень "${newLevel.name}" добавлен всем игрокам!`);
   });
+
+  // Админка: создание кейса
+  const caseFileInput = document.getElementById('case-file-input');
+  const caseUrlInput = document.getElementById('case-image-input');
+  const caseNameInput = document.getElementById('case-name-input');
+  const casePriceInput = document.getElementById('case-price-input');
+  const caseSelectAllBtn = document.getElementById('case-select-all-btn');
+  const addCaseForm = document.getElementById('add-case-form');
+
+  if (caseFileInput) {
+    caseFileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) {
+        uploadedCaseImageDataUrl = '';
+        renderCaseBuilderPreview();
+        return;
+      }
+      if (file.size > 80 * 1024) {
+        showToast('Картинка кейса больше 80 КБ — для общего пула лучше вставить URL!');
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        uploadedCaseImageDataUrl = reader.result;
+        if (caseUrlInput) caseUrlInput.value = '';
+        renderCaseBuilderPreview();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  if (caseUrlInput) {
+    caseUrlInput.addEventListener('input', () => {
+      if (caseUrlInput.value.trim()) {
+        uploadedCaseImageDataUrl = '';
+        if (caseFileInput) caseFileInput.value = '';
+      }
+      renderCaseBuilderPreview();
+    });
+  }
+
+  if (caseNameInput) caseNameInput.addEventListener('input', renderCaseBuilderPreview);
+  if (casePriceInput) casePriceInput.addEventListener('input', renderCaseBuilderPreview);
+
+  if (caseSelectAllBtn) {
+    caseSelectAllBtn.addEventListener('click', () => {
+      const boxes = Array.from(document.querySelectorAll('#case-pool-checkboxes input[type="checkbox"]'));
+      if (boxes.length === 0) return;
+      const allChecked = boxes.every(b => b.checked);
+      boxes.forEach(b => { b.checked = !allChecked; });
+    });
+  }
+
+  if (addCaseForm) {
+    addCaseForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = (caseNameInput && caseNameInput.value.trim()) || '';
+      const price = Number(casePriceInput && casePriceInput.value) || 0;
+      const urlVal = (caseUrlInput && caseUrlInput.value.trim()) || '';
+      const image = uploadedCaseImageDataUrl || urlVal;
+
+      if (!name) {
+        showToast('Введи название кейса!');
+        return;
+      }
+      if (!price || price <= 0) {
+        showToast('Укажи корректную цену кейса!');
+        return;
+      }
+      if (!image) {
+        showToast('Выбери картинку кейса с ПК или вставь URL!');
+        return;
+      }
+
+      const checkedIds = Array.from(
+        document.querySelectorAll('#case-pool-checkboxes input[type="checkbox"]:checked')
+      ).map(cb => cb.value);
+
+      const newCase = {
+        id: 'case_' + Date.now(),
+        name,
+        price,
+        image,
+        itemIds: checkedIds.length > 0 ? checkedIds : state.pool.map(lvl => lvl.id)
+      };
+
+      const nextCases = [newCase, ...state.cases];
+      const ok = await pushSharedData(state.pool, nextCases, state.recentDrops);
+      if (!ok) return;
+
+      state.cases = nextCases;
+      selectedCaseId = newCase.id;
+      saveState();
+      renderAdminCasesList();
+      renderCasesPage();
+
+      addCaseForm.reset();
+      if (caseFileInput) caseFileInput.value = '';
+      uploadedCaseImageDataUrl = '';
+      renderCaseBuilderPreview();
+      showToast(`Кейс "${newCase.name}" создан!`);
+    });
+  }
 
   // Модалка редактирования карточки
   document.getElementById('close-edit-modal-btn').addEventListener('click', closeEditModal);
@@ -1411,12 +2380,14 @@ function bindEvents() {
       image: nextImage
     };
 
-    const ok = await pushSharedPool(nextPool);
+    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops);
     if (!ok) return;
 
     state.pool = nextPool;
     saveState();
     renderAdminPool();
+    renderAdminCasePoolCheckboxes();
+    renderCasesPage();
     closeEditModal();
     showToast(`Карточка "${state.pool[idx].name}" обновлена для всех!`);
   });
