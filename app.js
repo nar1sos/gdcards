@@ -710,12 +710,12 @@ function ensureAdminCaseBuilderUI() {
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
         <label style="display:flex; flex-direction:column; gap:6px;">
-          <span>Картинка кейса с ПК</span>
+          <span>Картинка кейса с ПК (необязательно)</span>
           <input type="file" id="case-file-input" accept="image/*" />
         </label>
         <label style="display:flex; flex-direction:column; gap:6px;">
-          <span>Или ссылка (URL) на картинку кейса</span>
-          <input type="url" id="case-image-input" placeholder="https://..." />
+          <span>Или ссылка (URL) на картинку кейса (необязательно)</span>
+          <input type="url" id="case-image-input" placeholder="https://... (если пусто — авто-превью)" />
         </label>
       </div>
 
@@ -730,7 +730,7 @@ function ensureAdminCaseBuilderUI() {
       <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
         <button type="submit" class="btn-primary">Добавить кейс</button>
         <div id="case-preview-box" style="display:flex; align-items:center; gap:10px;">
-          <img id="case-preview-img" src="https://placehold.co/160x90/181825/fff?text=Case+Preview" alt="Превью кейса" style="width:128px; height:72px; object-fit:cover; border-radius:8px;" />
+          <img id="case-preview-img" src="https://placehold.co/480x270/181825/fff?text=Case+Preview" alt="Превью кейса" style="width:128px; height:72px; object-fit:cover; border-radius:8px;" />
           <span id="case-preview-label" class="hint">Превью кейса</span>
         </div>
       </div>
@@ -1232,7 +1232,7 @@ function createCaseCardElement(caseObj, options = {}) {
       <span class="rarity-badge">${itemsCount} уровней</span>
     </div>
     <div class="card-thumb">
-      <img src="${caseObj.image}" alt="${caseObj.name}" onerror="this.src='${fallbackImg}'" />
+      <img src="${caseObj.image || fallbackImg}" alt="${caseObj.name}" onerror="this.src='${fallbackImg}'" />
     </div>
     <div class="card-info">
       <div class="card-title">${caseObj.name}</div>
@@ -1969,12 +1969,18 @@ function getCurrentAdminImage() {
   return 'https://placehold.co/400x225/181825/fff?text=GD+Level';
 }
 
+function getDefaultCaseImage(caseName = '') {
+  const label = (caseName || 'GD Case').trim() || 'GD Case';
+  return `https://placehold.co/480x270/181825/ffffff?text=${encodeURIComponent(label)}`;
+}
+
 function getCurrentCaseImage() {
   if (uploadedCaseImageDataUrl) return uploadedCaseImageDataUrl;
   const urlInput = document.getElementById('case-image-input');
+  const nameInput = document.getElementById('case-name-input');
   const urlVal = urlInput ? urlInput.value.trim() : '';
   if (urlVal) return urlVal;
-  return 'https://placehold.co/480x270/181825/fff?text=GD+Case';
+  return getDefaultCaseImage(nameInput ? nameInput.value : '');
 }
 
 function renderCaseBuilderPreview() {
@@ -1990,7 +1996,7 @@ function renderCaseBuilderPreview() {
 
   imgEl.src = src;
   imgEl.onerror = () => {
-    imgEl.src = `https://placehold.co/480x270/181825/fff?text=${encodeURIComponent(nameVal)}`;
+    imgEl.src = getDefaultCaseImage(nameVal);
   };
   if (labelEl) {
     labelEl.textContent = `${nameVal} — ${priceVal} ₽`;
@@ -2388,7 +2394,7 @@ function bindEvents() {
       const name = (caseNameInput && caseNameInput.value.trim()) || '';
       const price = Number(casePriceInput && casePriceInput.value) || 0;
       const urlVal = (caseUrlInput && caseUrlInput.value.trim()) || '';
-      const image = uploadedCaseImageDataUrl || urlVal;
+      const image = uploadedCaseImageDataUrl || urlVal || getDefaultCaseImage(name);
 
       if (!name) {
         showToast('Введи название кейса!');
@@ -2396,10 +2402,6 @@ function bindEvents() {
       }
       if (!price || price <= 0) {
         showToast('Укажи корректную цену кейса!');
-        return;
-      }
-      if (!image) {
-        showToast('Выбери картинку кейса с ПК или вставь URL!');
         return;
       }
 
