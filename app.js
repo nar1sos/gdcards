@@ -190,7 +190,7 @@ let state = {
   recentDrops: []
 };
 
-let selectedCaseId = null;
+let openedCaseId = null;
 let tradeActive = false;
 let userTradeIds = [];
 let botOfferCards = [];
@@ -213,247 +213,102 @@ function isCloudConfigured() {
   );
 }
 
-function injectCaseBattleStyles() {
-  if (document.getElementById('cb-theme-style')) return;
+function injectMinimalCaseAndFeedStyles() {
+  if (document.getElementById('gd-case-spinner-style')) return;
   const style = document.createElement('style');
-  style.id = 'cb-theme-style';
+  style.id = 'gd-case-spinner-style';
   style.textContent = `
-    :root {
-      --cb-bg: #111521;
-      --cb-panel: #171c2b;
-      --cb-panel-2: #1e2438;
-      --cb-border: #283049;
-      --cb-accent: #8cc63f;
-      --cb-accent-hover: #9cd64c;
-      --cb-text: #eef2ff;
-      --cb-muted: #8f9bb7;
-    }
-
-    body {
-      margin: 0;
-      background: radial-gradient(circle at 50% -10%, #1d253b 0%, var(--cb-bg) 55%);
-      color: var(--cb-text);
-      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    }
-
-    .cb-shell {
-      display: flex;
-      min-height: calc(100vh - 64px);
-    }
-
-    .cb-live-sidebar {
-      width: 112px;
-      flex-shrink: 0;
-      background: #131724;
-      border-right: 1px solid var(--cb-border);
-      padding: 10px 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .cb-live-header {
-      font-size: 10px;
+    .live-rarity-badge {
+      display: inline-block;
+      margin-top: 3px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 9px;
       font-weight: 700;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.04em;
       text-transform: uppercase;
-      color: var(--cb-accent);
-      text-align: center;
-      padding: 4px 2px 6px;
-      border-bottom: 1px solid var(--cb-border);
-    }
-
-    .cb-live-feed {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      max-height: calc(100vh - 115px);
-      overflow-y: auto;
-      scrollbar-width: thin;
-    }
-
-    .cb-live-item {
-      background: var(--cb-panel);
-      border: 1px solid var(--cb-border);
-      border-radius: 8px;
-      padding: 6px;
-      text-align: center;
-      font-size: 11px;
-      transition: transform 0.18s ease, border-color 0.18s ease;
-    }
-
-    .cb-live-item:hover {
-      transform: translateY(-1px);
-      border-color: #3c486e;
-    }
-
-    .cb-live-item.rare-glow {
-      border-color: #f59e0b;
-      box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
-    }
-
-    .cb-live-item img {
-      width: 100%;
-      height: 48px;
-      object-fit: cover;
-      border-radius: 5px;
-      display: block;
-      margin-bottom: 4px;
-    }
-
-    .cb-live-name {
-      font-weight: 600;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      background: rgba(255, 255, 255, 0.1);
       color: #fff;
     }
+    .live-rarity-badge.rarity-common { background: rgba(148, 163, 184, 0.25); color: #cbd5e1; }
+    .live-rarity-badge.rarity-epic { background: rgba(168, 85, 247, 0.28); color: #e9d5ff; }
+    .live-rarity-badge.rarity-mythic { background: rgba(236, 72, 153, 0.28); color: #fbcfe8; }
+    .live-rarity-badge.rarity-legendary { background: rgba(245, 158, 11, 0.3); color: #fde68a; }
+    .live-rarity-badge.rarity-apex { background: rgba(239, 68, 68, 0.3); color: #fecaca; }
+    .live-rarity-badge.rarity-limit { background: rgba(56, 189, 248, 0.3); color: #bae6fd; }
 
-    .cb-live-who {
-      font-size: 10px;
-      color: var(--cb-muted);
+    .cs-spinner-shell {
+      position: relative;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(10, 12, 20, 0.85);
+      padding: 14px 0;
+      margin: 16px 0 22px;
+    }
+
+    .cs-spinner-pointer {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 2px;
+      transform: translateX(-50%);
+      background: #facc15;
+      box-shadow: 0 0 12px rgba(250, 204, 21, 0.85);
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .cs-spinner-track {
+      display: flex;
+      gap: 10px;
+      padding-left: 0;
+      will-change: transform;
+    }
+
+    .cs-reel-card {
+      width: 148px;
+      flex-shrink: 0;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(24, 26, 40, 0.95);
+      padding: 8px;
+      box-sizing: border-box;
+      text-align: center;
+    }
+
+    .cs-reel-card.rarity-epic { border-color: #a855f7; }
+    .cs-reel-card.rarity-mythic { border-color: #ec4899; }
+    .cs-reel-card.rarity-legendary { border-color: #f59e0b; }
+    .cs-reel-card.rarity-apex { border-color: #ef4444; }
+    .cs-reel-card.rarity-limit { border-color: #38bdf8; }
+
+    .cs-reel-card img {
+      width: 100%;
+      height: 74px;
+      object-fit: cover;
+      border-radius: 6px;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .cs-reel-title {
+      font-size: 12px;
+      font-weight: 700;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      margin-top: 2px;
     }
 
-    .cb-live-price {
+    .cs-reel-sub {
       font-size: 10px;
-      font-weight: 700;
-      color: var(--cb-accent);
+      opacity: 0.85;
       margin-top: 2px;
-    }
-
-    .cb-main-area {
-      flex: 1;
-      min-width: 0;
-      padding: 20px 24px 48px;
-    }
-
-    .tab-section,
-    .case-opener-box,
-    .empty-box {
-      background: rgba(23, 28, 43, 0.88);
-      border: 1px solid var(--cb-border);
-      border-radius: 12px;
-    }
-
-    .btn-primary,
-    #open-pack-btn,
-    #buy-pack-btn,
-    #open-selected-case-btn,
-    #run-upgrade-btn,
-    #confirm-trade-btn {
-      background: linear-gradient(180deg, #98d448 0%, #7cb332 100%);
-      color: #0e1406;
-      font-weight: 700;
-      border: none;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-
-    .btn-primary:hover:not(:disabled),
-    #open-pack-btn:hover:not(:disabled),
-    #buy-pack-btn:hover:not(:disabled),
-    #open-selected-case-btn:hover:not(:disabled) {
-      filter: brightness(1.06);
-    }
-
-    .btn-secondary {
-      background: var(--cb-panel-2);
-      color: var(--cb-text);
-      border: 1px solid var(--cb-border);
-      border-radius: 8px;
-      cursor: pointer;
-    }
-
-    .btn-danger,
-    #sell-bulk-btn {
-      background: #7f1d1d;
-      color: #fecaca;
-      border: 1px solid #b91c1c;
-      border-radius: 8px;
-      cursor: pointer;
-      font-weight: 600;
-    }
-
-    .gd-card {
-      background: var(--cb-panel);
-      border: 1px solid var(--cb-border);
-      border-radius: 10px;
-      overflow: hidden;
-      transition: transform 0.16s ease, box-shadow 0.16s ease;
-    }
-
-    .gd-card:hover {
-      transform: translateY(-2px);
-    }
-
-    .gd-card.rarity-epic { border-color: #a855f7; }
-    .gd-card.rarity-mythic { border-color: #ec4899; }
-    .gd-card.rarity-legendary { border-color: #f59e0b; }
-    .gd-card.rarity-apex { border-color: #ef4444; }
-    .gd-card.rarity-limit {
-      border-color: #38bdf8;
-      box-shadow: 0 0 16px rgba(56, 189, 248, 0.25);
-    }
-
-    .gd-card.is-holo {
-      box-shadow: 0 0 16px rgba(250, 204, 21, 0.35);
-    }
-
-    @media (max-width: 760px) {
-      .cb-shell {
-        flex-direction: column;
-      }
-      .cb-live-sidebar {
-        width: 100%;
-        border-right: none;
-        border-bottom: 1px solid var(--cb-border);
-      }
-      .cb-live-feed {
-        flex-direction: row;
-        max-height: none;
-        overflow-x: auto;
-        overflow-y: hidden;
-        padding-bottom: 4px;
-      }
-      .cb-live-item {
-        min-width: 108px;
-        flex-shrink: 0;
-      }
-      .cb-main-area {
-        padding: 14px;
-      }
+      text-transform: uppercase;
     }
   `;
   document.head.appendChild(style);
-}
-
-function ensureCaseBattleLayout() {
-  injectCaseBattleStyles();
-
-  const main = document.querySelector('main');
-  if (main && !main.parentElement.classList.contains('cb-shell')) {
-    const shell = document.createElement('div');
-    shell.className = 'cb-shell';
-
-    const sidebar = document.createElement('aside');
-    sidebar.className = 'cb-live-sidebar';
-    sidebar.innerHTML = `
-      <div class="cb-live-header">LIVE ДРОПЫ</div>
-      <div id="cb-live-feed" class="cb-live-feed"></div>
-    `;
-
-    const mainWrap = document.createElement('div');
-    mainWrap.className = 'cb-main-area';
-
-    main.parentElement.insertBefore(shell, main);
-    mainWrap.appendChild(main);
-    shell.appendChild(sidebar);
-    shell.appendChild(mainWrap);
-  }
 }
 
 function getCardPowerScore(card) {
@@ -490,7 +345,7 @@ function recordDropToFeed(card, sourceLabel = 'Пак') {
 }
 
 function renderLiveDropsFeed() {
-  const feedEl = document.getElementById('cb-live-feed');
+  const feedEl = document.getElementById('cb-live-feed') || document.getElementById('live-drops-feed');
   if (!feedEl) return;
 
   const sorted = [...state.recentDrops].sort((a, b) => {
@@ -519,10 +374,12 @@ function renderLiveDropsFeed() {
     div.className = `cb-live-item rarity-${item.rarity} ${isRare ? 'rare-glow' : ''}`;
     const whoText = item.playerId === state.playerId ? `Ты (${item.source})` : `${item.playerName}`;
     const fallbackImg = `https://placehold.co/160x90/171c2b/ffffff?text=${encodeURIComponent(item.name)}`;
+    const rarityLabel = RARITY_LABELS[item.rarity] || item.rarity || 'common';
 
     div.innerHTML = `
       <img src="${item.image}" alt="${item.name}" onerror="this.src='${fallbackImg}'" />
       <div class="cb-live-name">${item.isHolo ? '✦ ' : ''}${item.name}</div>
+      <span class="live-rarity-badge rarity-${item.rarity}">${rarityLabel}${item.isHolo ? ' · HOLO' : ''}</span>
       <div class="cb-live-price">${item.price} ₽</div>
       <div class="cb-live-who">${whoText}</div>
     `;
@@ -668,24 +525,33 @@ function ensureCasesPageUI() {
     section.id = 'tab-cases';
     section.className = 'tab-section';
     section.innerHTML = `
-      <div class="section-header">
-        <h2 class="section-title">Кейсы</h2>
-        <p class="hint">Выбери кейс и открой его за баланс. Содержимое и шансы редкостей работают как в паках.</p>
+      <div id="cases-catalog-view">
+        <div class="section-header">
+          <h2 class="section-title">Кейсы</h2>
+          <p class="hint">Нажми на кейс, чтобы открыть его страницу с рулеткой и содержимым.</p>
+        </div>
+        <div id="cases-list-grid" class="cards-grid"></div>
       </div>
-      <div id="cases-list-grid" class="cards-grid"></div>
-      <div id="selected-case-panel" class="case-opener-box hidden" style="margin-top:24px; padding:18px;">
-        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px;">
-          <div style="display:flex; align-items:center; gap:14px;">
-            <img id="active-case-img" src="" alt="" style="width:128px; height:72px; object-fit:cover; border-radius:10px; border:1px solid var(--cb-border);" />
-            <div>
-              <h3 id="active-case-title" style="margin:0 0 4px;"></h3>
-              <div id="active-case-price" class="hint"></div>
-            </div>
-          </div>
-          <div style="display:flex; gap:10px;">
-            <button type="button" id="open-selected-case-btn" class="btn-primary">Открыть кейс</button>
+
+      <div id="case-detail-view" class="hidden">
+        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px;">
+          <button type="button" id="back-to-cases-btn" class="btn-secondary">← Назад к кейсам</button>
+          <button type="button" id="open-selected-case-btn" class="btn-primary">Купить и открыть</button>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:14px;">
+          <img id="active-case-img" src="" alt="" style="width:140px; height:78px; object-fit:cover; border-radius:10px;" />
+          <div>
+            <h2 id="active-case-title" style="margin:0 0 4px;"></h2>
+            <div id="active-case-price" class="hint"></div>
           </div>
         </div>
+
+        <div id="cs-case-spinner-box" class="cs-spinner-shell">
+          <div class="cs-spinner-pointer"></div>
+          <div id="cs-case-spinner-track" class="cs-spinner-track"></div>
+        </div>
+
         <div style="margin-bottom:10px; font-weight:600;">Содержимое кейса:</div>
         <div id="active-case-items-grid" class="cards-grid"></div>
       </div>
@@ -704,7 +570,7 @@ function ensureAdminCaseBuilderUI() {
 
   const container = document.createElement('div');
   container.id = 'admin-cases-builder';
-  container.style.cssText = 'margin-top:32px; padding-top:24px; border-top:1px solid var(--cb-border);';
+  container.style.cssText = 'margin-top:32px; padding-top:24px; border-top:1px solid rgba(255,255,255,0.14);';
   container.innerHTML = `
     <h3 class="sub-title">Создать новый кейс</h3>
     <form id="add-case-form" style="display:grid; gap:12px; max-width:680px;">
@@ -735,13 +601,13 @@ function ensureAdminCaseBuilderUI() {
           <span>Содержимое кейса (выбери уровни из пула; если ничего не отмечено — войдёт весь пул):</span>
           <button type="button" id="case-select-all-btn" class="btn-secondary" style="padding:4px 10px; font-size:12px;">Выбрать все</button>
         </div>
-        <div id="case-pool-checkboxes" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:8px; max-height:240px; overflow:auto; padding:10px; border-radius:10px; border:1px solid var(--cb-border); background:rgba(15,15,24,0.6);"></div>
+        <div id="case-pool-checkboxes" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:8px; max-height:240px; overflow:auto; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.12);"></div>
       </div>
 
       <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
         <button type="submit" class="btn-primary">Добавить кейс</button>
         <div id="case-preview-box" style="display:flex; align-items:center; gap:10px;">
-          <img id="case-preview-img" src="https://placehold.co/160x90/181825/fff?text=Case+Preview" alt="Превью кейса" style="width:128px; height:72px; object-fit:cover; border-radius:8px; border:1px solid var(--cb-border);" />
+          <img id="case-preview-img" src="https://placehold.co/160x90/181825/fff?text=Case+Preview" alt="Превью кейса" style="width:128px; height:72px; object-fit:cover; border-radius:8px;" />
           <span id="case-preview-label" class="hint">Превью кейса</span>
         </div>
       </div>
@@ -925,11 +791,7 @@ async function init() {
     if (!state.cases || state.cases.length === 0) state.cases = [...DEFAULT_CASES];
   }
 
-  if (state.cases.length > 0 && !selectedCaseId) {
-    selectedCaseId = state.cases[0].id;
-  }
-
-  ensureCaseBattleLayout();
+  injectMinimalCaseAndFeedStyles();
   ensureCasesPageUI();
   ensureBuyPackButtonVisible();
   ensureOpenAllPacksButton();
@@ -964,8 +826,8 @@ async function init() {
       if (Array.isArray(fresh.cases) && fresh.cases.length > 0) {
         if (JSON.stringify(fresh.cases) !== JSON.stringify(state.cases)) {
           state.cases = fresh.cases;
-          if (!state.cases.some(c => c.id === selectedCaseId)) {
-            selectedCaseId = state.cases[0].id;
+          if (openedCaseId && !state.cases.some(c => c.id === openedCaseId)) {
+            openedCaseId = null;
           }
           updated = true;
         }
@@ -1075,9 +937,9 @@ function updateHeader() {
   }
 
   const openCaseBtn = document.getElementById('open-selected-case-btn');
-  const activeCase = state.cases.find(c => c.id === selectedCaseId);
+  const activeCase = state.cases.find(c => c.id === openedCaseId);
   if (openCaseBtn && activeCase) {
-    openCaseBtn.textContent = `Открыть кейс (${activeCase.price} ₽)`;
+    openCaseBtn.textContent = `Купить (${activeCase.price} ₽)`;
     openCaseBtn.disabled = state.balance < activeCase.price || isOpeningCase;
   }
 }
@@ -1221,7 +1083,7 @@ function prependDroppedCardElement(grid, card, animate = true) {
   grid.prepend(cardEl);
 }
 
-// 0. КЕЙСЫ
+// 0. КЕЙСЫ (ОТДЕЛЬНЫЙ ЭКРАН КЕЙСА + CS РУЛЕТКА)
 function getCasePool(caseObj) {
   if (!caseObj) return state.pool;
   if (!Array.isArray(caseObj.itemIds) || caseObj.itemIds.length === 0) {
@@ -1247,7 +1109,7 @@ function createCaseCardElement(caseObj, options = {}) {
     </div>
     <div class="card-info">
       <div class="card-title">${caseObj.name}</div>
-      <div class="card-meta"><div>Открытие за баланс</div></div>
+      <div class="card-meta"><div>Открыть страницу кейса</div></div>
     </div>
     <div class="card-footer">
       <div class="card-left-tags">
@@ -1279,42 +1141,42 @@ function createCaseCardElement(caseObj, options = {}) {
 
 function renderCasesPage() {
   ensureCasesPageUI();
+  const catalogView = document.getElementById('cases-catalog-view');
+  const detailView = document.getElementById('case-detail-view');
   const listGrid = document.getElementById('cases-list-grid');
-  const panel = document.getElementById('selected-case-panel');
-  if (!listGrid || !panel) return;
+  if (!catalogView || !detailView || !listGrid) return;
 
-  listGrid.innerHTML = '';
-  if (!state.cases || state.cases.length === 0) {
-    listGrid.innerHTML = '<div class="empty-box" style="grid-column: 1/-1;">Кейсов пока нет. Добавь первый кейс в админке!</div>';
-    panel.classList.add('hidden');
-    return;
-  }
-
-  if (!state.cases.some(c => c.id === selectedCaseId)) {
-    selectedCaseId = state.cases[0].id;
-  }
-
-  state.cases.forEach(caseObj => {
-    listGrid.appendChild(createCaseCardElement(caseObj, {
-      selected: caseObj.id === selectedCaseId,
-      onClick: (c) => {
-        selectedCaseId = c.id;
-        renderCasesPage();
-      }
-    }));
-  });
-
-  const activeCase = state.cases.find(c => c.id === selectedCaseId);
+  const activeCase = state.cases.find(c => c.id === openedCaseId);
   if (!activeCase) {
-    panel.classList.add('hidden');
+    openedCaseId = null;
+    catalogView.classList.remove('hidden');
+    detailView.classList.add('hidden');
+
+    listGrid.innerHTML = '';
+    if (!state.cases || state.cases.length === 0) {
+      listGrid.innerHTML = '<div class="empty-box" style="grid-column: 1/-1;">Кейсов пока нет. Добавь первый кейс в админке!</div>';
+      return;
+    }
+
+    state.cases.forEach(caseObj => {
+      listGrid.appendChild(createCaseCardElement(caseObj, {
+        onClick: (c) => {
+          openedCaseId = c.id;
+          renderCasesPage();
+        }
+      }));
+    });
     return;
   }
 
-  panel.classList.remove('hidden');
+  catalogView.classList.add('hidden');
+  detailView.classList.remove('hidden');
+
   const imgEl = document.getElementById('active-case-img');
   const titleEl = document.getElementById('active-case-title');
   const priceEl = document.getElementById('active-case-price');
   const itemsGrid = document.getElementById('active-case-items-grid');
+  const trackEl = document.getElementById('cs-case-spinner-track');
 
   const fallbackImg = `https://placehold.co/480x270/181825/ffffff?text=${encodeURIComponent(activeCase.name)}`;
   if (imgEl) {
@@ -1323,14 +1185,33 @@ function renderCasesPage() {
     imgEl.onerror = () => { imgEl.src = fallbackImg; };
   }
   if (titleEl) titleEl.textContent = activeCase.name;
-  if (priceEl) priceEl.textContent = `Стоимость открытия: ${activeCase.price} ₽`;
+  if (priceEl) priceEl.textContent = `Цена кейса: ${activeCase.price} ₽`;
+
+  const poolItems = [...getCasePool(activeCase)].sort((a, b) => Number(a.rank) - Number(b.rank));
 
   if (itemsGrid) {
     itemsGrid.innerHTML = '';
-    const poolItems = [...getCasePool(activeCase)].sort((a, b) => Number(a.rank) - Number(b.rank));
     poolItems.forEach(lvl => {
       itemsGrid.appendChild(createCardElement({ ...lvl, isHolo: false }));
     });
+  }
+
+  if (trackEl && !isOpeningCase && poolItems.length > 0) {
+    trackEl.style.transition = 'none';
+    trackEl.style.transform = 'translateX(0px)';
+    trackEl.innerHTML = '';
+    for (let i = 0; i < 12; i++) {
+      const sample = poolItems[i % poolItems.length];
+      const reelCard = document.createElement('div');
+      reelCard.className = `cs-reel-card rarity-${sample.rarity}`;
+      const rFallback = `https://placehold.co/240x135/141420/ffffff?text=${encodeURIComponent(sample.name)}`;
+      reelCard.innerHTML = `
+        <img src="${sample.image}" alt="${sample.name}" onerror="this.src='${rFallback}'" />
+        <div class="cs-reel-title">${sample.name}</div>
+        <div class="cs-reel-sub">${RARITY_LABELS[sample.rarity] || sample.rarity} · ${sample.price} ₽</div>
+      `;
+      trackEl.appendChild(reelCard);
+    }
   }
 
   updateHeader();
@@ -1338,7 +1219,7 @@ function renderCasesPage() {
 
 function openSelectedCase() {
   if (isOpeningCase) return;
-  const activeCase = state.cases.find(c => c.id === selectedCaseId);
+  const activeCase = state.cases.find(c => c.id === openedCaseId);
   if (!activeCase) return;
 
   if (state.balance < activeCase.price) {
@@ -1354,36 +1235,88 @@ function openSelectedCase() {
 
   isOpeningCase = true;
   state.balance -= activeCase.price;
-
-  const rolledCard = rollSingleCard(null, casePool);
-  if (rolledCard) {
-    state.droppedTemp.unshift(rolledCard);
-    recordDropToFeed(rolledCard, activeCase.name);
-  }
-
   saveState();
   updateHeader();
 
-  const area = document.getElementById('pack-result-area');
-  const grid = document.getElementById('dropped-cards-grid');
-  if (area && grid && rolledCard) {
-    area.classList.remove('hidden');
-    prependDroppedCardElement(grid, rolledCard, true);
-    const total = state.droppedTemp.reduce((s, c) => s + c.price, 0);
-    const totalEl = document.getElementById('dropped-total-price');
-    if (totalEl) totalEl.textContent = total;
-  }
+  const wonCard = rollSingleCard(null, casePool);
+  const trackEl = document.getElementById('cs-case-spinner-track');
+  const boxEl = document.getElementById('cs-case-spinner-box');
 
-  if (rolledCard && (rolledCard.isHolo || RARE_ANIM_TIERS.includes(rolledCard.rarity))) {
-    showToast(`Кейс! Выпал ${rolledCard.rarity.toUpperCase()}${rolledCard.isHolo ? ' HOLO' : ''}: ${rolledCard.name}!`);
-  } else if (rolledCard) {
-    showToast(`Из кейса "${activeCase.name}" выпал ${rolledCard.name}`);
-  }
-
-  setTimeout(() => {
+  if (!trackEl || !boxEl || !wonCard) {
+    if (wonCard) {
+      state.droppedTemp.unshift(wonCard);
+      recordDropToFeed(wonCard, activeCase.name);
+      saveState();
+    }
     isOpeningCase = false;
     updateHeader();
-  }, 220);
+    return;
+  }
+
+  const totalSlots = 36;
+  const winIndex = 29;
+  const slotWidth = 148;
+  const gap = 10;
+  const step = slotWidth + gap;
+
+  trackEl.style.transition = 'none';
+  trackEl.style.transform = 'translateX(0px)';
+  trackEl.innerHTML = '';
+
+  const slots = [];
+  for (let i = 0; i < totalSlots; i++) {
+    if (i === winIndex) {
+      slots.push(wonCard);
+    } else {
+      const randBase = casePool[Math.floor(Math.random() * casePool.length)];
+      slots.push(buildCardInstance(randBase, Math.random() < HOLO_CHANCE, 'reel'));
+    }
+  }
+
+  slots.forEach(item => {
+    const el = document.createElement('div');
+    el.className = `cs-reel-card rarity-${item.rarity}`;
+    const rFallback = `https://placehold.co/240x135/141420/ffffff?text=${encodeURIComponent(item.name)}`;
+    el.innerHTML = `
+      <img src="${item.image}" alt="${item.name}" onerror="this.src='${rFallback}'" />
+      <div class="cs-reel-title">${item.isHolo ? '✦ ' : ''}${item.name}</div>
+      <div class="cs-reel-sub">${RARITY_LABELS[item.rarity] || item.rarity}${item.isHolo ? ' HOLO' : ''} · ${item.price} ₽</div>
+    `;
+    trackEl.appendChild(el);
+  });
+
+  const centerOffset = boxEl.clientWidth / 2 - slotWidth / 2;
+  const jitter = (Math.random() - 0.5) * 44;
+  const targetTranslate = Math.max(0, winIndex * step - centerOffset + jitter);
+
+  void trackEl.offsetWidth;
+  trackEl.style.transition = 'transform 3.4s cubic-bezier(0.12, 0.84, 0.2, 1)';
+  trackEl.style.transform = `translateX(-${targetTranslate}px)`;
+
+  setTimeout(() => {
+    state.droppedTemp.unshift(wonCard);
+    recordDropToFeed(wonCard, activeCase.name);
+    saveState();
+
+    const area = document.getElementById('pack-result-area');
+    const grid = document.getElementById('dropped-cards-grid');
+    if (area && grid) {
+      area.classList.remove('hidden');
+      prependDroppedCardElement(grid, wonCard, true);
+      const total = state.droppedTemp.reduce((s, c) => s + c.price, 0);
+      const totalEl = document.getElementById('dropped-total-price');
+      if (totalEl) totalEl.textContent = total;
+    }
+
+    if (wonCard.isHolo || RARE_ANIM_TIERS.includes(wonCard.rarity)) {
+      showToast(`Кейс! Выпал ${wonCard.rarity.toUpperCase()}${wonCard.isHolo ? ' HOLO' : ''}: ${wonCard.name}!`);
+    } else {
+      showToast(`Из кейса "${activeCase.name}" выпал ${wonCard.name}`);
+    }
+
+    isOpeningCase = false;
+    updateHeader();
+  }, 3500);
 }
 
 // 1. ОТКРЫТИЕ ОДНОГО ПАКА
@@ -1736,7 +1669,7 @@ function renderUpgradePage() {
   document.getElementById('upg-chance-text').textContent = `${chance}%`;
   const deg = (chance / 100) * 360;
   const wheel = document.getElementById('upgrade-wheel');
-  wheel.style.background = `conic-gradient(#8cc63f 0deg ${deg}deg, #1e2438 ${deg}deg 360deg)`;
+  wheel.style.background = `conic-gradient(#22c55e 0deg ${deg}deg, #1e293b ${deg}deg 360deg)`;
 
   document.getElementById('run-upgrade-btn').disabled = !(srcCard && tgtCard) || isSpinning;
 
@@ -1825,7 +1758,7 @@ function runUpgrade() {
       };
       state.inventory.push(wonCard);
       recordDropToFeed(wonCard, 'Апгрейд');
-      statusEl.style.color = '#8cc63f';
+      statusEl.style.color = '#4ade80';
       statusEl.textContent = `УСПЕХ! Получена карта ${tgtCard.name}${tgtCard.isHolo ? ' [HOLO]' : ''}`;
       showToast('Апгрейд прошёл успешно!');
     } else {
@@ -1984,8 +1917,8 @@ function renderAdminCasesList() {
         const ok = await pushSharedData(state.pool, nextCases, state.recentDrops);
         if (ok) {
           state.cases = nextCases;
-          if (selectedCaseId === c.id) {
-            selectedCaseId = state.cases[0] ? state.cases[0].id : null;
+          if (openedCaseId === c.id) {
+            openedCaseId = null;
           }
           saveState();
           renderAdminCasesList();
@@ -2084,6 +2017,15 @@ function bindEvents() {
       saveState();
       updateHeader();
       showToast(`Куплен 1 пак за ${PACK_PRICE} ₽!`);
+    });
+  }
+
+  const backToCasesBtn = document.getElementById('back-to-cases-btn');
+  if (backToCasesBtn) {
+    backToCasesBtn.addEventListener('click', () => {
+      if (isOpeningCase) return;
+      openedCaseId = null;
+      renderCasesPage();
     });
   }
 
@@ -2324,7 +2266,6 @@ function bindEvents() {
       if (!ok) return;
 
       state.cases = nextCases;
-      selectedCaseId = newCase.id;
       saveState();
       renderAdminCasesList();
       renderCasesPage();
