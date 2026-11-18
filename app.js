@@ -177,6 +177,9 @@ const HOLO_CHANCE = 0.12;
 const HOLO_MULTIPLIER = 3.5;
 const PACK_PRICE = 250;
 
+const REEL_SLOT_WIDTH = 176;
+const REEL_SLOT_GAP = 12;
+
 let state = {
   playerId: '',
   playerName: 'nar1',
@@ -237,14 +240,21 @@ function injectMinimalCaseAndFeedStyles() {
     .live-rarity-badge.rarity-apex { background: rgba(239, 68, 68, 0.3); color: #fecaca; }
     .live-rarity-badge.rarity-limit { background: rgba(56, 189, 248, 0.3); color: #bae6fd; }
 
+    #case-detail-view {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
     .cs-spinner-shell {
       position: relative;
+      width: 100%;
+      box-sizing: border-box;
       overflow: hidden;
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      background: rgba(10, 12, 20, 0.85);
-      padding: 14px 0;
-      margin: 16px 0 22px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(10, 12, 20, 0.9);
+      padding: 18px 0;
+      margin: 18px 0 24px;
     }
 
     .cs-spinner-pointer {
@@ -252,28 +262,28 @@ function injectMinimalCaseAndFeedStyles() {
       top: 0;
       bottom: 0;
       left: 50%;
-      width: 2px;
+      width: 3px;
       transform: translateX(-50%);
       background: #facc15;
-      box-shadow: 0 0 12px rgba(250, 204, 21, 0.85);
+      box-shadow: 0 0 14px rgba(250, 204, 21, 0.9);
       z-index: 5;
       pointer-events: none;
     }
 
     .cs-spinner-track {
       display: flex;
-      gap: 10px;
+      gap: 12px;
       padding-left: 0;
       will-change: transform;
     }
 
     .cs-reel-card {
-      width: 148px;
+      width: 176px;
       flex-shrink: 0;
       border-radius: 10px;
       border: 1px solid rgba(255, 255, 255, 0.14);
-      background: rgba(24, 26, 40, 0.95);
-      padding: 8px;
+      background: rgba(24, 26, 40, 0.96);
+      padding: 9px;
       box-sizing: border-box;
       text-align: center;
     }
@@ -286,15 +296,15 @@ function injectMinimalCaseAndFeedStyles() {
 
     .cs-reel-card img {
       width: 100%;
-      height: 74px;
+      height: 92px;
       object-fit: cover;
-      border-radius: 6px;
+      border-radius: 7px;
       display: block;
-      margin-bottom: 6px;
+      margin-bottom: 7px;
     }
 
     .cs-reel-title {
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 700;
       white-space: nowrap;
       overflow: hidden;
@@ -303,8 +313,8 @@ function injectMinimalCaseAndFeedStyles() {
 
     .cs-reel-sub {
       font-size: 10px;
-      opacity: 0.85;
-      margin-top: 2px;
+      opacity: 0.88;
+      margin-top: 3px;
       text-transform: uppercase;
     }
   `;
@@ -344,8 +354,17 @@ function recordDropToFeed(card, sourceLabel = 'Пак') {
   }
 }
 
+function findLiveDropsContainer() {
+  return (
+    document.getElementById('cb-live-feed') ||
+    document.getElementById('live-drops-feed') ||
+    document.getElementById('recent-drops') ||
+    document.querySelector('.live-drops-list, .live-drops')
+  );
+}
+
 function renderLiveDropsFeed() {
-  const feedEl = document.getElementById('cb-live-feed') || document.getElementById('live-drops-feed');
+  const feedEl = findLiveDropsContainer();
   if (!feedEl) return;
 
   const sorted = [...state.recentDrops].sort((a, b) => {
@@ -500,6 +519,32 @@ function ensureOpenAllPacksButton() {
   allBtn.addEventListener('click', openAllPacks);
 
   openBtn.insertAdjacentElement('afterend', allBtn);
+}
+
+function ensureDroppedCardsAreaUI() {
+  if (document.getElementById('pack-result-area')) return;
+  const packsTab = document.getElementById('tab-packs');
+  const main = document.querySelector('main') || packsTab || document.body;
+  if (!main) return;
+
+  const area = document.createElement('div');
+  area.id = 'pack-result-area';
+  area.className = 'hidden';
+  area.style.cssText = 'margin-top:24px;';
+  area.innerHTML = `
+    <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px;">
+      <div>
+        <strong>Недавно выпавшие карты:</strong>
+        <span class="hint" style="margin-left:8px;">Сумма: <strong id="dropped-total-price">0</strong> ₽</span>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button type="button" id="keep-all-dropped-btn" class="btn-primary">Забрать всё в коллекцию</button>
+        <button type="button" id="sell-all-dropped-btn" class="btn-secondary">Продать всё</button>
+      </div>
+    </div>
+    <div id="dropped-cards-grid" class="cards-grid"></div>
+  `;
+  main.appendChild(area);
 }
 
 function ensureCasesPageUI() {
@@ -754,6 +799,7 @@ async function init() {
       state.packs = parsed.packs ?? 0;
       state.packsOpened = parsed.packsOpened ?? 0;
       state.inventory = Array.isArray(parsed.inventory) ? parsed.inventory : [];
+      state.droppedTemp = Array.isArray(parsed.droppedTemp) ? parsed.droppedTemp : [];
       if (Array.isArray(parsed.pool) && parsed.pool.length > 0) {
         state.pool = parsed.pool;
       }
@@ -792,6 +838,7 @@ async function init() {
   }
 
   injectMinimalCaseAndFeedStyles();
+  ensureDroppedCardsAreaUI();
   ensureCasesPageUI();
   ensureBuyPackButtonVisible();
   ensureOpenAllPacksButton();
@@ -803,6 +850,7 @@ async function init() {
   setupNavigation();
   updateHeader();
   renderLiveDropsFeed();
+  renderDroppedCards(false);
   renderCasesPage();
   renderCollection();
   renderAdminPreview();
@@ -871,6 +919,7 @@ function saveState() {
       pool: state.pool,
       cases: state.cases,
       inventory: state.inventory,
+      droppedTemp: state.droppedTemp,
       recentDrops: state.recentDrops
     }));
   } catch (e) {
@@ -1083,7 +1132,7 @@ function prependDroppedCardElement(grid, card, animate = true) {
   grid.prepend(cardEl);
 }
 
-// 0. КЕЙСЫ (ОТДЕЛЬНЫЙ ЭКРАН КЕЙСА + CS РУЛЕТКА)
+// 0. КЕЙСЫ (ОТДЕЛЬНЫЙ ЭКРАН КЕЙСА + ШИРОКАЯ CS РУЛЕТКА)
 function getCasePool(caseObj) {
   if (!caseObj) return state.pool;
   if (!Array.isArray(caseObj.itemIds) || caseObj.itemIds.length === 0) {
@@ -1141,6 +1190,8 @@ function createCaseCardElement(caseObj, options = {}) {
 
 function renderCasesPage() {
   ensureCasesPageUI();
+  ensureDroppedCardsAreaUI();
+
   const catalogView = document.getElementById('cases-catalog-view');
   const detailView = document.getElementById('case-detail-view');
   const listGrid = document.getElementById('cases-list-grid');
@@ -1200,7 +1251,7 @@ function renderCasesPage() {
     trackEl.style.transition = 'none';
     trackEl.style.transform = 'translateX(0px)';
     trackEl.innerHTML = '';
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 14; i++) {
       const sample = poolItems[i % poolItems.length];
       const reelCard = document.createElement('div');
       reelCard.className = `cs-reel-card rarity-${sample.rarity}`;
@@ -1214,6 +1265,7 @@ function renderCasesPage() {
     }
   }
 
+  renderDroppedCards(false);
   updateHeader();
 }
 
@@ -1247,17 +1299,16 @@ function openSelectedCase() {
       state.droppedTemp.unshift(wonCard);
       recordDropToFeed(wonCard, activeCase.name);
       saveState();
+      renderDroppedCards(true);
     }
     isOpeningCase = false;
     updateHeader();
     return;
   }
 
-  const totalSlots = 36;
-  const winIndex = 29;
-  const slotWidth = 148;
-  const gap = 10;
-  const step = slotWidth + gap;
+  const totalSlots = 40;
+  const winIndex = 32;
+  const step = REEL_SLOT_WIDTH + REEL_SLOT_GAP;
 
   trackEl.style.transition = 'none';
   trackEl.style.transform = 'translateX(0px)';
@@ -1285,8 +1336,8 @@ function openSelectedCase() {
     trackEl.appendChild(el);
   });
 
-  const centerOffset = boxEl.clientWidth / 2 - slotWidth / 2;
-  const jitter = (Math.random() - 0.5) * 44;
+  const centerOffset = boxEl.clientWidth / 2 - REEL_SLOT_WIDTH / 2;
+  const jitter = (Math.random() - 0.5) * 48;
   const targetTranslate = Math.max(0, winIndex * step - centerOffset + jitter);
 
   void trackEl.offsetWidth;
@@ -1298,6 +1349,7 @@ function openSelectedCase() {
     recordDropToFeed(wonCard, activeCase.name);
     saveState();
 
+    ensureDroppedCardsAreaUI();
     const area = document.getElementById('pack-result-area');
     const grid = document.getElementById('dropped-cards-grid');
     if (area && grid) {
@@ -1344,6 +1396,7 @@ function openPack() {
     packBox.classList.add('opening');
   }
 
+  ensureDroppedCardsAreaUI();
   const area = document.getElementById('pack-result-area');
   const grid = document.getElementById('dropped-cards-grid');
   area.classList.remove('hidden');
@@ -1396,6 +1449,7 @@ function openAllPacks() {
     packBox.classList.add('opening');
   }
 
+  ensureDroppedCardsAreaUI();
   const area = document.getElementById('pack-result-area');
   const grid = document.getElementById('dropped-cards-grid');
   area.classList.remove('hidden');
@@ -1444,8 +1498,11 @@ function openAllPacks() {
 }
 
 function renderDroppedCards(animate = false) {
+  ensureDroppedCardsAreaUI();
   const area = document.getElementById('pack-result-area');
   const grid = document.getElementById('dropped-cards-grid');
+  if (!area || !grid) return;
+
   if (state.droppedTemp.length === 0) {
     area.classList.add('hidden');
     grid.innerHTML = '';
@@ -1473,7 +1530,8 @@ function renderDroppedCards(animate = false) {
   });
   grid.appendChild(fragment);
 
-  document.getElementById('dropped-total-price').textContent = total;
+  const totalEl = document.getElementById('dropped-total-price');
+  if (totalEl) totalEl.textContent = total;
 }
 
 // 2. ТРЕЙДЫ С БОТОМ
