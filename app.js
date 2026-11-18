@@ -8,31 +8,31 @@ const DEFAULT_POOL = [
   {
     id: 'lvl_1',
     rank: 1,
-    name: 'Tidal Wave',
-    verifier: 'Zoink',
-    publisher: 'OniLink',
+    name: 'GRIEF',
+    verifier: 'icedcave',
+    publisher: 'icedcave',
     rarity: 'limit',
-    price: 4500,
+    price: 10000,
     image: 'https://i.ytimg.com/vi/9fsZ014qB3s/maxresdefault.jpg'
   },
   {
     id: 'lvl_2',
     rank: 2,
-    name: 'Acheron',
+    name: 'Artemis 13',
     verifier: 'Zoink',
-    publisher: 'ryamu',
+    publisher: 'Artemis',
     rarity: 'apex',
-    price: 2200,
+    price: 9500,
     image: 'https://i.ytimg.com/vi/sBKR6aUorzA/maxresdefault.jpg'
   },
   {
     id: 'lvl_3',
     rank: 3,
-    name: 'Avernus',
+    name: 'Society',
     verifier: 'Zoink',
-    publisher: 'PockeWindfish',
+    publisher: 'Society',
     rarity: 'apex',
-    price: 1900,
+    price: 9000,
     image: 'https://i.ytimg.com/vi/16Zh8hW264w/maxresdefault.jpg'
   },
   {
@@ -41,29 +41,9 @@ const DEFAULT_POOL = [
     name: 'Thinking Space II',
     verifier: 'Zoink',
     publisher: 'CairoX',
-    rarity: 'mythic',
-    price: 750,
+    rarity: 'apex',
+    price: 8500,
     image: 'https://i.ytimg.com/vi/5M6h8f6bY5g/maxresdefault.jpg'
-  },
-  {
-    id: 'lvl_5',
-    rank: 5,
-    name: 'Silent Clubstep',
-    verifier: 'Paqoe',
-    publisher: 'TheRealSailent',
-    rarity: 'legendary',
-    price: 1200,
-    image: 'https://i.ytimg.com/vi/GR4Sn_dc83w/maxresdefault.jpg'
-  },
-  {
-    id: 'lvl_6',
-    rank: 6,
-    name: 'Abyss of Darkness',
-    verifier: 'Cursed',
-    publisher: 'Exen',
-    rarity: 'legendary',
-    price: 1050,
-    image: 'https://i.ytimg.com/vi/ejJ2220141A/maxresdefault.jpg'
   },
   {
     id: 'lvl_9',
@@ -71,59 +51,39 @@ const DEFAULT_POOL = [
     name: 'ORBIT',
     verifier: 'Zoink',
     publisher: 'MindCap',
-    rarity: 'mythic',
-    price: 720,
+    rarity: 'legendary',
+    price: 6000,
     image: 'https://placehold.co/400x225/1a1025/ffffff?text=ORBIT'
   },
   {
-    id: 'lvl_7',
-    rank: 10,
-    name: 'Antarctic Lights',
-    verifier: 'Axinity',
-    publisher: 'declanic',
+    id: 'lvl_21',
+    rank: 21,
+    name: 'Silent Clubstep',
+    verifier: 'Paqoe',
+    publisher: 'TheRealSailent',
     rarity: 'mythic',
-    price: 680,
-    image: 'https://i.ytimg.com/vi/8hH2H6-X1bU/maxresdefault.jpg'
+    price: 5500,
+    image: 'https://i.ytimg.com/vi/GR4Sn_dc83w/maxresdefault.jpg'
   },
   {
-    id: 'lvl_8',
-    rank: 14,
-    name: 'Slaughterhouse',
-    verifier: 'Doggie',
-    publisher: 'icedcave',
+    id: 'lvl_41',
+    rank: 41,
+    name: 'Thinking Space II',
+    verifier: 'Zoink',
+    publisher: 'CairoX',
     rarity: 'epic',
-    price: 340,
+    price: 2000,
     image: 'https://i.ytimg.com/vi/kpcF1-6989M/maxresdefault.jpg'
   },
   {
-    id: 'lvl_10',
-    rank: 35,
-    name: 'Kuzureta',
-    verifier: 'Teno',
-    publisher: 'Teno',
+    id: 'lvl_51',
+    rank: 51,
+    name: 'ace',
+    verifier: 'Player',
+    publisher: 'Creator',
     rarity: 'common',
-    price: 110,
+    price: 100,
     image: 'https://i.ytimg.com/vi/0rG15S9Z4zY/maxresdefault.jpg'
-  },
-  {
-    id: 'lvl_11',
-    rank: 48,
-    name: 'Bloodlust',
-    verifier: 'Knobbelboy',
-    publisher: 'Knobbelboy',
-    rarity: 'common',
-    price: 95,
-    image: 'https://i.ytimg.com/vi/5247258391/maxresdefault.jpg'
-  },
-  {
-    id: 'lvl_12',
-    rank: 75,
-    name: 'Tartarus',
-    verifier: 'Dolphy',
-    publisher: 'Riot',
-    rarity: 'common',
-    price: 80,
-    image: 'https://i.ytimg.com/vi/398123981/maxresdefault.jpg'
   }
 ];
 
@@ -133,14 +93,14 @@ const DEFAULT_CASES = [
     name: 'Starter Demon Case',
     price: 350,
     image: 'https://placehold.co/480x270/171a2b/ffffff?text=STARTER+CASE',
-    itemIds: ['lvl_10', 'lvl_11', 'lvl_12', 'lvl_8', 'lvl_7']
+    itemIds: []
   },
   {
     id: 'case_top_list',
     name: 'Main List Overload Case',
     price: 1400,
     image: 'https://placehold.co/480x270/2a1226/ffffff?text=MAIN+LIST+CASE',
-    itemIds: ['lvl_1', 'lvl_2', 'lvl_3', 'lvl_4', 'lvl_5', 'lvl_6', 'lvl_9']
+    itemIds: []
   }
 ];
 
@@ -177,7 +137,7 @@ const HOLO_CHANCE = 0.12;
 const HOLO_MULTIPLIER = 3.5;
 const PACK_PRICE = 250;
 
-const REEL_SLOT_WIDTH = 176;
+const REEL_SLOT_WIDTH = 212;
 const REEL_SLOT_GAP = 12;
 
 let state = {
@@ -194,6 +154,7 @@ let state = {
 };
 
 let openedCaseId = null;
+let pendingCaseDropCard = null;
 let tradeActive = false;
 let userTradeIds = [];
 let botOfferCards = [];
@@ -221,24 +182,89 @@ function injectMinimalCaseAndFeedStyles() {
   const style = document.createElement('style');
   style.id = 'gd-case-spinner-style';
   style.textContent = `
+    /* Цвета редкостей по референсам */
+    .gd-card.rarity-limit,
+    .cs-reel-card.rarity-limit {
+      border-color: #10b981;
+      box-shadow: 0 0 18px rgba(16, 185, 129, 0.28);
+    }
+    .gd-card.rarity-limit .rarity-badge,
+    .live-rarity-badge.rarity-limit {
+      background: rgba(16, 185, 129, 0.22);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.55);
+    }
+
+    .gd-card.rarity-apex,
+    .cs-reel-card.rarity-apex {
+      border-color: #f43f5e;
+      box-shadow: 0 0 16px rgba(244, 63, 94, 0.22);
+    }
+    .gd-card.rarity-apex .rarity-badge,
+    .live-rarity-badge.rarity-apex {
+      background: rgba(244, 63, 94, 0.22);
+      color: #fb7185;
+      border: 1px solid rgba(244, 63, 94, 0.55);
+    }
+
+    .gd-card.rarity-legendary,
+    .cs-reel-card.rarity-legendary {
+      border-color: #eab308;
+      box-shadow: 0 0 15px rgba(234, 179, 8, 0.2);
+    }
+    .gd-card.rarity-legendary .rarity-badge,
+    .live-rarity-badge.rarity-legendary {
+      background: rgba(234, 179, 8, 0.2);
+      color: #facc15;
+      border: 1px solid rgba(234, 179, 8, 0.55);
+    }
+
+    .gd-card.rarity-mythic,
+    .cs-reel-card.rarity-mythic {
+      border-color: #ef4444;
+      box-shadow: 0 0 14px rgba(239, 68, 68, 0.2);
+    }
+    .gd-card.rarity-mythic .rarity-badge,
+    .live-rarity-badge.rarity-mythic {
+      background: rgba(239, 68, 68, 0.22);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.55);
+    }
+
+    .gd-card.rarity-epic,
+    .cs-reel-card.rarity-epic {
+      border-color: #a855f7;
+      box-shadow: 0 0 14px rgba(168, 85, 247, 0.22);
+    }
+    .gd-card.rarity-epic .rarity-badge,
+    .live-rarity-badge.rarity-epic {
+      background: rgba(168, 85, 247, 0.22);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.55);
+    }
+
+    .gd-card.rarity-common,
+    .cs-reel-card.rarity-common {
+      border-color: #3b82f6;
+      box-shadow: 0 0 12px rgba(59, 130, 246, 0.16);
+    }
+    .gd-card.rarity-common .rarity-badge,
+    .live-rarity-badge.rarity-common {
+      background: rgba(59, 130, 246, 0.2);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.5);
+    }
+
     .live-rarity-badge {
       display: inline-block;
       margin-top: 3px;
-      padding: 1px 6px;
+      padding: 1px 7px;
       border-radius: 999px;
       font-size: 9px;
       font-weight: 700;
       letter-spacing: 0.04em;
       text-transform: uppercase;
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
     }
-    .live-rarity-badge.rarity-common { background: rgba(148, 163, 184, 0.25); color: #cbd5e1; }
-    .live-rarity-badge.rarity-epic { background: rgba(168, 85, 247, 0.28); color: #e9d5ff; }
-    .live-rarity-badge.rarity-mythic { background: rgba(236, 72, 153, 0.28); color: #fbcfe8; }
-    .live-rarity-badge.rarity-legendary { background: rgba(245, 158, 11, 0.3); color: #fde68a; }
-    .live-rarity-badge.rarity-apex { background: rgba(239, 68, 68, 0.3); color: #fecaca; }
-    .live-rarity-badge.rarity-limit { background: rgba(56, 189, 248, 0.3); color: #bae6fd; }
 
     #case-detail-view {
       width: 100%;
@@ -251,23 +277,10 @@ function injectMinimalCaseAndFeedStyles() {
       box-sizing: border-box;
       overflow: hidden;
       border-radius: 14px;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      background: rgba(10, 12, 20, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(13, 15, 26, 0.92);
       padding: 18px 0;
-      margin: 18px 0 24px;
-    }
-
-    .cs-spinner-pointer {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      left: 50%;
-      width: 3px;
-      transform: translateX(-50%);
-      background: #facc15;
-      box-shadow: 0 0 14px rgba(250, 204, 21, 0.9);
-      z-index: 5;
-      pointer-events: none;
+      margin: 18px 0 22px;
     }
 
     .cs-spinner-track {
@@ -278,29 +291,23 @@ function injectMinimalCaseAndFeedStyles() {
     }
 
     .cs-reel-card {
-      width: 176px;
+      width: 212px;
       flex-shrink: 0;
-      border-radius: 10px;
+      border-radius: 12px;
       border: 1px solid rgba(255, 255, 255, 0.14);
-      background: rgba(24, 26, 40, 0.96);
-      padding: 9px;
+      background: rgba(20, 23, 38, 0.96);
+      padding: 10px;
       box-sizing: border-box;
       text-align: center;
     }
 
-    .cs-reel-card.rarity-epic { border-color: #a855f7; }
-    .cs-reel-card.rarity-mythic { border-color: #ec4899; }
-    .cs-reel-card.rarity-legendary { border-color: #f59e0b; }
-    .cs-reel-card.rarity-apex { border-color: #ef4444; }
-    .cs-reel-card.rarity-limit { border-color: #38bdf8; }
-
     .cs-reel-card img {
       width: 100%;
-      height: 92px;
+      height: 106px;
       object-fit: cover;
-      border-radius: 7px;
+      border-radius: 8px;
       display: block;
-      margin-bottom: 7px;
+      margin-bottom: 8px;
     }
 
     .cs-reel-title {
@@ -313,9 +320,35 @@ function injectMinimalCaseAndFeedStyles() {
 
     .cs-reel-sub {
       font-size: 10px;
-      opacity: 0.88;
+      opacity: 0.9;
       margin-top: 3px;
       text-transform: uppercase;
+    }
+
+    /* Карточка дропа на экране с выбором: в коллекцию или продать */
+    .case-drop-spotlight {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 18px 20px;
+      margin: 0 0 22px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(18, 21, 36, 0.95);
+    }
+
+    .case-drop-spotlight-card {
+      width: 240px;
+      max-width: 100%;
+    }
+
+    .case-drop-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 210px;
     }
   `;
   document.head.appendChild(style);
@@ -581,7 +614,7 @@ function ensureCasesPageUI() {
       <div id="case-detail-view" class="hidden">
         <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px;">
           <button type="button" id="back-to-cases-btn" class="btn-secondary">← Назад к кейсам</button>
-          <button type="button" id="open-selected-case-btn" class="btn-primary">Купить и открыть</button>
+          <button type="button" id="open-selected-case-btn" class="btn-primary">Купить</button>
         </div>
 
         <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:14px;">
@@ -593,8 +626,18 @@ function ensureCasesPageUI() {
         </div>
 
         <div id="cs-case-spinner-box" class="cs-spinner-shell">
-          <div class="cs-spinner-pointer"></div>
           <div id="cs-case-spinner-track" class="cs-spinner-track"></div>
+        </div>
+
+        <div id="case-drop-spotlight" class="case-drop-spotlight hidden">
+          <div>
+            <div style="font-size:13px; opacity:0.8; margin-bottom:8px;">Выпавшая карта:</div>
+            <div id="case-spotlight-card-wrap" class="case-drop-spotlight-card"></div>
+          </div>
+          <div class="case-drop-actions">
+            <button type="button" id="case-spotlight-keep-btn" class="btn-primary">В коллекцию</button>
+            <button type="button" id="case-spotlight-sell-btn" class="btn-secondary">Продать</button>
+          </div>
         </div>
 
         <div style="margin-bottom:10px; font-weight:600;">Содержимое кейса:</div>
@@ -607,6 +650,28 @@ function ensureCasesPageUI() {
       main.appendChild(section);
     }
   }
+}
+
+function renderCaseDropSpotlight(card) {
+  const box = document.getElementById('case-drop-spotlight');
+  const wrap = document.getElementById('case-spotlight-card-wrap');
+  const keepBtn = document.getElementById('case-spotlight-keep-btn');
+  const sellBtn = document.getElementById('case-spotlight-sell-btn');
+  if (!box || !wrap || !keepBtn || !sellBtn) return;
+
+  pendingCaseDropCard = card || null;
+  if (!pendingCaseDropCard) {
+    box.classList.add('hidden');
+    wrap.innerHTML = '';
+    return;
+  }
+
+  box.classList.remove('hidden');
+  wrap.innerHTML = '';
+  wrap.appendChild(createCardElement(pendingCaseDropCard, { animateDrop: true }));
+
+  keepBtn.textContent = 'В коллекцию';
+  sellBtn.textContent = `Продать (${pendingCaseDropCard.price} ₽)`;
 }
 
 function ensureAdminCaseBuilderUI() {
@@ -1132,7 +1197,7 @@ function prependDroppedCardElement(grid, card, animate = true) {
   grid.prepend(cardEl);
 }
 
-// 0. КЕЙСЫ (ОТДЕЛЬНЫЙ ЭКРАН КЕЙСА + ШИРОКАЯ CS РУЛЕТКА)
+// 0. КЕЙСЫ (ОТДЕЛЬНЫЙ ЭКРАН КЕЙСА + ШИРОКАЯ CS РУЛЕТКА + ВЫБОР ПОСЛЕ ДРОПА)
 function getCasePool(caseObj) {
   if (!caseObj) return state.pool;
   if (!Array.isArray(caseObj.itemIds) || caseObj.itemIds.length === 0) {
@@ -1213,6 +1278,7 @@ function renderCasesPage() {
       listGrid.appendChild(createCaseCardElement(caseObj, {
         onClick: (c) => {
           openedCaseId = c.id;
+          renderCaseDropSpotlight(null);
           renderCasesPage();
         }
       }));
@@ -1265,6 +1331,7 @@ function renderCasesPage() {
     }
   }
 
+  renderCaseDropSpotlight(pendingCaseDropCard);
   renderDroppedCards(false);
   updateHeader();
 }
@@ -1286,6 +1353,7 @@ function openSelectedCase() {
   }
 
   isOpeningCase = true;
+  renderCaseDropSpotlight(null);
   state.balance -= activeCase.price;
   saveState();
   updateHeader();
@@ -1296,10 +1364,8 @@ function openSelectedCase() {
 
   if (!trackEl || !boxEl || !wonCard) {
     if (wonCard) {
-      state.droppedTemp.unshift(wonCard);
       recordDropToFeed(wonCard, activeCase.name);
-      saveState();
-      renderDroppedCards(true);
+      renderCaseDropSpotlight(wonCard);
     }
     isOpeningCase = false;
     updateHeader();
@@ -1337,7 +1403,7 @@ function openSelectedCase() {
   });
 
   const centerOffset = boxEl.clientWidth / 2 - REEL_SLOT_WIDTH / 2;
-  const jitter = (Math.random() - 0.5) * 48;
+  const jitter = (Math.random() - 0.5) * 44;
   const targetTranslate = Math.max(0, winIndex * step - centerOffset + jitter);
 
   void trackEl.offsetWidth;
@@ -1345,20 +1411,8 @@ function openSelectedCase() {
   trackEl.style.transform = `translateX(-${targetTranslate}px)`;
 
   setTimeout(() => {
-    state.droppedTemp.unshift(wonCard);
     recordDropToFeed(wonCard, activeCase.name);
-    saveState();
-
-    ensureDroppedCardsAreaUI();
-    const area = document.getElementById('pack-result-area');
-    const grid = document.getElementById('dropped-cards-grid');
-    if (area && grid) {
-      area.classList.remove('hidden');
-      prependDroppedCardElement(grid, wonCard, true);
-      const total = state.droppedTemp.reduce((s, c) => s + c.price, 0);
-      const totalEl = document.getElementById('dropped-total-price');
-      if (totalEl) totalEl.textContent = total;
-    }
+    renderCaseDropSpotlight(wonCard);
 
     if (wonCard.isHolo || RARE_ANIM_TIERS.includes(wonCard.rarity)) {
       showToast(`Кейс! Выпал ${wonCard.rarity.toUpperCase()}${wonCard.isHolo ? ' HOLO' : ''}: ${wonCard.name}!`);
@@ -2083,6 +2137,7 @@ function bindEvents() {
     backToCasesBtn.addEventListener('click', () => {
       if (isOpeningCase) return;
       openedCaseId = null;
+      renderCaseDropSpotlight(null);
       renderCasesPage();
     });
   }
@@ -2090,6 +2145,34 @@ function bindEvents() {
   const openSelectedCaseBtn = document.getElementById('open-selected-case-btn');
   if (openSelectedCaseBtn) {
     openSelectedCaseBtn.addEventListener('click', openSelectedCase);
+  }
+
+  const spotlightKeepBtn = document.getElementById('case-spotlight-keep-btn');
+  if (spotlightKeepBtn) {
+    spotlightKeepBtn.addEventListener('click', () => {
+      if (!pendingCaseDropCard) return;
+      state.inventory.push(pendingCaseDropCard);
+      const name = pendingCaseDropCard.name;
+      renderCaseDropSpotlight(null);
+      saveState();
+      updateHeader();
+      renderCollection();
+      showToast(`Карта "${name}" добавлена в коллекцию!`);
+    });
+  }
+
+  const spotlightSellBtn = document.getElementById('case-spotlight-sell-btn');
+  if (spotlightSellBtn) {
+    spotlightSellBtn.addEventListener('click', () => {
+      if (!pendingCaseDropCard) return;
+      const sum = pendingCaseDropCard.price;
+      const name = pendingCaseDropCard.name;
+      state.balance += sum;
+      renderCaseDropSpotlight(null);
+      saveState();
+      updateHeader();
+      showToast(`Карта "${name}" продана за ${sum} ₽`);
+    });
   }
 
   document.getElementById('keep-all-dropped-btn').addEventListener('click', () => {
