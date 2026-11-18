@@ -283,6 +283,19 @@ function injectMinimalCaseAndFeedStyles() {
       margin: 18px 0 22px;
     }
 
+    .cs-spinner-pointer {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 3px;
+      transform: translateX(-50%);
+      background: #facc15;
+      box-shadow: 0 0 14px rgba(250, 204, 21, 0.9);
+      z-index: 6;
+      pointer-events: none;
+    }
+
     .cs-spinner-track {
       display: flex;
       gap: 12px;
@@ -325,7 +338,6 @@ function injectMinimalCaseAndFeedStyles() {
       text-transform: uppercase;
     }
 
-    /* Карточка дропа на экране с выбором: в коллекцию или продать */
     .case-drop-spotlight {
       display: flex;
       flex-wrap: wrap;
@@ -626,6 +638,7 @@ function ensureCasesPageUI() {
         </div>
 
         <div id="cs-case-spinner-box" class="cs-spinner-shell">
+          <div class="cs-spinner-pointer"></div>
           <div id="cs-case-spinner-track" class="cs-spinner-track"></div>
         </div>
 
@@ -1197,7 +1210,7 @@ function prependDroppedCardElement(grid, card, animate = true) {
   grid.prepend(cardEl);
 }
 
-// 0. КЕЙСЫ (ОТДЕЛЬНЫЙ ЭКРАН КЕЙСА + ШИРОКАЯ CS РУЛЕТКА + ВЫБОР ПОСЛЕ ДРОПА)
+// 0. КЕЙСЫ (ОТДЕЛЬНЫЙ ЭКРАН КЕЙСА + ШИРОКАЯ CS РУЛЕТКА + ЦЕНТРАЛЬНАЯ ЛИНИЯ + ВЫБОР ПОСЛЕ ДРОПА)
 function getCasePool(caseObj) {
   if (!caseObj) return state.pool;
   if (!Array.isArray(caseObj.itemIds) || caseObj.itemIds.length === 0) {
