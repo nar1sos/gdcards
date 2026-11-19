@@ -190,6 +190,7 @@ let uploadedAdminImageDataUrl = '';
 let uploadedCaseImageDataUrl = '';
 let editingCardImageDataUrl = '';
 let editingCaseImageDataUrl = '';
+let draggedAdminPoolCardId = null;
 
 function isCloudConfigured() {
   return (
@@ -523,7 +524,7 @@ function injectMinimalCaseAndFeedStyles() {
         width: 3px;
         transform: translateX(-50%);
         background: #facc15;
-        box-shadow: 0 0 14px rgba(, 204, 21, 0.9);
+        box-shadow: 0 0 14px rgba(250, 204, 21, 0.9);
         z-index: 6;
         pointer-events: none;
       }
@@ -661,6 +662,24 @@ function injectMinimalCaseAndFeedStyles() {
         display: flex;
         flex-direction: column;
         gap: 8px;
+      }
+
+      #admin-pool-grid .gd-card {
+        cursor: grab;
+        user-select: none;
+      }
+
+      #admin-pool-grid .gd-card:active {
+        cursor: grabbing;
+      }
+
+      #admin-pool-grid .gd-card.admin-drag-source {
+        opacity: 0.45;
+      }
+
+      #admin-pool-grid .gd-card.admin-drag-over {
+        outline: 2px dashed #38bdf8;
+        outline-offset: 2px;
       }
     `;
     document.head.appendChild(style);
@@ -2171,7 +2190,7 @@ function renderCasesPage() {
   if (titleEl) titleEl.textContent = activeCase.name;
   if (priceEl) priceEl.textContent = `Цена кейса: ${activeCase.price} ₽`;
 
-  const poolItems = [...getCasePool(activeCase)].sort((a, b) => compareRanks(a.rank, b.rank));
+  const poolItems = getCasePool(activeCase);
 
   if (itemsGrid) {
     itemsGrid.innerHTML = '';
@@ -2610,16 +2629,14 @@ function renderTradeWorkspace() {
 // 3. АПГРЕЙДЫ
 function getUpgradeCatalog() {
   const items = [];
-  [...state.pool]
-    .sort((a, b) => compareRanks(a.rank, b.rank))
-    .forEach(base => {
-      ['normal', 'holo'].forEach(mode => {
-        const isHolo = mode === 'holo';
-        const card = buildCardInstance(base, isHolo, 'upg_cat');
-        card.catalogKey = `${base.id}__${mode}`;
-        items.push(card);
-      });
+  state.pool.forEach(base => {
+    ['normal', 'holo'].forEach(mode => {
+      const isHolo = mode === 'holo';
+      const card = buildCardInstance(base, isHolo, 'upg_cat');
+      card.catalogKey = `${base.id}__${mode}`;
+      items.push(card);
     });
+  });
   return items;
 }
 
@@ -2883,9 +2900,8 @@ function renderAdminCasePoolCheckboxes() {
   );
 
   wrap.innerHTML = '';
-  const sortedPool = [...state.pool].sort((a, b) => compareRanks(a.rank, b.rank));
 
-  sortedPool.forEach(lvl => {
+  state.pool.forEach(lvl => {
     const label = document.createElement('label');
     label.style.cssText = 'display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; background:rgba(255,255,255,0.04); cursor:pointer; font-size:13px;';
 
@@ -2920,8 +2936,7 @@ function openEditCaseModal(caseObj) {
     ? new Set(caseObj.itemIds)
     : null;
 
-  const sortedPool = [...state.pool].sort((a, b) => compareRanks(a.rank, b.rank));
-  sortedPool.forEach(lvl => {
+  state.pool.forEach(lvl => {
     const label = document.createElement('label');
     label.style.cssText = 'display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; background:rgba(255,255,255,0.04); cursor:pointer; font-size:13px;';
 
@@ -3022,36 +3037,113 @@ function closeEditModal() {
   document.getElementById('edit-card-modal').classList.add('hidden');
 }
 
+async function moveAdminPoolCard(draggedId, targetId, placeAfter = false) {
+  if (!draggedId || !targetId || draggedId === targetId) return;
+  const fromIdx = state.pool.findIndex(item => item.id === draggedId);
+  const toIdx = state.pool.findIndex(item => item.id === targetId);
+  if (fromIdx === -1 || toIdx === -1) return;
+
+  const nextPool = [...state.pool];
+  const [moved] = nextPool.splice(fromIdx, 1);
+  let insertIdx = nextPool.findIndex(item => item.id === targetId);
+  if (insertIdx === -1) return;
+  if (placeAfter) insertIdx += 1;
+  nextPool.splice(insertIdx, 0, moved);
+
+  state.pool = nextPool;
+  saveState();
+  renderAdminPool();
+  renderAdminCasePoolCheckboxes();
+  renderCasesPage();
+
+  if (isCloudConfigured()) {
+    await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects);
+  }
+}
+
 function renderAdminPool() {
   document.getElementById('pool-count').textContent = state.pool.length;
   const grid = document.getElementById('admin-pool-grid');
   grid.innerHTML = '';
+  draggedAdminPoolCardId = null;
 
-  [...state.pool]
-    .sort((a, b) => compareRanks(a.rank, b.rank))
-    .forEach(lvl => {
-      grid.appendChild(createCardElement({ ...lvl, isHolo: false }, {
-        editLabel: 'Изменить',
-        onEdit: (c) => openEditModal(c),
-        actionLabel: 'Удалить',
-        onAction: async (c) => {
-          if (state.pool.length <= 1) {
-            showToast('В пуле должна остаться хотя бы 1 карта!');
-            return;
-          }
-          const nextPool = state.pool.filter(x => x.id !== c.id);
-          const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects);
-          if (ok) {
-            state.pool = nextPool;
-            saveState();
-            renderAdminPool();
-            renderAdminCasePoolCheckboxes();
-            renderCasesPage();
-            showToast('Карта удалена у всех игроков');
-          }
+  state.pool.forEach(lvl => {
+    const cardEl = createCardElement({ ...lvl, isHolo: false }, {
+      editLabel: 'Изменить',
+      onEdit: (c) => openEditModal(c),
+      actionLabel: 'Удалить',
+      onAction: async (c) => {
+        if (state.pool.length <= 1) {
+          showToast('В пуле должна остаться хотя бы 1 карта!');
+          return;
         }
-      }));
+        const nextPool = state.pool.filter(x => x.id !== c.id);
+        const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects);
+        if (ok) {
+          state.pool = nextPool;
+          saveState();
+          renderAdminPool();
+          renderAdminCasePoolCheckboxes();
+          renderCasesPage();
+          showToast('Карта удалена у всех игроков');
+        }
+      }
     });
+
+    cardEl.setAttribute('draggable', 'true');
+    cardEl.dataset.poolId = lvl.id;
+
+    cardEl.addEventListener('dragstart', (e) => {
+      if (e.target.closest('button, input, select, textarea')) {
+        e.preventDefault();
+        return;
+      }
+      draggedAdminPoolCardId = lvl.id;
+      cardEl.classList.add('admin-drag-source');
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', lvl.id);
+      }
+    });
+
+    cardEl.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      if (!draggedAdminPoolCardId || draggedAdminPoolCardId === lvl.id) return;
+      cardEl.classList.add('admin-drag-over');
+    });
+
+    cardEl.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!draggedAdminPoolCardId || draggedAdminPoolCardId === lvl.id) return;
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      cardEl.classList.add('admin-drag-over');
+    });
+
+    cardEl.addEventListener('dragleave', () => {
+      cardEl.classList.remove('admin-drag-over');
+    });
+
+    cardEl.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      cardEl.classList.remove('admin-drag-over');
+      const sourceId = draggedAdminPoolCardId || (e.dataTransfer && e.dataTransfer.getData('text/plain'));
+      draggedAdminPoolCardId = null;
+      if (!sourceId || sourceId === lvl.id) return;
+
+      const rect = cardEl.getBoundingClientRect();
+      const placeAfter = e.clientX > rect.left + rect.width / 2;
+      await moveAdminPoolCard(sourceId, lvl.id, placeAfter);
+    });
+
+    cardEl.addEventListener('dragend', () => {
+      draggedAdminPoolCardId = null;
+      grid.querySelectorAll('.gd-card').forEach(el => {
+        el.classList.remove('admin-drag-source', 'admin-drag-over');
+      });
+    });
+
+    grid.appendChild(cardEl);
+  });
 }
 
 function bindEvents() {
