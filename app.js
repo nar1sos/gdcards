@@ -155,7 +155,7 @@ const DEFAULT_RARITIES = [
 const RARE_ANIM_TIERS = ['legendary', 'apex', 'limit', 'future'];
 const HOLO_CHANCE = 0.12;
 const HOLO_MULTIPLIER = 3.5;
-const PACK_PRICE = 250;
+const PACK_PRICE = 500;
 
 const REEL_SLOT_WIDTH = 212;
 const REEL_SLOT_GAP = 12;
@@ -523,7 +523,7 @@ function injectMinimalCaseAndFeedStyles() {
         width: 3px;
         transform: translateX(-50%);
         background: #facc15;
-        box-shadow: 0 0 14px rgba(250, 204, 21, 0.9);
+        box-shadow: 0 0 14px rgba(, 204, 21, 0.9);
         z-index: 6;
         pointer-events: none;
       }
