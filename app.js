@@ -104,46 +104,17 @@ const DEFAULT_CASES = [
   }
 ];
 
-const RARITY_WEIGHTS = [
-  { key: 'common', weight: 67.5 },
-  { key: 'epic', weight: 31.5 },
-  { key: 'mythic', weight: 0.4 },
-  { key: 'legendary', weight: 0.3 },
-  { key: 'apex', weight: 0.2 },
-  { key: 'limit', weight: 0.1 }
+const DEFAULT_RARITIES = [
+  { key: 'common', label: 'Common', color: '#3b82f6', packChance: 67.499, caseChance: 60.899, order: 1 },
+  { key: 'epic', label: 'Epic', color: '#a855f7', packChance: 31.5, caseChance: 30.0, order: 2 },
+  { key: 'mythic', label: 'Mythic', color: '#ef4444', packChance: 0.4, caseChance: 5.0, order: 3 },
+  { key: 'legendary', label: 'Legendary', color: '#eab308', packChance: 0.3, caseChance: 3.0, order: 4 },
+  { key: 'apex', label: 'Apex', color: '#f43f5e', packChance: 0.2, caseChance: 1.0, order: 5 },
+  { key: 'limit', label: 'Limit', color: '#10b981', packChance: 0.1, caseChance: 0.1, order: 6 },
+  { key: 'future', label: 'FUTURE', color: '#06b6d4', packChance: 0.001, caseChance: 0.001, order: 7 }
 ];
 
-// Шансы редкостей ИМЕННО В КЕЙСАХ:
-// Mythic: 5%, Legendary: 3%, Apex: 1%, Limit: 0.1% (остальные 90.9% — Common и Epic)
-const CASE_RARITY_WEIGHTS = [
-  { key: 'common', weight: 60.9 },
-  { key: 'epic', weight: 30.0 },
-  { key: 'mythic', weight: 5.0 },
-  { key: 'legendary', weight: 3.0 },
-  { key: 'apex', weight: 1.0 },
-  { key: 'limit', weight: 0.1 }
-];
-
-const RARITY_RANK_ORDER = {
-  limit: 6,
-  apex: 5,
-  legendary: 4,
-  mythic: 3,
-  epic: 2,
-  common: 1
-};
-
-const RARITY_LABELS = {
-  all: 'Все редкости',
-  common: 'Common',
-  epic: 'Epic',
-  mythic: 'Mythic',
-  legendary: 'Legendary',
-  apex: 'Apex',
-  limit: 'Limit'
-};
-
-const RARE_ANIM_TIERS = ['legendary', 'apex', 'limit'];
+const RARE_ANIM_TIERS = ['legendary', 'apex', 'limit', 'future'];
 const HOLO_CHANCE = 0.12;
 const HOLO_MULTIPLIER = 3.5;
 const PACK_PRICE = 250;
@@ -159,6 +130,7 @@ let state = {
   packsOpened: 0,
   pool: [],
   cases: [],
+  rarities: [],
   inventory: [],
   droppedTemp: [],
   recentDrops: []
@@ -178,6 +150,7 @@ let isOpeningCase = false;
 let uploadedAdminImageDataUrl = '';
 let uploadedCaseImageDataUrl = '';
 let editingCardImageDataUrl = '';
+let editingCaseImageDataUrl = '';
 
 function isCloudConfigured() {
   return (
@@ -188,197 +161,301 @@ function isCloudConfigured() {
   );
 }
 
+function normalizeRarityKey(raw) {
+  return String(raw || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function normalizeRaritiesList(list) {
+  const source = Array.isArray(list) && list.length > 0 ? list : DEFAULT_RARITIES;
+  const map = new Map();
+
+  source.forEach((item, idx) => {
+    const key = normalizeRarityKey(item.key || item.label);
+    if (!key) return;
+    map.set(key, {
+      key,
+      label: String(item.label || key).trim() || key,
+      color: /^#[0-9a-fA-F]{6}$/.test(item.color || '') ? item.color : '#8b5cf6',
+      packChance: Math.max(0, Number(item.packChance) || 0),
+      caseChance: Math.max(0, Number(item.caseChance) || 0),
+      order: Number.isFinite(Number(item.order)) ? Number(item.order) : idx + 1
+    });
+  });
+
+  DEFAULT_RARITIES.forEach(def => {
+    if (!map.has(def.key)) {
+      map.set(def.key, { ...def });
+    }
+  });
+
+  return Array.from(map.values()).sort((a, b) => (a.order || 999) - (b.order || 999));
+}
+
+function getRarityObj(rarityKey) {
+  const normKey = normalizeRarityKey(rarityKey) || 'common';
+  return (
+    state.rarities.find(r => r.key === normKey) ||
+    DEFAULT_RARITIES.find(r => r.key === normKey) || {
+      key: normKey,
+      label: rarityKey || normKey,
+      color: '#8b5cf6',
+      packChance: 0,
+      caseChance: 0,
+      order: 99
+    }
+  );
+}
+
+function getRarityLabel(rarityKey) {
+  return getRarityObj(rarityKey).label;
+}
+
+function getRarityRankOrder(rarityKey) {
+  const obj = getRarityObj(rarityKey);
+  return obj.order || 1;
+}
+
+function getPackRarityWeights() {
+  return state.rarities.map(r => ({
+    key: r.key,
+    weight: Math.max(0, Number(r.packChance) || 0)
+  }));
+}
+
+function getCaseRarityWeights() {
+  return state.rarities.map(r => ({
+    key: r.key,
+    weight: Math.max(0, Number(r.caseChance) || 0)
+  }));
+}
+
+function parseRankValue(rank) {
+  if (typeof rank === 'number' && Number.isFinite(rank)) return rank;
+  const cleaned = String(rank ?? '').trim().replace(/^#/, '');
+  if (!cleaned) return null;
+  const num = Number(cleaned);
+  return Number.isFinite(num) ? num : null;
+}
+
+function compareRanks(aRank, bRank) {
+  const aNum = parseRankValue(aRank);
+  const bNum = parseRankValue(bRank);
+  if (aNum !== null && bNum !== null) {
+    if (aNum !== bNum) return aNum - bNum;
+    return String(aRank).localeCompare(String(bRank), 'ru');
+  }
+  if (aNum !== null) return -1;
+  if (bNum !== null) return 1;
+  return String(aRank || '').localeCompare(String(bRank || ''), 'ru');
+}
+
+function hexToRgba(hex, alpha) {
+  const clean = /^#[0-9a-fA-F]{6}$/.test(hex || '') ? hex : '#8b5cf6';
+  const r = parseInt(clean.slice(1, 3), 16);
+  const g = parseInt(clean.slice(3, 5), 16);
+  const b = parseInt(clean.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function syncDynamicRarityStyles() {
+  let styleEl = document.getElementById('gd-dynamic-rarity-style');
+  if (!styleEl) {
+    styleEl = document.createElement('style');
+    styleEl.id = 'gd-dynamic-rarity-style';
+    document.head.appendChild(styleEl);
+  }
+
+  const rules = state.rarities.map(r => {
+    const k = r.key;
+    const c = r.color || '#8b5cf6';
+    return `
+      .gd-card.rarity-${k},
+      .cs-reel-card.rarity-${k} {
+        border-color: ${c};
+        box-shadow: 0 0 16px ${hexToRgba(c, 0.25)};
+      }
+      .gd-card.rarity-${k} .rarity-badge,
+      .live-rarity-badge.rarity-${k} {
+        background: ${hexToRgba(c, 0.22)};
+        color: ${c};
+        border: 1px solid ${hexToRgba(c, 0.55)};
+      }
+    `;
+  });
+
+  styleEl.textContent = rules.join('\n');
+}
+
 function injectMinimalCaseAndFeedStyles() {
-  if (document.getElementById('gd-case-spinner-style')) return;
-  const style = document.createElement('style');
-  style.id = 'gd-case-spinner-style';
-  style.textContent = `
-    /* Цвета редкостей по референсам */
-    .gd-card.rarity-limit,
-    .cs-reel-card.rarity-limit {
-      border-color: #10b981;
-      box-shadow: 0 0 18px rgba(16, 185, 129, 0.28);
-    }
-    .gd-card.rarity-limit .rarity-badge,
-    .live-rarity-badge.rarity-limit {
-      background: rgba(16, 185, 129, 0.22);
-      color: #34d399;
-      border: 1px solid rgba(16, 185, 129, 0.55);
-    }
+  if (!document.getElementById('gd-case-spinner-style')) {
+    const style = document.createElement('style');
+    style.id = 'gd-case-spinner-style';
+    style.textContent = `
+      .live-rarity-badge {
+        display: inline-block;
+        margin-top: 3px;
+        padding: 1px 7px;
+        border-radius: 999px;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
 
-    .gd-card.rarity-apex,
-    .cs-reel-card.rarity-apex {
-      border-color: #f43f5e;
-      box-shadow: 0 0 16px rgba(244, 63, 94, 0.22);
-    }
-    .gd-card.rarity-apex .rarity-badge,
-    .live-rarity-badge.rarity-apex {
-      background: rgba(244, 63, 94, 0.22);
-      color: #fb7185;
-      border: 1px solid rgba(244, 63, 94, 0.55);
-    }
+      #case-detail-view {
+        width: 100%;
+        box-sizing: border-box;
+      }
 
-    .gd-card.rarity-legendary,
-    .cs-reel-card.rarity-legendary {
-      border-color: #eab308;
-      box-shadow: 0 0 15px rgba(234, 179, 8, 0.2);
-    }
-    .gd-card.rarity-legendary .rarity-badge,
-    .live-rarity-badge.rarity-legendary {
-      background: rgba(234, 179, 8, 0.2);
-      color: #facc15;
-      border: 1px solid rgba(234, 179, 8, 0.55);
-    }
+      .cs-spinner-shell {
+        position: relative;
+        width: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(13, 15, 26, 0.92);
+        padding: 18px 0;
+        margin: 18px 0 22px;
+      }
 
-    .gd-card.rarity-mythic,
-    .cs-reel-card.rarity-mythic {
-      border-color: #ef4444;
-      box-shadow: 0 0 14px rgba(239, 68, 68, 0.2);
-    }
-    .gd-card.rarity-mythic .rarity-badge,
-    .live-rarity-badge.rarity-mythic {
-      background: rgba(239, 68, 68, 0.22);
-      color: #f87171;
-      border: 1px solid rgba(239, 68, 68, 0.55);
-    }
+      .cs-spinner-pointer {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        width: 3px;
+        transform: translateX(-50%);
+        background: #facc15;
+        box-shadow: 0 0 14px rgba(250, 204, 21, 0.9);
+        z-index: 6;
+        pointer-events: none;
+      }
 
-    .gd-card.rarity-epic,
-    .cs-reel-card.rarity-epic {
-      border-color: #a855f7;
-      box-shadow: 0 0 14px rgba(168, 85, 247, 0.22);
-    }
-    .gd-card.rarity-epic .rarity-badge,
-    .live-rarity-badge.rarity-epic {
-      background: rgba(168, 85, 247, 0.22);
-      color: #c084fc;
-      border: 1px solid rgba(168, 85, 247, 0.55);
-    }
+      .cs-spinner-track {
+        display: flex;
+        gap: 12px;
+        padding-left: 0;
+        will-change: transform;
+      }
 
-    .gd-card.rarity-common,
-    .cs-reel-card.rarity-common {
-      border-color: #3b82f6;
-      box-shadow: 0 0 12px rgba(59, 130, 246, 0.16);
-    }
-    .gd-card.rarity-common .rarity-badge,
-    .live-rarity-badge.rarity-common {
-      background: rgba(59, 130, 246, 0.2);
-      color: #60a5fa;
-      border: 1px solid rgba(59, 130, 246, 0.5);
-    }
+      .cs-reel-card {
+        width: 212px;
+        flex-shrink: 0;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(20, 23, 38, 0.96);
+        padding: 10px;
+        box-sizing: border-box;
+        text-align: center;
+      }
 
-    .live-rarity-badge {
-      display: inline-block;
-      margin-top: 3px;
-      padding: 1px 7px;
-      border-radius: 999px;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
+      .cs-reel-card img {
+        width: 100%;
+        height: 106px;
+        object-fit: cover;
+        border-radius: 8px;
+        display: block;
+        margin-bottom: 8px;
+      }
 
-    #case-detail-view {
-      width: 100%;
-      box-sizing: border-box;
-    }
+      .cs-reel-title {
+        font-size: 13px;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
 
-    .cs-spinner-shell {
-      position: relative;
-      width: 100%;
-      box-sizing: border-box;
-      overflow: hidden;
-      border-radius: 14px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      background: rgba(13, 15, 26, 0.92);
-      padding: 18px 0;
-      margin: 18px 0 22px;
-    }
+      .cs-reel-sub {
+        font-size: 10px;
+        opacity: 0.9;
+        margin-top: 3px;
+        text-transform: uppercase;
+      }
 
-    .cs-spinner-pointer {
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      left: 50%;
-      width: 3px;
-      transform: translateX(-50%);
-      background: #facc15;
-      box-shadow: 0 0 14px rgba(250, 204, 21, 0.9);
-      z-index: 6;
-      pointer-events: none;
-    }
+      .case-drop-spotlight {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 18px 20px;
+        margin: 0 0 22px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(18, 21, 36, 0.95);
+      }
 
-    .cs-spinner-track {
-      display: flex;
-      gap: 12px;
-      padding-left: 0;
-      will-change: transform;
-    }
+      .case-drop-spotlight-card {
+        width: 240px;
+        max-width: 100%;
+      }
 
-    .cs-reel-card {
-      width: 212px;
-      flex-shrink: 0;
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      background: rgba(20, 23, 38, 0.96);
-      padding: 10px;
-      box-sizing: border-box;
-      text-align: center;
-    }
+      .case-drop-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-width: 210px;
+      }
 
-    .cs-reel-card img {
-      width: 100%;
-      height: 106px;
-      object-fit: cover;
-      border-radius: 8px;
-      display: block;
-      margin-bottom: 8px;
-    }
+      .gd-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(5, 7, 14, 0.78);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        z-index: 9999;
+      }
 
-    .cs-reel-title {
-      font-size: 13px;
-      font-weight: 700;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+      .gd-modal-backdrop.hidden {
+        display: none;
+      }
 
-    .cs-reel-sub {
-      font-size: 10px;
-      opacity: 0.9;
-      margin-top: 3px;
-      text-transform: uppercase;
-    }
+      .gd-modal-card {
+        width: 100%;
+        max-width: 660px;
+        max-height: 90vh;
+        overflow: auto;
+        background: #141827;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 14px;
+        padding: 20px;
+        box-sizing: border-box;
+      }
 
-    .case-drop-spotlight {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 20px;
-      padding: 18px 20px;
-      margin: 0 0 22px;
-      border-radius: 14px;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      background: rgba(18, 21, 36, 0.95);
-    }
+      .rarity-chance-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        margin-top: 10px;
+      }
 
-    .case-drop-spotlight-card {
-      width: 240px;
-      max-width: 100%;
-    }
+      .rarity-chance-table th,
+      .rarity-chance-table td {
+        padding: 8px 6px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        text-align: left;
+      }
 
-    .case-drop-actions {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      min-width: 210px;
-    }
-  `;
-  document.head.appendChild(style);
+      .rarity-chance-table input[type="number"] {
+        width: 92px;
+        padding: 5px 7px;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  syncDynamicRarityStyles();
 }
 
 function getCardPowerScore(card) {
-  const rScore = RARITY_RANK_ORDER[card.rarity] || 1;
+  const rScore = getRarityRankOrder(card.rarity);
   const holoBonus = card.isHolo ? 10 : 0;
   return rScore * 100 + holoBonus + (Number(card.price) || 0) / 10000;
 }
@@ -406,7 +483,7 @@ function recordDropToFeed(card, sourceLabel = 'Пак') {
   renderLiveDropsFeed();
 
   if (isCloudConfigured()) {
-    pushSharedData(state.pool, state.cases, state.recentDrops);
+    pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities);
   }
 }
 
@@ -449,7 +526,7 @@ function renderLiveDropsFeed() {
     div.className = `cb-live-item rarity-${item.rarity} ${isRare ? 'rare-glow' : ''}`;
     const whoText = item.playerId === state.playerId ? `Ты (${item.source})` : `${item.playerName}`;
     const fallbackImg = `https://placehold.co/160x90/171c2b/ffffff?text=${encodeURIComponent(item.name)}`;
-    const rarityLabel = RARITY_LABELS[item.rarity] || item.rarity || 'common';
+    const rarityLabel = getRarityLabel(item.rarity);
 
     div.innerHTML = `
       <img src="${item.image}" alt="${item.name}" onerror="this.src='${fallbackImg}'" />
@@ -464,7 +541,7 @@ function renderLiveDropsFeed() {
 
 async function fetchSharedData() {
   if (!isCloudConfigured()) {
-    return { ok: false, pool: null, cases: null, recentDrops: null };
+    return { ok: false, pool: null, cases: null, recentDrops: null, rarities: null };
   }
   try {
     const res = await fetch(`${JSONBIN_URL}/latest?nocache=${Date.now()}`, {
@@ -482,18 +559,20 @@ async function fetchSharedData() {
       ok: true,
       pool: Array.isArray(rec.pool) ? rec.pool : null,
       cases: Array.isArray(rec.cases) ? rec.cases : null,
-      recentDrops: Array.isArray(rec.recentDrops) ? rec.recentDrops : null
+      recentDrops: Array.isArray(rec.recentDrops) ? rec.recentDrops : null,
+      rarities: Array.isArray(rec.rarities) ? rec.rarities : null
     };
   } catch (err) {
     console.error('Не удалось загрузить общие данные:', err);
-    return { ok: false, pool: null, cases: null, recentDrops: null };
+    return { ok: false, pool: null, cases: null, recentDrops: null, rarities: null };
   }
 }
 
 async function pushSharedData(
   nextPool = state.pool,
   nextCases = state.cases,
-  nextDrops = state.recentDrops
+  nextDrops = state.recentDrops,
+  nextRarities = state.rarities
 ) {
   if (!isCloudConfigured()) {
     return false;
@@ -508,7 +587,8 @@ async function pushSharedData(
       body: JSON.stringify({
         pool: nextPool,
         cases: nextCases,
-        recentDrops: nextDrops
+        recentDrops: nextDrops,
+        rarities: nextRarities
       })
     });
     if (!res.ok) {
@@ -701,6 +781,204 @@ function renderCaseDropSpotlight(card) {
   sellBtn.textContent = `Продать (${pendingCaseDropCard.price} ₽)`;
 }
 
+function ensureEditCaseModalUI() {
+  if (document.getElementById('edit-case-modal')) return;
+
+  const modal = document.createElement('div');
+  modal.id = 'edit-case-modal';
+  modal.className = 'gd-modal-backdrop hidden';
+  modal.innerHTML = `
+    <div class="gd-modal-card">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px;">
+        <h3 style="margin:0;">Редактировать кейс</h3>
+        <button type="button" id="close-edit-case-btn" class="btn-secondary" style="padding:4px 10px;">✕</button>
+      </div>
+      <form id="edit-case-form" style="display:grid; gap:12px;">
+        <input type="hidden" id="edit-case-id" />
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px;">
+          <label style="display:flex; flex-direction:column; gap:6px;">
+            <span>Название кейса</span>
+            <input type="text" id="edit-case-name" required />
+          </label>
+          <label style="display:flex; flex-direction:column; gap:6px;">
+            <span>Цена открытия (₽)</span>
+            <input type="number" id="edit-case-price" min="1" step="1" required />
+          </label>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+          <label style="display:flex; flex-direction:column; gap:6px;">
+            <span>Новая картинка с ПК</span>
+            <input type="file" id="edit-case-file" accept="image/*" />
+          </label>
+          <label style="display:flex; flex-direction:column; gap:6px;">
+            <span>Или ссылка (URL)</span>
+            <input type="text" id="edit-case-image" placeholder="https://..." />
+          </label>
+        </div>
+
+        <div>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px;">
+            <span>Уровни в кейсе (если ничего не отмечено — войдёт весь пул):</span>
+            <button type="button" id="edit-case-select-all-btn" class="btn-secondary" style="padding:4px 10px; font-size:12px;">Выбрать все</button>
+          </div>
+          <div id="edit-case-pool-checkboxes" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:8px; max-height:220px; overflow:auto; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.12);"></div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:6px;">
+          <button type="button" id="cancel-edit-case-btn" class="btn-secondary">Отмена</button>
+          <button type="submit" class="btn-primary">Сохранить кейс</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+function syncRankInputsToFreeText() {
+  const rankInputs = [
+    document.getElementById('card-rank'),
+    document.getElementById('edit-card-rank')
+  ];
+  rankInputs.forEach(inp => {
+    if (!inp) return;
+    inp.type = 'text';
+    inp.removeAttribute('min');
+    inp.removeAttribute('max');
+    inp.removeAttribute('step');
+    if (!inp.placeholder) {
+      inp.placeholder = 'Топ (#1) или сложность (Extreme / Mythic)';
+    }
+  });
+}
+
+function syncRaritySelects() {
+  const raritySelects = [
+    document.getElementById('card-rarity'),
+    document.getElementById('edit-card-rarity'),
+    document.getElementById('filter-rarity'),
+    document.getElementById('upg-rarity-filter'),
+    document.getElementById('sell-rarity-select')
+  ];
+
+  raritySelects.forEach(sel => {
+    if (!sel) return;
+    const prevVal = sel.value;
+    const hasAll = Array.from(sel.options).some(o => o.value === 'all');
+    sel.innerHTML = '';
+
+    if (hasAll || sel.id === 'filter-rarity' || sel.id === 'upg-rarity-filter' || sel.id === 'sell-rarity-select') {
+      const allOpt = document.createElement('option');
+      allOpt.value = 'all';
+      allOpt.textContent = 'Все редкости';
+      sel.appendChild(allOpt);
+    }
+
+    state.rarities.forEach(r => {
+      const opt = document.createElement('option');
+      opt.value = r.key;
+      opt.textContent = r.label;
+      sel.appendChild(opt);
+    });
+
+    if (prevVal && Array.from(sel.options).some(o => o.value === prevVal)) {
+      sel.value = prevVal;
+    }
+  });
+}
+
+function ensureAdminRaritiesManagerUI() {
+  const adminPanel = document.getElementById('admin-panel');
+  if (!adminPanel || document.getElementById('admin-rarities-manager')) return;
+
+  const box = document.createElement('div');
+  box.id = 'admin-rarities-manager';
+  box.style.cssText = 'margin-top:32px; padding-top:24px; border-top:1px solid rgba(255,255,255,0.14);';
+  box.innerHTML = `
+    <h3 class="sub-title">Редкости и шансы выпадения (паки и кейсы)</h3>
+    <p class="hint" style="margin-bottom:12px;">
+      Укажи шансы в процентах (например, <code>0.001</code> для FUTURE). При сохранении веса автоматически приводятся к сумме 100%, чтобы рулетка и паки работали корректно.
+    </p>
+
+    <div style="overflow-x:auto;">
+      <table class="rarity-chance-table">
+        <thead>
+          <tr>
+            <th>Редкость</th>
+            <th>Ключ</th>
+            <th>Цвет</th>
+            <th>Шанс в паке (%)</th>
+            <th>Шанс в кейсе (%)</th>
+          </tr>
+        </thead>
+        <tbody id="admin-rarities-tbody"></tbody>
+      </table>
+    </div>
+
+    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;">
+      <button type="button" id="save-rarity-chances-btn" class="btn-primary">Сохранить шансы редкостей</button>
+      <button type="button" id="reset-rarity-chances-btn" class="btn-secondary">Сбросить шансы по умолчанию</button>
+    </div>
+
+    <form id="add-rarity-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-top:20px; padding-top:16px; border-top:1px dashed rgba(255,255,255,0.12); align-items:end;">
+      <label style="display:flex; flex-direction:column; gap:5px;">
+        <span>Название редкости</span>
+        <input type="text" id="new-rarity-label" placeholder="Например: Astral" required />
+      </label>
+      <label style="display:flex; flex-direction:column; gap:5px;">
+        <span>Ключ (англ.)</span>
+        <input type="text" id="new-rarity-key" placeholder="astral (авто)" />
+      </label>
+      <label style="display:flex; flex-direction:column; gap:5px;">
+        <span>Цвет</span>
+        <input type="color" id="new-rarity-color" value="#38bdf8" style="height:36px; width:100%; padding:2px;" />
+      </label>
+      <label style="display:flex; flex-direction:column; gap:5px;">
+        <span>Шанс в паке (%)</span>
+        <input type="number" id="new-rarity-pack-chance" min="0" max="100" step="any" value="0.01" required />
+      </label>
+      <label style="display:flex; flex-direction:column; gap:5px;">
+        <span>Шанс в кейсе (%)</span>
+        <input type="number" id="new-rarity-case-chance" min="0" max="100" step="any" value="0.01" required />
+      </label>
+      <button type="submit" class="btn-primary">Добавить редкость</button>
+    </form>
+  `;
+
+  adminPanel.appendChild(box);
+}
+
+function renderAdminRaritiesManager() {
+  ensureAdminRaritiesManagerUI();
+  const tbody = document.getElementById('admin-rarities-tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+  state.rarities.forEach(r => {
+    const tr = document.createElement('tr');
+    tr.dataset.rarityKey = r.key;
+    tr.innerHTML = `
+      <td><strong>${r.label}</strong></td>
+      <td><code>${r.key}</code></td>
+      <td><input type="color" class="rarity-color-input" value="${r.color || '#8b5cf6'}" style="width:44px; height:28px; padding:0; border:none; background:none;" /></td>
+      <td><input type="number" class="rarity-pack-input" min="0" max="100" step="any" value="${Number(r.packChance) || 0}" /></td>
+      <td><input type="number" class="rarity-case-input" min="0" max="100" step="any" value="${Number(r.caseChance) || 0}" /></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function normalizeWeightsTo100(entries) {
+  const cleaned = entries.map(e => Math.max(0, Number(e) || 0));
+  const sum = cleaned.reduce((a, b) => a + b, 0);
+  if (sum <= 0) {
+    const equal = 100 / Math.max(1, cleaned.length);
+    return cleaned.map(() => equal);
+  }
+  return cleaned.map(v => (v / sum) * 100);
+}
+
 function ensureAdminCaseBuilderUI() {
   const adminPanel = document.getElementById('admin-panel');
   if (!adminPanel || document.getElementById('add-case-form')) return;
@@ -767,20 +1045,6 @@ function ensureCollectionBulkSellControls() {
   const select = document.createElement('select');
   select.id = 'sell-rarity-select';
   select.title = 'Выбери редкость для массовой продажи';
-  [
-    ['all', 'Все редкости'],
-    ['common', 'Common'],
-    ['epic', 'Epic'],
-    ['mythic', 'Mythic'],
-    ['legendary', 'Legendary'],
-    ['apex', 'Apex'],
-    ['limit', 'Limit']
-  ].forEach(([val, label]) => {
-    const opt = document.createElement('option');
-    opt.value = val;
-    opt.textContent = label;
-    select.appendChild(opt);
-  });
 
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -794,6 +1058,7 @@ function ensureCollectionBulkSellControls() {
   wrap.appendChild(select);
   wrap.appendChild(btn);
   filtersBar.appendChild(wrap);
+  syncRaritySelects();
 }
 
 function getCollectionSellCandidates(rarity = 'all') {
@@ -811,7 +1076,7 @@ function updateCollectionBulkSellButton() {
   const rarity = select.value;
   const targets = getCollectionSellCandidates(rarity);
   const sum = targets.reduce((s, c) => s + c.price, 0);
-  const label = rarity === 'all' ? 'Продать всё' : `Продать ${RARITY_LABELS[rarity] || rarity}`;
+  const label = rarity === 'all' ? 'Продать всё' : `Продать ${getRarityLabel(rarity)}`;
   btn.textContent = `${label} (${sum} ₽)`;
   btn.disabled = targets.length === 0;
 }
@@ -833,7 +1098,7 @@ function sellCollectionByRarity() {
 
   const desc = rarity === 'all'
     ? `Проданы все карты (${targets.length} шт.) за ${sum} ₽`
-    : `Проданы карты редкости ${RARITY_LABELS[rarity] || rarity} (${targets.length} шт.) за ${sum} ₽`;
+    : `Проданы карты редкости ${getRarityLabel(rarity)} (${targets.length} шт.) за ${sum} ₽`;
   showToast(desc);
 }
 
@@ -848,15 +1113,15 @@ function ensureAdminSyncButton() {
   btn.type = 'button';
   btn.id = 'sync-pool-now-btn';
   btn.className = 'btn-secondary';
-  btn.textContent = 'Залить пул и кейсы в облако всем игрокам';
+  btn.textContent = 'Залить пул, кейсы и редкости в облако всем игрокам';
   btn.addEventListener('click', async () => {
     if (!state.pool || state.pool.length === 0) {
       showToast('Пул пуст — нечего отправлять');
       return;
     }
-    const ok = await pushSharedData(state.pool, state.cases, state.recentDrops);
+    const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities);
     if (ok) {
-      showToast(`Сохранено в облако: ${state.pool.length} карт, ${state.cases.length} кейсов`);
+      showToast(`Сохранено в облако: ${state.pool.length} карт, ${state.cases.length} кейсов, ${state.rarities.length} редкостей`);
     }
   });
 
@@ -864,7 +1129,7 @@ function ensureAdminSyncButton() {
   status.id = 'cloud-sync-status';
   status.className = 'hint';
   status.textContent = isCloudConfigured()
-    ? 'Облако подключено: изменения пула, кейсов и дропов видят все игроки'
+    ? 'Облако подключено: изменения пула, кейсов, редкостей и дропов видят все игроки'
     : 'Облако НЕ настроено: заполни JSONBIN_BIN_ID и JSONBIN_MASTER_KEY в app.js';
 
   bar.appendChild(btn);
@@ -901,6 +1166,9 @@ async function init() {
       if (Array.isArray(parsed.recentDrops)) {
         state.recentDrops = parsed.recentDrops;
       }
+      if (Array.isArray(parsed.rarities) && parsed.rarities.length > 0) {
+        state.rarities = normalizeRaritiesList(parsed.rarities);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -920,6 +1188,10 @@ async function init() {
       state.cases = [...DEFAULT_CASES];
     }
 
+    if (Array.isArray(cloudResult.rarities) && cloudResult.rarities.length > 0) {
+      state.rarities = normalizeRaritiesList(cloudResult.rarities);
+    }
+
     if (Array.isArray(cloudResult.recentDrops) && cloudResult.recentDrops.length > 0) {
       state.recentDrops = cloudResult.recentDrops;
     }
@@ -929,15 +1201,23 @@ async function init() {
     if (!state.cases || state.cases.length === 0) state.cases = [...DEFAULT_CASES];
   }
 
+  if (!state.rarities || state.rarities.length === 0) {
+    state.rarities = normalizeRaritiesList(DEFAULT_RARITIES);
+  }
+
   injectMinimalCaseAndFeedStyles();
   ensureDroppedCardsAreaUI();
   ensureCasesPageUI();
+  ensureEditCaseModalUI();
   ensureBuyPackButtonVisible();
   ensureOpenAllPacksButton();
   ensureCollectionBulkSellControls();
   ensureAdminCaseBuilderUI();
+  ensureAdminRaritiesManagerUI();
   ensureAdminSyncButton();
   hideFreePackTimerUI();
+  syncRankInputsToFreeText();
+  syncRaritySelects();
 
   setupNavigation();
   updateHeader();
@@ -949,6 +1229,7 @@ async function init() {
   renderAdminCasePoolCheckboxes();
   renderCaseBuilderPreview();
   renderAdminCasesList();
+  renderAdminRaritiesManager();
   bindEvents();
 
   if (isCloudConfigured()) {
@@ -972,6 +1253,15 @@ async function init() {
           updated = true;
         }
       }
+      if (Array.isArray(fresh.rarities) && fresh.rarities.length > 0) {
+        const nextRars = normalizeRaritiesList(fresh.rarities);
+        if (JSON.stringify(nextRars) !== JSON.stringify(state.rarities)) {
+          state.rarities = nextRars;
+          syncDynamicRarityStyles();
+          syncRaritySelects();
+          updated = true;
+        }
+      }
       if (Array.isArray(fresh.recentDrops)) {
         const mergedMap = new Map();
         [...fresh.recentDrops, ...state.recentDrops].forEach(d => {
@@ -992,6 +1282,7 @@ async function init() {
         renderAdminPool();
         renderAdminCasePoolCheckboxes();
         renderAdminCasesList();
+        renderAdminRaritiesManager();
         renderCasesPage();
         if (document.getElementById('tab-upgrade').classList.contains('active') && !isSpinning) {
           renderUpgradePage();
@@ -1010,6 +1301,7 @@ function saveState() {
       packsOpened: state.packsOpened,
       pool: state.pool,
       cases: state.cases,
+      rarities: state.rarities,
       inventory: state.inventory,
       droppedTemp: state.droppedTemp,
       recentDrops: state.recentDrops
@@ -1043,10 +1335,14 @@ function setupNavigation() {
       if (tab === 'trades' && tradeActive) renderTradeWorkspace();
       if (tab === 'admin') {
         ensureAdminCaseBuilderUI();
+        ensureAdminRaritiesManagerUI();
         ensureAdminSyncButton();
+        syncRankInputsToFreeText();
+        syncRaritySelects();
         renderAdminPool();
         renderAdminCasePoolCheckboxes();
         renderAdminCasesList();
+        renderAdminRaritiesManager();
       }
     });
   });
@@ -1102,7 +1398,7 @@ function buildCardInstance(base, isHolo = false, uidPrefix = 'card') {
     name: base.name,
     verifier: base.verifier || '',
     publisher: base.publisher || '',
-    rarity: base.rarity,
+    rarity: normalizeRarityKey(base.rarity) || 'common',
     image: base.image,
     isHolo,
     price: finalPrice,
@@ -1116,26 +1412,29 @@ function rollSingleCard(customRarity = null, poolOverride = null, weightsOverrid
 
   const activeWeights = Array.isArray(weightsOverride) && weightsOverride.length > 0
     ? weightsOverride
-    : RARITY_WEIGHTS;
+    : getPackRarityWeights();
 
-  let chosenRarity = customRarity;
+  let chosenRarity = customRarity ? normalizeRarityKey(customRarity) : null;
   if (!chosenRarity) {
-    const totalWeight = activeWeights.reduce((sum, item) => sum + item.weight, 0);
+    const totalWeight = activeWeights.reduce((sum, item) => sum + Math.max(0, Number(item.weight) || 0), 0);
     const roll = Math.random() * totalWeight;
     let acc = 0;
     for (const r of activeWeights) {
-      acc += r.weight;
+      const w = Math.max(0, Number(r.weight) || 0);
+      if (w <= 0) continue;
+      acc += w;
       if (roll <= acc) {
         chosenRarity = r.key;
         break;
       }
     }
     if (!chosenRarity) {
-      chosenRarity = activeWeights[activeWeights.length - 1].key;
+      const fallbackEntry = activeWeights.find(w => (Number(w.weight) || 0) > 0) || activeWeights[0];
+      chosenRarity = fallbackEntry ? fallbackEntry.key : 'common';
     }
   }
 
-  let candidates = sourcePool.filter(c => c.rarity === chosenRarity);
+  let candidates = sourcePool.filter(c => normalizeRarityKey(c.rarity) === chosenRarity);
   if (candidates.length === 0) candidates = sourcePool;
 
   const base = candidates[Math.floor(Math.random() * candidates.length)];
@@ -1143,13 +1442,23 @@ function rollSingleCard(customRarity = null, poolOverride = null, weightsOverrid
   return buildCardInstance(base, isHolo, 'card');
 }
 
+function formatRankDisplay(rank) {
+  const raw = String(rank ?? '').trim();
+  if (!raw) return '—';
+  if (parseRankValue(raw) !== null && !raw.startsWith('#')) {
+    return `#${raw}`;
+  }
+  return raw;
+}
+
 function createCardElement(card, options = {}) {
-  const isRareAnim = options.animateDrop && (card.isHolo || RARE_ANIM_TIERS.includes(card.rarity));
+  const rarityKey = normalizeRarityKey(card.rarity) || 'common';
+  const isRareAnim = options.animateDrop && (card.isHolo || RARE_ANIM_TIERS.includes(rarityKey));
   const animClass = options.animateDrop ? (isRareAnim ? 'drop-anim-rare' : 'drop-anim') : '';
   const selectedClass = options.selected ? 'selected-card' : '';
 
   const div = document.createElement('div');
-  div.className = `gd-card rarity-${card.rarity} ${card.isHolo ? 'is-holo' : ''} ${animClass} ${selectedClass}`;
+  div.className = `gd-card rarity-${rarityKey} ${card.isHolo ? 'is-holo' : ''} ${animClass} ${selectedClass}`;
 
   const fallbackImg = `https://placehold.co/400x225/141420/ffffff?text=${encodeURIComponent(card.name)}`;
 
@@ -1159,8 +1468,8 @@ function createCardElement(card, options = {}) {
 
   div.innerHTML = `
     <div class="card-top">
-      <span class="card-rank">#${card.rank}</span>
-      <span class="rarity-badge">${card.rarity}</span>
+      <span class="card-rank">${formatRankDisplay(card.rank)}</span>
+      <span class="rarity-badge">${getRarityLabel(rarityKey)}</span>
     </div>
     <div class="card-thumb">
       <img src="${card.image}" alt="${card.name}" onerror="this.src='${fallbackImg}'" />
@@ -1240,7 +1549,7 @@ function prependDroppedCardElement(grid, card, animate = true) {
   grid.prepend(cardEl);
 }
 
-// 0. КЕЙСЫ (ОТДЕЛЬНЫЙ ЭКРАН КЕЙСА + ШИРОКАЯ CS РУЛЕТКА + ЦЕНТРАЛЬНАЯ ЛИНИЯ + БЫСТРОЕ ОТКРЫТИЕ)
+// 0. КЕЙСЫ
 function getCasePool(caseObj) {
   if (!caseObj) return state.pool;
   if (!Array.isArray(caseObj.itemIds) || caseObj.itemIds.length === 0) {
@@ -1275,16 +1584,31 @@ function createCaseCardElement(caseObj, options = {}) {
     </div>
   `;
 
-  if (options.actionLabel) {
+  if (options.actionLabel || options.editLabel) {
     const row = document.createElement('div');
     row.className = 'card-actions-row';
-    const btn = document.createElement('button');
-    btn.textContent = options.actionLabel;
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      options.onAction(caseObj);
-    });
-    row.appendChild(btn);
+
+    if (options.editLabel) {
+      const editBtn = document.createElement('button');
+      editBtn.textContent = options.editLabel;
+      editBtn.className = 'btn-edit-card';
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        options.onEdit(caseObj);
+      });
+      row.appendChild(editBtn);
+    }
+
+    if (options.actionLabel) {
+      const btn = document.createElement('button');
+      btn.textContent = options.actionLabel;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        options.onAction(caseObj);
+      });
+      row.appendChild(btn);
+    }
+
     div.appendChild(row);
   }
 
@@ -1347,7 +1671,7 @@ function renderCasesPage() {
   if (titleEl) titleEl.textContent = activeCase.name;
   if (priceEl) priceEl.textContent = `Цена кейса: ${activeCase.price} ₽`;
 
-  const poolItems = [...getCasePool(activeCase)].sort((a, b) => Number(a.rank) - Number(b.rank));
+  const poolItems = [...getCasePool(activeCase)].sort((a, b) => compareRanks(a.rank, b.rank));
 
   if (itemsGrid) {
     itemsGrid.innerHTML = '';
@@ -1362,13 +1686,14 @@ function renderCasesPage() {
     trackEl.innerHTML = '';
     for (let i = 0; i < 14; i++) {
       const sample = poolItems[i % poolItems.length];
+      const rKey = normalizeRarityKey(sample.rarity) || 'common';
       const reelCard = document.createElement('div');
-      reelCard.className = `cs-reel-card rarity-${sample.rarity}`;
+      reelCard.className = `cs-reel-card rarity-${rKey}`;
       const rFallback = `https://placehold.co/240x135/141420/ffffff?text=${encodeURIComponent(sample.name)}`;
       reelCard.innerHTML = `
         <img src="${sample.image}" alt="${sample.name}" onerror="this.src='${rFallback}'" />
         <div class="cs-reel-title">${sample.name}</div>
-        <div class="cs-reel-sub">${RARITY_LABELS[sample.rarity] || sample.rarity} · ${sample.price} ₽</div>
+        <div class="cs-reel-sub">${getRarityLabel(rKey)} · ${sample.price} ₽</div>
       `;
       trackEl.appendChild(reelCard);
     }
@@ -1401,7 +1726,7 @@ function openSelectedCase(instant = false) {
   saveState();
   updateHeader();
 
-  const wonCard = rollSingleCard(null, casePool, CASE_RARITY_WEIGHTS);
+  const wonCard = rollSingleCard(null, casePool, getCaseRarityWeights());
   const trackEl = document.getElementById('cs-case-spinner-track');
   const boxEl = document.getElementById('cs-case-spinner-box');
 
@@ -1434,13 +1759,14 @@ function openSelectedCase(instant = false) {
   }
 
   slots.forEach(item => {
+    const rKey = normalizeRarityKey(item.rarity) || 'common';
     const el = document.createElement('div');
-    el.className = `cs-reel-card rarity-${item.rarity}`;
+    el.className = `cs-reel-card rarity-${rKey}`;
     const rFallback = `https://placehold.co/240x135/141420/ffffff?text=${encodeURIComponent(item.name)}`;
     el.innerHTML = `
       <img src="${item.image}" alt="${item.name}" onerror="this.src='${rFallback}'" />
       <div class="cs-reel-title">${item.isHolo ? '✦ ' : ''}${item.name}</div>
-      <div class="cs-reel-sub">${RARITY_LABELS[item.rarity] || item.rarity}${item.isHolo ? ' HOLO' : ''} · ${item.price} ₽</div>
+      <div class="cs-reel-sub">${getRarityLabel(rKey)}${item.isHolo ? ' HOLO' : ''} · ${item.price} ₽</div>
     `;
     trackEl.appendChild(el);
   });
@@ -1453,8 +1779,8 @@ function openSelectedCase(instant = false) {
     recordDropToFeed(wonCard, activeCase.name);
     renderCaseDropSpotlight(wonCard);
 
-    if (wonCard.isHolo || RARE_ANIM_TIERS.includes(wonCard.rarity)) {
-      showToast(`Кейс! Выпал ${wonCard.rarity.toUpperCase()}${wonCard.isHolo ? ' HOLO' : ''}: ${wonCard.name}!`);
+    if (wonCard.isHolo || RARE_ANIM_TIERS.includes(normalizeRarityKey(wonCard.rarity))) {
+      showToast(`Кейс! Выпал ${getRarityLabel(wonCard.rarity).toUpperCase()}${wonCard.isHolo ? ' HOLO' : ''}: ${wonCard.name}!`);
     } else {
       showToast(`Из кейса "${activeCase.name}" выпал ${wonCard.name}`);
     }
@@ -1515,8 +1841,8 @@ function openPack() {
     setTimeout(() => {
       prependDroppedCardElement(grid, card, true);
 
-      if (card.isHolo || RARE_ANIM_TIERS.includes(card.rarity)) {
-        showToast(`Выпал ${card.rarity.toUpperCase()}${card.isHolo ? ' HOLO' : ''}: ${card.name}!`);
+      if (card.isHolo || RARE_ANIM_TIERS.includes(normalizeRarityKey(card.rarity))) {
+        showToast(`Выпал ${getRarityLabel(card.rarity).toUpperCase()}${card.isHolo ? ' HOLO' : ''}: ${card.name}!`);
       }
 
       if (idx === rolled.length - 1) {
@@ -1564,7 +1890,7 @@ function openAllPacks() {
   const total = state.droppedTemp.reduce((s, c) => s + c.price, 0);
   document.getElementById('dropped-total-price').textContent = total;
 
-  const rareCount = rolled.filter(c => c.isHolo || RARE_ANIM_TIERS.includes(c.rarity)).length;
+  const rareCount = rolled.filter(c => c.isHolo || RARE_ANIM_TIERS.includes(normalizeRarityKey(c.rarity))).length;
   showToast(`Открыто паков: ${packsToOpen} (${rolled.length} карт${rareCount ? `, редких/Holo: ${rareCount}` : ''})`);
 
   const toRender = [...rolled].reverse();
@@ -1763,7 +2089,7 @@ function renderTradeWorkspace() {
 
   state.inventory
     .filter(c => !userTradeIds.includes(c.uid))
-    .sort((a, b) => Number(a.rank) - Number(b.rank))
+    .sort((a, b) => compareRanks(a.rank, b.rank))
     .forEach(c => {
       invGrid.appendChild(createCardElement(c, {
         onClick: () => {
@@ -1783,7 +2109,7 @@ function renderTradeWorkspace() {
 function getUpgradeCatalog() {
   const items = [];
   [...state.pool]
-    .sort((a, b) => Number(a.rank) - Number(b.rank))
+    .sort((a, b) => compareRanks(a.rank, b.rank))
     .forEach(base => {
       ['normal', 'holo'].forEach(mode => {
         const isHolo = mode === 'holo';
@@ -1809,6 +2135,7 @@ function getUpgradeChance() {
 }
 
 function renderUpgradePage() {
+  syncRaritySelects();
   const srcSlot = document.getElementById('upg-source-slot');
   const tgtSlot = document.getElementById('upg-target-slot');
   const userGrid = document.getElementById('upg-user-cards');
@@ -1843,7 +2170,7 @@ function renderUpgradePage() {
     userGrid.innerHTML = '<div class="empty-box" style="grid-column: 1/-1;">У тебя пока нет карт в инвентаре.</div>';
   } else {
     [...state.inventory]
-      .sort((a, b) => Number(a.rank) - Number(b.rank))
+      .sort((a, b) => compareRanks(a.rank, b.rank))
       .forEach(c => {
         userGrid.appendChild(createCardElement(c, {
           selected: c.uid === selectedUpgradeSourceId,
@@ -1863,10 +2190,11 @@ function renderUpgradePage() {
   const filteredCatalog = getUpgradeCatalog().filter(c => {
     if (typeFilter === 'holo' && !c.isHolo) return false;
     if (typeFilter === 'normal' && c.isHolo) return false;
-    if (rarityFilter !== 'all' && c.rarity !== rarityFilter) return false;
+    if (rarityFilter !== 'all' && normalizeRarityKey(c.rarity) !== rarityFilter) return false;
     if (query) {
+      const rankStr = String(c.rank ?? '').toLowerCase();
       const matchName = c.name.toLowerCase().includes(query);
-      const matchRank = `#${c.rank}`.includes(query) || String(c.rank) === query;
+      const matchRank = rankStr.includes(query) || `#${rankStr}`.includes(query);
       if (!matchName && !matchRank) return false;
     }
     return true;
@@ -1947,9 +2275,10 @@ function runUpgrade() {
   }, 2700);
 }
 
-// 4. КОЛЛЕКЦИЯ (сортировка по топу: #1 первый, #2 второй и т.д.)
+// 4. КОЛЛЕКЦИЯ
 function renderCollection() {
   ensureCollectionBulkSellControls();
+  syncRaritySelects();
 
   const rarityFilter = document.getElementById('filter-rarity').value;
   const typeFilter = document.getElementById('filter-type').value;
@@ -1965,14 +2294,14 @@ function renderCollection() {
 
   const filtered = state.inventory
     .filter(c => {
-      if (rarityFilter !== 'all' && c.rarity !== rarityFilter) return false;
+      if (rarityFilter !== 'all' && normalizeRarityKey(c.rarity) !== rarityFilter) return false;
       if (typeFilter === 'holo' && !c.isHolo) return false;
       if (typeFilter === 'normal' && c.isHolo) return false;
       if (favOnly && !c.favorite) return false;
       return true;
     })
     .sort((a, b) => {
-      const rankDiff = (Number(a.rank) || 999999) - (Number(b.rank) || 999999);
+      const rankDiff = compareRanks(a.rank, b.rank);
       if (rankDiff !== 0) return rankDiff;
       if (a.isHolo !== b.isHolo) return a.isHolo ? -1 : 1;
       return (Number(b.price) || 0) - (Number(a.price) || 0);
@@ -2052,7 +2381,7 @@ function renderAdminCasePoolCheckboxes() {
   );
 
   wrap.innerHTML = '';
-  const sortedPool = [...state.pool].sort((a, b) => Number(a.rank) - Number(b.rank));
+  const sortedPool = [...state.pool].sort((a, b) => compareRanks(a.rank, b.rank));
 
   sortedPool.forEach(lvl => {
     const label = document.createElement('label');
@@ -2064,12 +2393,56 @@ function renderAdminCasePoolCheckboxes() {
     cb.checked = prevSelected.has(lvl.id);
 
     const span = document.createElement('span');
-    span.textContent = `#${lvl.rank} ${lvl.name} (${lvl.rarity})`;
+    span.textContent = `${formatRankDisplay(lvl.rank)} ${lvl.name} (${getRarityLabel(lvl.rarity)})`;
 
     label.appendChild(cb);
     label.appendChild(span);
     wrap.appendChild(label);
   });
+}
+
+function openEditCaseModal(caseObj) {
+  ensureEditCaseModalUI();
+  editingCaseImageDataUrl = '';
+
+  document.getElementById('edit-case-id').value = caseObj.id;
+  document.getElementById('edit-case-name').value = caseObj.name;
+  document.getElementById('edit-case-price').value = caseObj.price;
+  document.getElementById('edit-case-file').value = '';
+  document.getElementById('edit-case-image').value = (caseObj.image || '').startsWith('data:') ? '' : (caseObj.image || '');
+
+  const wrap = document.getElementById('edit-case-pool-checkboxes');
+  wrap.innerHTML = '';
+
+  const explicitIds = Array.isArray(caseObj.itemIds) && caseObj.itemIds.length > 0
+    ? new Set(caseObj.itemIds)
+    : null;
+
+  const sortedPool = [...state.pool].sort((a, b) => compareRanks(a.rank, b.rank));
+  sortedPool.forEach(lvl => {
+    const label = document.createElement('label');
+    label.style.cssText = 'display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; background:rgba(255,255,255,0.04); cursor:pointer; font-size:13px;';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = lvl.id;
+    cb.checked = explicitIds ? explicitIds.has(lvl.id) : true;
+
+    const span = document.createElement('span');
+    span.textContent = `${formatRankDisplay(lvl.rank)} ${lvl.name} (${getRarityLabel(lvl.rarity)})`;
+
+    label.appendChild(cb);
+    label.appendChild(span);
+    wrap.appendChild(label);
+  });
+
+  document.getElementById('edit-case-modal').classList.remove('hidden');
+}
+
+function closeEditCaseModal() {
+  editingCaseImageDataUrl = '';
+  const modal = document.getElementById('edit-case-modal');
+  if (modal) modal.classList.add('hidden');
 }
 
 function renderAdminCasesList() {
@@ -2082,10 +2455,12 @@ function renderAdminCasesList() {
 
   state.cases.forEach(caseObj => {
     listEl.appendChild(createCaseCardElement(caseObj, {
+      editLabel: 'Изменить',
+      onEdit: (c) => openEditCaseModal(c),
       actionLabel: 'Удалить',
       onAction: async (c) => {
         const nextCases = state.cases.filter(x => x.id !== c.id);
-        const ok = await pushSharedData(state.pool, nextCases, state.recentDrops);
+        const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities);
         if (ok) {
           state.cases = nextCases;
           if (openedCaseId === c.id) {
@@ -2103,7 +2478,10 @@ function renderAdminCasesList() {
 
 // 5. АДМИНКА
 function renderAdminPreview() {
-  const rank = document.getElementById('card-rank').value || 1;
+  syncRankInputsToFreeText();
+  syncRaritySelects();
+
+  const rank = document.getElementById('card-rank').value.trim() || '#1';
   const name = document.getElementById('card-name').value || 'Название уровня';
   const verifier = document.getElementById('card-verifier').value.trim();
   const publisher = document.getElementById('card-publisher').value.trim();
@@ -2122,16 +2500,18 @@ function renderAdminPreview() {
 }
 
 function openEditModal(card) {
+  syncRankInputsToFreeText();
+  syncRaritySelects();
   editingCardImageDataUrl = '';
   document.getElementById('edit-card-id').value = card.id;
   document.getElementById('edit-card-rank').value = card.rank;
   document.getElementById('edit-card-name').value = card.name;
   document.getElementById('edit-card-verifier').value = card.verifier || '';
   document.getElementById('edit-card-publisher').value = card.publisher || '';
-  document.getElementById('edit-card-rarity').value = card.rarity;
+  document.getElementById('edit-card-rarity').value = normalizeRarityKey(card.rarity) || 'common';
   document.getElementById('edit-card-price').value = card.price;
   document.getElementById('edit-card-file').value = '';
-  document.getElementById('edit-card-image').value = card.image.startsWith('data:') ? '' : card.image;
+  document.getElementById('edit-card-image').value = (card.image || '').startsWith('data:') ? '' : (card.image || '');
   document.getElementById('edit-card-modal').classList.remove('hidden');
 }
 
@@ -2146,7 +2526,7 @@ function renderAdminPool() {
   grid.innerHTML = '';
 
   [...state.pool]
-    .sort((a, b) => Number(a.rank) - Number(b.rank))
+    .sort((a, b) => compareRanks(a.rank, b.rank))
     .forEach(lvl => {
       grid.appendChild(createCardElement({ ...lvl, isHolo: false }, {
         editLabel: 'Изменить',
@@ -2158,7 +2538,7 @@ function renderAdminPool() {
             return;
           }
           const nextPool = state.pool.filter(x => x.id !== c.id);
-          const ok = await pushSharedData(nextPool, state.cases, state.recentDrops);
+          const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities);
           if (ok) {
             state.pool = nextPool;
             saveState();
@@ -2305,15 +2685,133 @@ function bindEvents() {
       document.getElementById('admin-lock').classList.add('hidden');
       document.getElementById('admin-panel').classList.remove('hidden');
       ensureAdminCaseBuilderUI();
+      ensureAdminRaritiesManagerUI();
       ensureAdminSyncButton();
+      syncRankInputsToFreeText();
+      syncRaritySelects();
       renderAdminPool();
       renderAdminCasePoolCheckboxes();
       renderCaseBuilderPreview();
       renderAdminCasesList();
+      renderAdminRaritiesManager();
     } else {
       document.getElementById('admin-error').textContent = 'Неверный пароль!';
     }
   });
+
+  // Админка: редкости и шансы
+  const saveRaritiesBtn = document.getElementById('save-rarity-chances-btn');
+  if (saveRaritiesBtn) {
+    saveRaritiesBtn.addEventListener('click', async () => {
+      const rows = Array.from(document.querySelectorAll('#admin-rarities-tbody tr'));
+      if (rows.length === 0) return;
+
+      const rawPack = rows.map(tr => Number(tr.querySelector('.rarity-pack-input').value) || 0);
+      const rawCase = rows.map(tr => Number(tr.querySelector('.rarity-case-input').value) || 0);
+      const normPack = normalizeWeightsTo100(rawPack);
+      const normCase = normalizeWeightsTo100(rawCase);
+
+      const nextRarities = state.rarities.map((r, idx) => {
+        const tr = rows[idx];
+        const colorVal = tr ? tr.querySelector('.rarity-color-input').value : r.color;
+        return {
+          ...r,
+          color: colorVal || r.color,
+          packChance: Number(normPack[idx].toFixed(6)),
+          caseChance: Number(normCase[idx].toFixed(6))
+        };
+      });
+
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities);
+      if (ok) {
+        state.rarities = nextRarities;
+        syncDynamicRarityStyles();
+        saveState();
+        renderAdminRaritiesManager();
+        showToast('Шансы редкостей обновлены!');
+      }
+    });
+  }
+
+  const resetRaritiesBtn = document.getElementById('reset-rarity-chances-btn');
+  if (resetRaritiesBtn) {
+    resetRaritiesBtn.addEventListener('click', async () => {
+      const nextRarities = normalizeRaritiesList(DEFAULT_RARITIES);
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities);
+      if (ok) {
+        state.rarities = nextRarities;
+        syncDynamicRarityStyles();
+        syncRaritySelects();
+        saveState();
+        renderAdminRaritiesManager();
+        showToast('Шансы сброшены к значениям по умолчанию');
+      }
+    });
+  }
+
+  const addRarityForm = document.getElementById('add-rarity-form');
+  if (addRarityForm) {
+    addRarityForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const label = document.getElementById('new-rarity-label').value.trim();
+      const customKey = document.getElementById('new-rarity-key').value.trim();
+      const color = document.getElementById('new-rarity-color').value || '#38bdf8';
+      const packChance = Math.max(0, Number(document.getElementById('new-rarity-pack-chance').value) || 0);
+      const caseChance = Math.max(0, Number(document.getElementById('new-rarity-case-chance').value) || 0);
+
+      const key = normalizeRarityKey(customKey || label);
+      if (!label || !key) {
+        showToast('Укажи название редкости!');
+        return;
+      }
+
+      const maxOrder = state.rarities.reduce((m, r) => Math.max(m, Number(r.order) || 0), 0);
+      const existingIdx = state.rarities.findIndex(r => r.key === key);
+
+      let nextRarities;
+      if (existingIdx >= 0) {
+        nextRarities = [...state.rarities];
+        nextRarities[existingIdx] = {
+          ...nextRarities[existingIdx],
+          label,
+          color,
+          packChance,
+          caseChance
+        };
+      } else {
+        nextRarities = [
+          ...state.rarities,
+          {
+            key,
+            label,
+            color,
+            packChance,
+            caseChance,
+            order: maxOrder + 1
+          }
+        ];
+      }
+
+      const normPack = normalizeWeightsTo100(nextRarities.map(r => r.packChance));
+      const normCase = normalizeWeightsTo100(nextRarities.map(r => r.caseChance));
+      nextRarities = nextRarities.map((r, i) => ({
+        ...r,
+        packChance: Number(normPack[i].toFixed(6)),
+        caseChance: Number(normCase[i].toFixed(6))
+      }));
+
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities);
+      if (ok) {
+        state.rarities = nextRarities;
+        syncDynamicRarityStyles();
+        syncRaritySelects();
+        saveState();
+        renderAdminRaritiesManager();
+        addRarityForm.reset();
+        showToast(`Редкость "${label}" добавлена!`);
+      }
+    });
+  }
 
   // Админка: добавление карточки
   document.getElementById('card-file').addEventListener('change', (e) => {
@@ -2355,19 +2853,22 @@ function bindEvents() {
       return;
     }
 
+    const rawRank = document.getElementById('card-rank').value.trim();
+    const parsedNum = parseRankValue(rawRank);
+
     const newLevel = {
       id: 'lvl_' + Date.now(),
-      rank: Number(document.getElementById('card-rank').value),
+      rank: parsedNum !== null ? parsedNum : rawRank,
       name: document.getElementById('card-name').value.trim(),
       verifier: document.getElementById('card-verifier').value.trim(),
       publisher: document.getElementById('card-publisher').value.trim(),
-      rarity: document.getElementById('card-rarity').value,
+      rarity: normalizeRarityKey(document.getElementById('card-rarity').value) || 'common',
       price: Number(document.getElementById('card-price').value),
       image: uploadedAdminImageDataUrl || urlInput
     };
 
     const nextPool = [newLevel, ...state.pool];
-    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops);
+    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities);
     if (!ok) return;
 
     state.pool = nextPool;
@@ -2463,7 +2964,7 @@ function bindEvents() {
       };
 
       const nextCases = [newCase, ...state.cases];
-      const ok = await pushSharedData(state.pool, nextCases, state.recentDrops);
+      const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities);
       if (!ok) return;
 
       state.cases = nextCases;
@@ -2476,6 +2977,80 @@ function bindEvents() {
       uploadedCaseImageDataUrl = '';
       renderCaseBuilderPreview();
       showToast(`Кейс "${newCase.name}" создан!`);
+    });
+  }
+
+  // Модалка редактирования кейса
+  const closeEditCaseBtn = document.getElementById('close-edit-case-btn');
+  const cancelEditCaseBtn = document.getElementById('cancel-edit-case-btn');
+  const editCaseFileInput = document.getElementById('edit-case-file');
+  const editCaseSelectAllBtn = document.getElementById('edit-case-select-all-btn');
+  const editCaseForm = document.getElementById('edit-case-form');
+
+  if (closeEditCaseBtn) closeEditCaseBtn.addEventListener('click', closeEditCaseModal);
+  if (cancelEditCaseBtn) cancelEditCaseBtn.addEventListener('click', closeEditCaseModal);
+
+  if (editCaseFileInput) {
+    editCaseFileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) {
+        editingCaseImageDataUrl = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        editingCaseImageDataUrl = reader.result;
+        const urlInp = document.getElementById('edit-case-image');
+        if (urlInp) urlInp.value = '';
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  if (editCaseSelectAllBtn) {
+    editCaseSelectAllBtn.addEventListener('click', () => {
+      const boxes = Array.from(document.querySelectorAll('#edit-case-pool-checkboxes input[type="checkbox"]'));
+      if (boxes.length === 0) return;
+      const allChecked = boxes.every(b => b.checked);
+      boxes.forEach(b => { b.checked = !allChecked; });
+    });
+  }
+
+  if (editCaseForm) {
+    editCaseForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('edit-case-id').value;
+      const idx = state.cases.findIndex(c => c.id === id);
+      if (idx === -1) return;
+
+      const current = state.cases[idx];
+      const name = document.getElementById('edit-case-name').value.trim();
+      const price = Number(document.getElementById('edit-case-price').value) || current.price;
+      const urlVal = document.getElementById('edit-case-image').value.trim();
+      const nextImage = editingCaseImageDataUrl || urlVal || current.image;
+
+      const checkedIds = Array.from(
+        document.querySelectorAll('#edit-case-pool-checkboxes input[type="checkbox"]:checked')
+      ).map(cb => cb.value);
+
+      const nextCases = [...state.cases];
+      nextCases[idx] = {
+        ...current,
+        name: name || current.name,
+        price,
+        image: nextImage,
+        itemIds: checkedIds.length > 0 ? checkedIds : state.pool.map(lvl => lvl.id)
+      };
+
+      const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities);
+      if (!ok) return;
+
+      state.cases = nextCases;
+      saveState();
+      renderAdminCasesList();
+      renderCasesPage();
+      closeEditCaseModal();
+      showToast(`Кейс "${nextCases[idx].name}" обновлён!`);
     });
   }
 
@@ -2506,20 +3081,22 @@ function bindEvents() {
     const current = state.pool[idx];
     const urlVal = document.getElementById('edit-card-image').value.trim();
     const nextImage = editingCardImageDataUrl || urlVal || current.image;
+    const rawRank = document.getElementById('edit-card-rank').value.trim();
+    const parsedNum = parseRankValue(rawRank);
 
     const nextPool = [...state.pool];
     nextPool[idx] = {
       ...current,
-      rank: Number(document.getElementById('edit-card-rank').value),
+      rank: parsedNum !== null ? parsedNum : rawRank,
       name: document.getElementById('edit-card-name').value.trim(),
       verifier: document.getElementById('edit-card-verifier').value.trim(),
       publisher: document.getElementById('edit-card-publisher').value.trim(),
-      rarity: document.getElementById('edit-card-rarity').value,
+      rarity: normalizeRarityKey(document.getElementById('edit-card-rarity').value) || 'common',
       price: Number(document.getElementById('edit-card-price').value),
       image: nextImage
     };
 
-    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops);
+    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities);
     if (!ok) return;
 
     state.pool = nextPool;
