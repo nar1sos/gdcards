@@ -114,13 +114,13 @@ const RARITY_WEIGHTS = [
 ];
 
 // Шансы редкостей ИМЕННО В КЕЙСАХ:
-// Mythic: 1%, Legendary: 0.5%, Apex: 0.3%, Limit: 0.1% (остальные 98.1% — Common и Epic)
+// Mythic: 5%, Legendary: 3%, Apex: 1%, Limit: 0.1% (остальные 90.9% — Common и Epic)
 const CASE_RARITY_WEIGHTS = [
-  { key: 'common', weight: 67.5 },
-  { key: 'epic', weight: 30.6 },
-  { key: 'mythic', weight: 1.0 },
-  { key: 'legendary', weight: 0.5 },
-  { key: 'apex', weight: 0.3 },
+  { key: 'common', weight: 60.9 },
+  { key: 'epic', weight: 30.0 },
+  { key: 'mythic', weight: 5.0 },
+  { key: 'legendary', weight: 3.0 },
+  { key: 'apex', weight: 1.0 },
   { key: 'limit', weight: 0.1 }
 ];
 
