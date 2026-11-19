@@ -113,6 +113,17 @@ const RARITY_WEIGHTS = [
   { key: 'limit', weight: 0.1 }
 ];
 
+// Шансы редкостей ИМЕННО В КЕЙСАХ:
+// Mythic: 1%, Legendary: 0.5%, Apex: 0.3%, Limit: 0.1% (остальные 98.1% — Common и Epic)
+const CASE_RARITY_WEIGHTS = [
+  { key: 'common', weight: 67.5 },
+  { key: 'epic', weight: 30.6 },
+  { key: 'mythic', weight: 1.0 },
+  { key: 'legendary', weight: 0.5 },
+  { key: 'apex', weight: 0.3 },
+  { key: 'limit', weight: 0.1 }
+];
+
 const RARITY_RANK_ORDER = {
   limit: 6,
   apex: 5,
@@ -626,7 +637,10 @@ function ensureCasesPageUI() {
       <div id="case-detail-view" class="hidden">
         <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px;">
           <button type="button" id="back-to-cases-btn" class="btn-secondary">← Назад к кейсам</button>
-          <button type="button" id="open-selected-case-btn" class="btn-primary">Купить</button>
+          <div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px;">
+            <button type="button" id="open-selected-case-btn" class="btn-primary">Купить</button>
+            <button type="button" id="fast-open-selected-case-btn" class="btn-secondary">Купить и открыть быстро</button>
+          </div>
         </div>
 
         <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:14px;">
@@ -1064,10 +1078,18 @@ function updateHeader() {
   }
 
   const openCaseBtn = document.getElementById('open-selected-case-btn');
+  const fastOpenCaseBtn = document.getElementById('fast-open-selected-case-btn');
   const activeCase = state.cases.find(c => c.id === openedCaseId);
-  if (openCaseBtn && activeCase) {
-    openCaseBtn.textContent = `Купить (${activeCase.price} ₽)`;
-    openCaseBtn.disabled = state.balance < activeCase.price || isOpeningCase;
+  if (activeCase) {
+    const canAfford = state.balance >= activeCase.price && !isOpeningCase;
+    if (openCaseBtn) {
+      openCaseBtn.textContent = `Купить (${activeCase.price} ₽)`;
+      openCaseBtn.disabled = !canAfford;
+    }
+    if (fastOpenCaseBtn) {
+      fastOpenCaseBtn.textContent = `Купить и открыть быстро (${activeCase.price} ₽)`;
+      fastOpenCaseBtn.disabled = !canAfford;
+    }
   }
 }
 
@@ -1088,20 +1110,28 @@ function buildCardInstance(base, isHolo = false, uidPrefix = 'card') {
   };
 }
 
-function rollSingleCard(customRarity = null, poolOverride = null) {
+function rollSingleCard(customRarity = null, poolOverride = null, weightsOverride = null) {
   const sourcePool = Array.isArray(poolOverride) && poolOverride.length > 0 ? poolOverride : state.pool;
   if (!sourcePool || sourcePool.length === 0) return null;
 
+  const activeWeights = Array.isArray(weightsOverride) && weightsOverride.length > 0
+    ? weightsOverride
+    : RARITY_WEIGHTS;
+
   let chosenRarity = customRarity;
   if (!chosenRarity) {
-    const roll = Math.random() * 100;
+    const totalWeight = activeWeights.reduce((sum, item) => sum + item.weight, 0);
+    const roll = Math.random() * totalWeight;
     let acc = 0;
-    for (const r of RARITY_WEIGHTS) {
+    for (const r of activeWeights) {
       acc += r.weight;
       if (roll <= acc) {
         chosenRarity = r.key;
         break;
       }
+    }
+    if (!chosenRarity) {
+      chosenRarity = activeWeights[activeWeights.length - 1].key;
     }
   }
 
@@ -1210,7 +1240,7 @@ function prependDroppedCardElement(grid, card, animate = true) {
   grid.prepend(cardEl);
 }
 
-// 0. КЕЙСЫ (ОТДЕЛЬНЫЙ ЭКРАН КЕЙСА + ШИРОКАЯ CS РУЛЕТКА + ЦЕНТРАЛЬНАЯ ЛИНИЯ + ВЫБОР ПОСЛЕ ДРОПА)
+// 0. КЕЙСЫ (ОТДЕЛЬНЫЙ ЭКРАН КЕЙСА + ШИРОКАЯ CS РУЛЕТКА + ЦЕНТРАЛЬНАЯ ЛИНИЯ + БЫСТРОЕ ОТКРЫТИЕ)
 function getCasePool(caseObj) {
   if (!caseObj) return state.pool;
   if (!Array.isArray(caseObj.itemIds) || caseObj.itemIds.length === 0) {
@@ -1349,7 +1379,7 @@ function renderCasesPage() {
   updateHeader();
 }
 
-function openSelectedCase() {
+function openSelectedCase(instant = false) {
   if (isOpeningCase) return;
   const activeCase = state.cases.find(c => c.id === openedCaseId);
   if (!activeCase) return;
@@ -1371,7 +1401,7 @@ function openSelectedCase() {
   saveState();
   updateHeader();
 
-  const wonCard = rollSingleCard(null, casePool);
+  const wonCard = rollSingleCard(null, casePool, CASE_RARITY_WEIGHTS);
   const trackEl = document.getElementById('cs-case-spinner-track');
   const boxEl = document.getElementById('cs-case-spinner-box');
 
@@ -1419,11 +1449,7 @@ function openSelectedCase() {
   const jitter = (Math.random() - 0.5) * 44;
   const targetTranslate = Math.max(0, winIndex * step - centerOffset + jitter);
 
-  void trackEl.offsetWidth;
-  trackEl.style.transition = 'transform 3.4s cubic-bezier(0.12, 0.84, 0.2, 1)';
-  trackEl.style.transform = `translateX(-${targetTranslate}px)`;
-
-  setTimeout(() => {
+  const finishOpening = () => {
     recordDropToFeed(wonCard, activeCase.name);
     renderCaseDropSpotlight(wonCard);
 
@@ -1435,7 +1461,21 @@ function openSelectedCase() {
 
     isOpeningCase = false;
     updateHeader();
-  }, 3500);
+  };
+
+  if (instant) {
+    trackEl.style.transition = 'none';
+    trackEl.style.transform = `translateX(-${targetTranslate}px)`;
+    void trackEl.offsetWidth;
+    finishOpening();
+    return;
+  }
+
+  void trackEl.offsetWidth;
+  trackEl.style.transition = 'transform 3.4s cubic-bezier(0.12, 0.84, 0.2, 1)';
+  trackEl.style.transform = `translateX(-${targetTranslate}px)`;
+
+  setTimeout(finishOpening, 3500);
 }
 
 // 1. ОТКРЫТИЕ ОДНОГО ПАКА
@@ -2163,7 +2203,12 @@ function bindEvents() {
 
   const openSelectedCaseBtn = document.getElementById('open-selected-case-btn');
   if (openSelectedCaseBtn) {
-    openSelectedCaseBtn.addEventListener('click', openSelectedCase);
+    openSelectedCaseBtn.addEventListener('click', () => openSelectedCase(false));
+  }
+
+  const fastOpenSelectedCaseBtn = document.getElementById('fast-open-selected-case-btn');
+  if (fastOpenSelectedCaseBtn) {
+    fastOpenSelectedCaseBtn.addEventListener('click', () => openSelectedCase(true));
   }
 
   const spotlightKeepBtn = document.getElementById('case-spotlight-keep-btn');
