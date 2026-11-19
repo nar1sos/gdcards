@@ -104,14 +104,52 @@ const DEFAULT_CASES = [
   }
 ];
 
+const DEFAULT_EFFECTS = [
+  {
+    id: 'none',
+    name: 'Без эффекта',
+    styleMode: 'none',
+    intensity: 1,
+    accentColor: ''
+  },
+  {
+    id: 'pulse_glow',
+    name: 'Пульсирующее свечение',
+    styleMode: 'pulse_glow',
+    intensity: 1.2,
+    accentColor: ''
+  },
+  {
+    id: 'shimmer_sweep',
+    name: 'Переливающийся блик',
+    styleMode: 'shimmer_sweep',
+    intensity: 1.1,
+    accentColor: ''
+  },
+  {
+    id: 'neon_border',
+    name: 'Неоновый контур',
+    styleMode: 'neon_border',
+    intensity: 1.3,
+    accentColor: ''
+  },
+  {
+    id: 'float_aura',
+    name: 'Плавная аура',
+    styleMode: 'float_aura',
+    intensity: 1.25,
+    accentColor: ''
+  }
+];
+
 const DEFAULT_RARITIES = [
-  { key: 'common', label: 'Common', color: '#3b82f6', packChance: 67.499, caseChance: 60.899, order: 1 },
-  { key: 'epic', label: 'Epic', color: '#a855f7', packChance: 31.5, caseChance: 30.0, order: 2 },
-  { key: 'mythic', label: 'Mythic', color: '#ef4444', packChance: 0.4, caseChance: 5.0, order: 3 },
-  { key: 'legendary', label: 'Legendary', color: '#eab308', packChance: 0.3, caseChance: 3.0, order: 4 },
-  { key: 'apex', label: 'Apex', color: '#f43f5e', packChance: 0.2, caseChance: 1.0, order: 5 },
-  { key: 'limit', label: 'Limit', color: '#10b981', packChance: 0.1, caseChance: 0.1, order: 6 },
-  { key: 'future', label: 'FUTURE', color: '#06b6d4', packChance: 0.001, caseChance: 0.001, order: 7 }
+  { key: 'common', label: 'Common', color: '#3b82f6', effectId: 'none', packChance: 67.499, caseChance: 60.899, order: 1 },
+  { key: 'epic', label: 'Epic', color: '#a855f7', effectId: 'none', packChance: 31.5, caseChance: 30.0, order: 2 },
+  { key: 'mythic', label: 'Mythic', color: '#ef4444', effectId: 'pulse_glow', packChance: 0.4, caseChance: 5.0, order: 3 },
+  { key: 'legendary', label: 'Legendary', color: '#eab308', effectId: 'shimmer_sweep', packChance: 0.3, caseChance: 3.0, order: 4 },
+  { key: 'apex', label: 'Apex', color: '#f43f5e', effectId: 'neon_border', packChance: 0.2, caseChance: 1.0, order: 5 },
+  { key: 'limit', label: 'Limit', color: '#10b981', effectId: 'float_aura', packChance: 0.1, caseChance: 0.1, order: 6 },
+  { key: 'future', label: 'FUTURE', color: '#06b6d4', effectId: 'shimmer_sweep', packChance: 0.001, caseChance: 0.001, order: 7 }
 ];
 
 const RARE_ANIM_TIERS = ['legendary', 'apex', 'limit', 'future'];
@@ -131,6 +169,7 @@ let state = {
   pool: [],
   cases: [],
   rarities: [],
+  effects: [],
   inventory: [],
   droppedTemp: [],
   recentDrops: []
@@ -169,6 +208,43 @@ function normalizeRarityKey(raw) {
     .replace(/^_+|_+$/g, '');
 }
 
+function normalizeEffectId(raw) {
+  const clean = String(raw || '').trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_');
+  return clean || 'none';
+}
+
+function normalizeEffectsList(list) {
+  const source = Array.isArray(list) && list.length > 0 ? list : DEFAULT_EFFECTS;
+  const map = new Map();
+
+  source.forEach(item => {
+    if (!item) return;
+    const id = normalizeEffectId(item.id);
+    if (!id) return;
+    const intensityNum = Number(item.intensity);
+    map.set(id, {
+      id,
+      name: String(item.name || id).trim() || id,
+      styleMode: ['none', 'pulse_glow', 'shimmer_sweep', 'neon_border', 'float_aura'].includes(item.styleMode)
+        ? item.styleMode
+        : 'pulse_glow',
+      intensity: Number.isFinite(intensityNum) ? Math.max(0.3, Math.min(2.5, intensityNum)) : 1,
+      accentColor: /^#[0-9a-fA-F]{6}$/.test(item.accentColor || '') ? item.accentColor : ''
+    });
+  });
+
+  if (!map.has('none')) {
+    map.set('none', { ...DEFAULT_EFFECTS[0] });
+  }
+
+  return Array.from(map.values());
+}
+
+function getEffectObj(effectId) {
+  const normId = normalizeEffectId(effectId);
+  return state.effects.find(e => e.id === normId) || DEFAULT_EFFECTS[0];
+}
+
 function normalizeRaritiesList(list) {
   const source = Array.isArray(list) && list.length > 0 ? list : DEFAULT_RARITIES;
   const map = new Map();
@@ -176,21 +252,21 @@ function normalizeRaritiesList(list) {
   source.forEach((item, idx) => {
     const key = normalizeRarityKey(item.key || item.label);
     if (!key) return;
+    const effId = normalizeEffectId(item.effectId);
     map.set(key, {
       key,
       label: String(item.label || key).trim() || key,
       color: /^#[0-9a-fA-F]{6}$/.test(item.color || '') ? item.color : '#8b5cf6',
+      effectId: effId,
       packChance: Math.max(0, Number(item.packChance) || 0),
       caseChance: Math.max(0, Number(item.caseChance) || 0),
       order: Number.isFinite(Number(item.order)) ? Number(item.order) : idx + 1
     });
   });
 
-  DEFAULT_RARITIES.forEach(def => {
-    if (!map.has(def.key)) {
-      map.set(def.key, { ...def });
-    }
-  });
+  if (map.size === 0) {
+    DEFAULT_RARITIES.forEach(def => map.set(def.key, { ...def }));
+  }
 
   return Array.from(map.values()).sort((a, b) => (a.order || 999) - (b.order || 999));
 }
@@ -203,6 +279,7 @@ function getRarityObj(rarityKey) {
       key: normKey,
       label: rarityKey || normKey,
       color: '#8b5cf6',
+      effectId: 'none',
       packChance: 0,
       caseChance: 0,
       order: 99
@@ -258,7 +335,7 @@ function hexToRgba(hex, alpha) {
   const r = parseInt(clean.slice(1, 3), 16);
   const g = parseInt(clean.slice(3, 5), 16);
   const b = parseInt(clean.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`;
 }
 
 function syncDynamicRarityStyles() {
@@ -269,7 +346,7 @@ function syncDynamicRarityStyles() {
     document.head.appendChild(styleEl);
   }
 
-  const rules = state.rarities.map(r => {
+  const rarityRules = state.rarities.map(r => {
     const k = r.key;
     const c = r.color || '#8b5cf6';
     return `
@@ -287,7 +364,122 @@ function syncDynamicRarityStyles() {
     `;
   });
 
-  styleEl.textContent = rules.join('\n');
+  const effectRules = state.effects.map(eff => {
+    const eid = eff.id;
+    const mode = eff.styleMode || 'none';
+    const mult = Number(eff.intensity) || 1;
+    const customColor = /^#[0-9a-fA-F]{6}$/.test(eff.accentColor || '') ? eff.accentColor : '';
+
+    if (mode === 'none' || eid === 'none') {
+      return `
+        .gd-card.fx-${eid},
+        .cs-reel-card.fx-${eid},
+        .cb-live-item.fx-${eid} {
+          animation: none;
+        }
+      `;
+    }
+
+    if (mode === 'pulse_glow') {
+      const glowAlpha = Math.min(0.85, 0.42 * mult);
+      const blurPx = Math.round(18 * mult);
+      return `
+        @keyframes fxPulse_${eid} {
+          0%, 100% {
+            box-shadow: 0 0 ${Math.round(blurPx * 0.6)}px ${customColor ? hexToRgba(customColor, glowAlpha * 0.7) : 'currentColor'};
+          }
+          50% {
+            box-shadow: 0 0 ${blurPx}px ${customColor ? hexToRgba(customColor, glowAlpha) : 'currentColor'};
+          }
+        }
+        .gd-card.fx-${eid},
+        .cs-reel-card.fx-${eid},
+        .cb-live-item.fx-${eid} {
+          ${customColor ? `border-color: ${customColor};` : ''}
+          animation: fxPulse_${eid} 2.2s ease-in-out infinite;
+        }
+      `;
+    }
+
+    if (mode === 'shimmer_sweep') {
+      const sweepAlpha = Math.min(0.45, 0.18 * mult);
+      return `
+        @keyframes fxShimmer_${eid} {
+          0% { transform: translateX(-140%) skewX(-20deg); }
+          60%, 100% { transform: translateX(240%) skewX(-20deg); }
+        }
+        .gd-card.fx-${eid},
+        .cs-reel-card.fx-${eid} {
+          position: relative;
+          overflow: hidden;
+          ${customColor ? `border-color: ${customColor};` : ''}
+        }
+        .gd-card.fx-${eid}::after,
+        .cs-reel-card.fx-${eid}::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          bottom: 0;
+          width: 45%;
+          background: linear-gradient(90deg, transparent, ${customColor ? hexToRgba(customColor, sweepAlpha) : `rgba(255, 255, 255, ${sweepAlpha})`}, transparent);
+          pointer-events: none;
+          z-index: 3;
+          animation: fxShimmer_${eid} 2.8s ease-in-out infinite;
+        }
+      `;
+    }
+
+    if (mode === 'neon_border') {
+      const spread = Math.round(3 * mult);
+      const blur = Math.round(22 * mult);
+      return `
+        @keyframes fxNeon_${eid} {
+          0%, 100% {
+            filter: brightness(1);
+            box-shadow: 0 0 ${Math.round(blur * 0.65)}px ${customColor || 'currentColor'}, inset 0 0 ${Math.max(4, spread * 3)}px ${customColor ? hexToRgba(customColor, 0.25) : 'rgba(255,255,255,0.12)'};
+          }
+          50% {
+            filter: brightness(1.14);
+            box-shadow: 0 0 ${blur}px ${customColor || 'currentColor'}, inset 0 0 ${Math.max(6, spread * 4)}px ${customColor ? hexToRgba(customColor, 0.35) : 'rgba(255,255,255,0.2)'};
+          }
+        }
+        .gd-card.fx-${eid},
+        .cs-reel-card.fx-${eid},
+        .cb-live-item.fx-${eid} {
+          ${customColor ? `border-color: ${customColor};` : ''}
+          animation: fxNeon_${eid} 1.8s ease-in-out infinite;
+        }
+      `;
+    }
+
+    const liftPx = Math.round(4 * mult);
+    const auraBlur = Math.round(24 * mult);
+    return `
+      @keyframes fxAura_${eid} {
+        0%, 100% {
+          transform: translateY(0px);
+          box-shadow: 0 4px ${Math.round(auraBlur * 0.7)}px ${customColor ? hexToRgba(customColor, 0.45) : 'currentColor'};
+        }
+        50% {
+          transform: translateY(-${liftPx}px);
+          box-shadow: 0 10px ${auraBlur}px ${customColor ? hexToRgba(customColor, 0.72) : 'currentColor'};
+        }
+      }
+      .gd-card.fx-${eid},
+      .cs-reel-card.fx-${eid} {
+        ${customColor ? `border-color: ${customColor};` : ''}
+        animation: fxAura_${eid} 2.6s ease-in-out infinite;
+      }
+    `;
+  });
+
+  styleEl.textContent = [...rarityRules, ...effectRules].join('\n');
+}
+
+function getCardEffectClass(rarityKey) {
+  const rarityObj = getRarityObj(rarityKey);
+  const effObj = getEffectObj(rarityObj.effectId);
+  return `fx-${effObj.id}`;
 }
 
 function injectMinimalCaseAndFeedStyles() {
@@ -420,7 +612,7 @@ function injectMinimalCaseAndFeedStyles() {
 
       .gd-modal-card {
         width: 100%;
-        max-width: 660px;
+        max-width: 680px;
         max-height: 90vh;
         overflow: auto;
         background: #141827;
@@ -444,9 +636,31 @@ function injectMinimalCaseAndFeedStyles() {
         text-align: left;
       }
 
-      .rarity-chance-table input[type="number"] {
-        width: 92px;
+      .rarity-chance-table input[type="number"],
+      .rarity-chance-table input[type="text"],
+      .rarity-chance-table select {
         padding: 5px 7px;
+      }
+
+      .rarity-chance-table input[type="number"] {
+        width: 82px;
+      }
+
+      .effect-customizer-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 12px;
+        margin-top: 12px;
+      }
+
+      .effect-customizer-card {
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 10px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.03);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
     `;
     document.head.appendChild(style);
@@ -483,7 +697,7 @@ function recordDropToFeed(card, sourceLabel = 'Пак') {
   renderLiveDropsFeed();
 
   if (isCloudConfigured()) {
-    pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities);
+    pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects);
   }
 }
 
@@ -521,17 +735,19 @@ function renderLiveDropsFeed() {
   }
 
   sorted.slice(0, 22).forEach(item => {
+    const rKey = normalizeRarityKey(item.rarity) || 'common';
+    const fxClass = getCardEffectClass(rKey);
     const div = document.createElement('div');
-    const isRare = item.isHolo || RARE_ANIM_TIERS.includes(item.rarity) || item.rarity === 'mythic';
-    div.className = `cb-live-item rarity-${item.rarity} ${isRare ? 'rare-glow' : ''}`;
+    const isRare = item.isHolo || RARE_ANIM_TIERS.includes(rKey) || rKey === 'mythic';
+    div.className = `cb-live-item rarity-${rKey} ${fxClass} ${isRare ? 'rare-glow' : ''}`;
     const whoText = item.playerId === state.playerId ? `Ты (${item.source})` : `${item.playerName}`;
     const fallbackImg = `https://placehold.co/160x90/171c2b/ffffff?text=${encodeURIComponent(item.name)}`;
-    const rarityLabel = getRarityLabel(item.rarity);
+    const rarityLabel = getRarityLabel(rKey);
 
     div.innerHTML = `
       <img src="${item.image}" alt="${item.name}" onerror="this.src='${fallbackImg}'" />
       <div class="cb-live-name">${item.isHolo ? '✦ ' : ''}${item.name}</div>
-      <span class="live-rarity-badge rarity-${item.rarity}">${rarityLabel}${item.isHolo ? ' · HOLO' : ''}</span>
+      <span class="live-rarity-badge rarity-${rKey}">${rarityLabel}${item.isHolo ? ' · HOLO' : ''}</span>
       <div class="cb-live-price">${item.price} ₽</div>
       <div class="cb-live-who">${whoText}</div>
     `;
@@ -541,7 +757,7 @@ function renderLiveDropsFeed() {
 
 async function fetchSharedData() {
   if (!isCloudConfigured()) {
-    return { ok: false, pool: null, cases: null, recentDrops: null, rarities: null };
+    return { ok: false, pool: null, cases: null, recentDrops: null, rarities: null, effects: null };
   }
   try {
     const res = await fetch(`${JSONBIN_URL}/latest?nocache=${Date.now()}`, {
@@ -560,11 +776,12 @@ async function fetchSharedData() {
       pool: Array.isArray(rec.pool) ? rec.pool : null,
       cases: Array.isArray(rec.cases) ? rec.cases : null,
       recentDrops: Array.isArray(rec.recentDrops) ? rec.recentDrops : null,
-      rarities: Array.isArray(rec.rarities) ? rec.rarities : null
+      rarities: Array.isArray(rec.rarities) ? rec.rarities : null,
+      effects: Array.isArray(rec.effects) ? rec.effects : null
     };
   } catch (err) {
     console.error('Не удалось загрузить общие данные:', err);
-    return { ok: false, pool: null, cases: null, recentDrops: null, rarities: null };
+    return { ok: false, pool: null, cases: null, recentDrops: null, rarities: null, effects: null };
   }
 }
 
@@ -572,7 +789,8 @@ async function pushSharedData(
   nextPool = state.pool,
   nextCases = state.cases,
   nextDrops = state.recentDrops,
-  nextRarities = state.rarities
+  nextRarities = state.rarities,
+  nextEffects = state.effects
 ) {
   if (!isCloudConfigured()) {
     return false;
@@ -588,7 +806,8 @@ async function pushSharedData(
         pool: nextPool,
         cases: nextCases,
         recentDrops: nextDrops,
-        rarities: nextRarities
+        rarities: nextRarities,
+        effects: nextEffects
       })
     });
     if (!res.ok) {
@@ -888,6 +1107,23 @@ function syncRaritySelects() {
   });
 }
 
+function fillEffectSelect(selectEl, selectedId = 'none') {
+  if (!selectEl) return;
+  selectEl.innerHTML = '';
+  state.effects.forEach(eff => {
+    const opt = document.createElement('option');
+    opt.value = eff.id;
+    opt.textContent = eff.name;
+    selectEl.appendChild(opt);
+  });
+  const target = normalizeEffectId(selectedId);
+  if (Array.from(selectEl.options).some(o => o.value === target)) {
+    selectEl.value = target;
+  } else {
+    selectEl.value = 'none';
+  }
+}
+
 function ensureAdminRaritiesManagerUI() {
   const adminPanel = document.getElementById('admin-panel');
   if (!adminPanel || document.getElementById('admin-rarities-manager')) return;
@@ -896,20 +1132,22 @@ function ensureAdminRaritiesManagerUI() {
   box.id = 'admin-rarities-manager';
   box.style.cssText = 'margin-top:32px; padding-top:24px; border-top:1px solid rgba(255,255,255,0.14);';
   box.innerHTML = `
-    <h3 class="sub-title">Редкости и шансы выпадения (паки и кейсы)</h3>
+    <h3 class="sub-title">Редкости, эффекты и шансы выпадения</h3>
     <p class="hint" style="margin-bottom:12px;">
-      Укажи шансы в процентах (например, <code>0.001</code> для FUTURE). При сохранении веса автоматически приводятся к сумме 100%, чтобы рулетка и паки работали корректно.
+      Редактируй название, цвет, эффект (или выбери <strong>Без эффекта</strong>), шансы в паке и кейсе, либо удаляй редкости. При сохранении шансы автоматически приводятся к 100%.
     </p>
 
     <div style="overflow-x:auto;">
       <table class="rarity-chance-table">
         <thead>
           <tr>
-            <th>Редкость</th>
+            <th>Название</th>
             <th>Ключ</th>
             <th>Цвет</th>
-            <th>Шанс в паке (%)</th>
-            <th>Шанс в кейсе (%)</th>
+            <th>Эффект</th>
+            <th>Пак (%)</th>
+            <th>Кейс (%)</th>
+            <th>Действия</th>
           </tr>
         </thead>
         <tbody id="admin-rarities-tbody"></tbody>
@@ -917,11 +1155,11 @@ function ensureAdminRaritiesManagerUI() {
     </div>
 
     <div style="display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;">
-      <button type="button" id="save-rarity-chances-btn" class="btn-primary">Сохранить шансы редкостей</button>
-      <button type="button" id="reset-rarity-chances-btn" class="btn-secondary">Сбросить шансы по умолчанию</button>
+      <button type="button" id="save-rarity-chances-btn" class="btn-primary">Сохранить все редкости и шансы</button>
+      <button type="button" id="reset-rarity-chances-btn" class="btn-secondary">Сбросить по умолчанию</button>
     </div>
 
-    <form id="add-rarity-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-top:20px; padding-top:16px; border-top:1px dashed rgba(255,255,255,0.12); align-items:end;">
+    <form id="add-rarity-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(145px, 1fr)); gap:10px; margin-top:20px; padding-top:16px; border-top:1px dashed rgba(255,255,255,0.12); align-items:end;">
       <label style="display:flex; flex-direction:column; gap:5px;">
         <span>Название редкости</span>
         <input type="text" id="new-rarity-label" placeholder="Например: Astral" required />
@@ -935,6 +1173,10 @@ function ensureAdminRaritiesManagerUI() {
         <input type="color" id="new-rarity-color" value="#38bdf8" style="height:36px; width:100%; padding:2px;" />
       </label>
       <label style="display:flex; flex-direction:column; gap:5px;">
+        <span>Эффект</span>
+        <select id="new-rarity-effect"></select>
+      </label>
+      <label style="display:flex; flex-direction:column; gap:5px;">
         <span>Шанс в паке (%)</span>
         <input type="number" id="new-rarity-pack-chance" min="0" max="100" step="any" value="0.01" required />
       </label>
@@ -944,13 +1186,162 @@ function ensureAdminRaritiesManagerUI() {
       </label>
       <button type="submit" class="btn-primary">Добавить редкость</button>
     </form>
+
+    <div id="admin-effects-customizer" style="margin-top:28px; padding-top:20px; border-top:1px solid rgba(255,255,255,0.14);">
+      <h4 style="margin:0 0 6px;">Кастомизатор эффектов</h4>
+      <p class="hint" style="margin:0 0 12px;">
+        Создавай, изменяй и удаляй визуальные эффекты, которые можно навешивать на любую редкость.
+      </p>
+
+      <form id="add-effect-form" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; align-items:end;">
+        <label style="display:flex; flex-direction:column; gap:5px;">
+          <span>Название эффекта</span>
+          <input type="text" id="new-effect-name" placeholder="Например: Гипер-свечение" required />
+        </label>
+        <label style="display:flex; flex-direction:column; gap:5px;">
+          <span>Тип анимации</span>
+          <select id="new-effect-mode">
+            <option value="pulse_glow">Пульсирующее свечение</option>
+            <option value="shimmer_sweep">Переливающийся блик</option>
+            <option value="neon_border">Неоновый контур</option>
+            <option value="float_aura">Плавная аура</option>
+            <option value="none">Без эффекта</option>
+          </select>
+        </label>
+        <label style="display:flex; flex-direction:column; gap:5px;">
+          <span>Сила (0.3–2.5)</span>
+          <input type="number" id="new-effect-intensity" min="0.3" max="2.5" step="0.1" value="1.2" required />
+        </label>
+        <label style="display:flex; flex-direction:column; gap:5px;">
+          <span>Цвет (опционально)</span>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <input type="color" id="new-effect-color" value="#22d3ee" style="height:34px; width:46px; padding:2px;" />
+            <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;">
+              <input type="checkbox" id="new-effect-use-rarity-color" checked />
+              <span>Цвет редкости</span>
+            </label>
+          </div>
+        </label>
+        <button type="submit" class="btn-primary">Создать эффект</button>
+      </form>
+
+      <div id="admin-effects-list" class="effect-customizer-grid"></div>
+    </div>
   `;
 
   adminPanel.appendChild(box);
+  fillEffectSelect(document.getElementById('new-rarity-effect'), 'none');
+}
+
+function renderAdminEffectsCustomizer() {
+  ensureAdminRaritiesManagerUI();
+  const listEl = document.getElementById('admin-effects-list');
+  if (!listEl) return;
+
+  listEl.innerHTML = '';
+  state.effects.forEach(eff => {
+    const card = document.createElement('div');
+    card.className = 'effect-customizer-card';
+    card.dataset.effectId = eff.id;
+
+    const hasCustomColor = /^#[0-9a-fA-F]{6}$/.test(eff.accentColor || '');
+    const pickerColor = hasCustomColor ? eff.accentColor : '#22d3ee';
+
+    card.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+        <code style="font-size:11px; opacity:0.8;">${eff.id}</code>
+        ${eff.id === 'none' ? '<span class="hint">базовый</span>' : ''}
+      </div>
+      <label style="display:flex; flex-direction:column; gap:4px; font-size:12px;">
+        <span>Название</span>
+        <input type="text" class="fx-name-input" value="${eff.name}" />
+      </label>
+      <label style="display:flex; flex-direction:column; gap:4px; font-size:12px;">
+        <span>Анимация</span>
+        <select class="fx-mode-select">
+          <option value="none" ${eff.styleMode === 'none' ? 'selected' : ''}>Без эффекта</option>
+          <option value="pulse_glow" ${eff.styleMode === 'pulse_glow' ? 'selected' : ''}>Пульсирующее свечение</option>
+          <option value="shimmer_sweep" ${eff.styleMode === 'shimmer_sweep' ? 'selected' : ''}>Переливающийся блик</option>
+          <option value="neon_border" ${eff.styleMode === 'neon_border' ? 'selected' : ''}>Неоновый контур</option>
+          <option value="float_aura" ${eff.styleMode === 'float_aura' ? 'selected' : ''}>Плавная аура</option>
+        </select>
+      </label>
+      <label style="display:flex; flex-direction:column; gap:4px; font-size:12px;">
+        <span>Сила эффекта</span>
+        <input type="number" class="fx-intensity-input" min="0.3" max="2.5" step="0.1" value="${Number(eff.intensity) || 1}" />
+      </label>
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:12px;">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" class="fx-auto-color-cb" ${!hasCustomColor ? 'checked' : ''} />
+          <span>Цвет редкости</span>
+        </label>
+        <input type="color" class="fx-color-input" value="${pickerColor}" style="width:42px; height:28px; padding:0; border:none; background:none;" />
+      </div>
+      <div style="display:flex; gap:8px; margin-top:4px;">
+        <button type="button" class="btn-primary fx-save-btn" style="padding:5px 10px; font-size:12px;">Сохранить</button>
+        ${eff.id !== 'none' ? '<button type="button" class="btn-danger fx-del-btn" style="padding:5px 10px; font-size:12px;">Удалить</button>' : ''}
+      </div>
+    `;
+
+    const saveBtn = card.querySelector('.fx-save-btn');
+    saveBtn.addEventListener('click', async () => {
+      const nextName = card.querySelector('.fx-name-input').value.trim() || eff.name;
+      const nextMode = card.querySelector('.fx-mode-select').value;
+      const nextIntensity = Math.max(0.3, Math.min(2.5, Number(card.querySelector('.fx-intensity-input').value) || 1));
+      const autoColor = card.querySelector('.fx-auto-color-cb').checked;
+      const colorPicked = card.querySelector('.fx-color-input').value;
+      const nextAccent = autoColor ? '' : colorPicked;
+
+      const nextEffects = state.effects.map(item =>
+        item.id === eff.id
+          ? { ...item, name: nextName, styleMode: nextMode, intensity: nextIntensity, accentColor: nextAccent }
+          : item
+      );
+
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, nextEffects);
+      if (ok) {
+        state.effects = nextEffects;
+        syncDynamicRarityStyles();
+        saveState();
+        renderAdminRaritiesManager();
+        renderAdminEffectsCustomizer();
+        renderCollection();
+        renderCasesPage();
+        showToast(`Эффект "${nextName}" сохранён!`);
+      }
+    });
+
+    const delBtn = card.querySelector('.fx-del-btn');
+    if (delBtn) {
+      delBtn.addEventListener('click', async () => {
+        const nextEffects = state.effects.filter(item => item.id !== eff.id);
+        const nextRarities = state.rarities.map(r =>
+          normalizeEffectId(r.effectId) === eff.id ? { ...r, effectId: 'none' } : r
+        );
+
+        const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, nextEffects);
+        if (ok) {
+          state.effects = nextEffects;
+          state.rarities = nextRarities;
+          syncDynamicRarityStyles();
+          saveState();
+          renderAdminRaritiesManager();
+          renderAdminEffectsCustomizer();
+          renderCollection();
+          renderCasesPage();
+          showToast(`Эффект "${eff.name}" удалён`);
+        }
+      });
+    }
+
+    listEl.appendChild(card);
+  });
 }
 
 function renderAdminRaritiesManager() {
   ensureAdminRaritiesManagerUI();
+  fillEffectSelect(document.getElementById('new-rarity-effect'), 'none');
+
   const tbody = document.getElementById('admin-rarities-tbody');
   if (!tbody) return;
 
@@ -959,14 +1350,102 @@ function renderAdminRaritiesManager() {
     const tr = document.createElement('tr');
     tr.dataset.rarityKey = r.key;
     tr.innerHTML = `
-      <td><strong>${r.label}</strong></td>
+      <td><input type="text" class="rarity-label-input" value="${r.label}" style="width:110px;" /></td>
       <td><code>${r.key}</code></td>
-      <td><input type="color" class="rarity-color-input" value="${r.color || '#8b5cf6'}" style="width:44px; height:28px; padding:0; border:none; background:none;" /></td>
+      <td><input type="color" class="rarity-color-input" value="${r.color || '#8b5cf6'}" style="width:42px; height:28px; padding:0; border:none; background:none;" /></td>
+      <td><select class="rarity-effect-select"></select></td>
       <td><input type="number" class="rarity-pack-input" min="0" max="100" step="any" value="${Number(r.packChance) || 0}" /></td>
       <td><input type="number" class="rarity-case-input" min="0" max="100" step="any" value="${Number(r.caseChance) || 0}" /></td>
+      <td style="display:flex; gap:6px; flex-wrap:wrap;">
+        <button type="button" class="btn-secondary rarity-row-save-btn" style="padding:4px 8px; font-size:12px;">Сохранить</button>
+        ${state.rarities.length > 1 ? '<button type="button" class="btn-danger rarity-row-del-btn" style="padding:4px 8px; font-size:12px;">Удалить</button>' : ''}
+      </td>
     `;
+
+    fillEffectSelect(tr.querySelector('.rarity-effect-select'), r.effectId || 'none');
+
+    tr.querySelector('.rarity-row-save-btn').addEventListener('click', async () => {
+      const updatedLabel = tr.querySelector('.rarity-label-input').value.trim() || r.label;
+      const updatedColor = tr.querySelector('.rarity-color-input').value || r.color;
+      const updatedEffect = normalizeEffectId(tr.querySelector('.rarity-effect-select').value);
+      const updatedPack = Math.max(0, Number(tr.querySelector('.rarity-pack-input').value) || 0);
+      const updatedCase = Math.max(0, Number(tr.querySelector('.rarity-case-input').value) || 0);
+
+      let nextRarities = state.rarities.map(item =>
+        item.key === r.key
+          ? {
+              ...item,
+              label: updatedLabel,
+              color: updatedColor,
+              effectId: updatedEffect,
+              packChance: updatedPack,
+              caseChance: updatedCase
+            }
+          : item
+      );
+
+      const normPack = normalizeWeightsTo100(nextRarities.map(x => x.packChance));
+      const normCase = normalizeWeightsTo100(nextRarities.map(x => x.caseChance));
+      nextRarities = nextRarities.map((x, idx) => ({
+        ...x,
+        packChance: Number(normPack[idx].toFixed(6)),
+        caseChance: Number(normCase[idx].toFixed(6))
+      }));
+
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, state.effects);
+      if (ok) {
+        state.rarities = nextRarities;
+        syncDynamicRarityStyles();
+        syncRaritySelects();
+        saveState();
+        renderAdminRaritiesManager();
+        renderCollection();
+        renderCasesPage();
+        renderLiveDropsFeed();
+        showToast(`Редкость "${updatedLabel}" сохранена!`);
+      }
+    });
+
+    const delBtn = tr.querySelector('.rarity-row-del-btn');
+    if (delBtn) {
+      delBtn.addEventListener('click', async () => {
+        if (state.rarities.length <= 1) {
+          showToast('Должна остаться хотя бы одна редкость!');
+          return;
+        }
+        const remaining = state.rarities.filter(item => item.key !== r.key);
+        const fallbackKey = remaining[0].key;
+        const nextPool = state.pool.map(lvl =>
+          normalizeRarityKey(lvl.rarity) === r.key ? { ...lvl, rarity: fallbackKey } : lvl
+        );
+        const normPack = normalizeWeightsTo100(remaining.map(x => x.packChance));
+        const normCase = normalizeWeightsTo100(remaining.map(x => x.caseChance));
+        const nextRarities = remaining.map((x, idx) => ({
+          ...x,
+          packChance: Number(normPack[idx].toFixed(6)),
+          caseChance: Number(normCase[idx].toFixed(6))
+        }));
+
+        const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, nextRarities, state.effects);
+        if (ok) {
+          state.pool = nextPool;
+          state.rarities = nextRarities;
+          syncDynamicRarityStyles();
+          syncRaritySelects();
+          saveState();
+          renderAdminPool();
+          renderAdminRaritiesManager();
+          renderCollection();
+          renderCasesPage();
+          showToast(`Редкость "${r.label}" удалена`);
+        }
+      });
+    }
+
     tbody.appendChild(tr);
   });
+
+  renderAdminEffectsCustomizer();
 }
 
 function normalizeWeightsTo100(entries) {
@@ -1065,7 +1544,7 @@ function getCollectionSellCandidates(rarity = 'all') {
   if (rarity === 'all') {
     return [...state.inventory];
   }
-  return state.inventory.filter(c => c.rarity === rarity);
+  return state.inventory.filter(c => normalizeRarityKey(c.rarity) === rarity);
 }
 
 function updateCollectionBulkSellButton() {
@@ -1113,13 +1592,13 @@ function ensureAdminSyncButton() {
   btn.type = 'button';
   btn.id = 'sync-pool-now-btn';
   btn.className = 'btn-secondary';
-  btn.textContent = 'Залить пул, кейсы и редкости в облако всем игрокам';
+  btn.textContent = 'Залить пул, кейсы, редкости и эффекты в облако';
   btn.addEventListener('click', async () => {
     if (!state.pool || state.pool.length === 0) {
       showToast('Пул пуст — нечего отправлять');
       return;
     }
-    const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities);
+    const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects);
     if (ok) {
       showToast(`Сохранено в облако: ${state.pool.length} карт, ${state.cases.length} кейсов, ${state.rarities.length} редкостей`);
     }
@@ -1129,7 +1608,7 @@ function ensureAdminSyncButton() {
   status.id = 'cloud-sync-status';
   status.className = 'hint';
   status.textContent = isCloudConfigured()
-    ? 'Облако подключено: изменения пула, кейсов, редкостей и дропов видят все игроки'
+    ? 'Облако подключено: изменения пула, кейсов, редкостей, эффектов и дропов видят все игроки'
     : 'Облако НЕ настроено: заполни JSONBIN_BIN_ID и JSONBIN_MASTER_KEY в app.js';
 
   bar.appendChild(btn);
@@ -1166,6 +1645,9 @@ async function init() {
       if (Array.isArray(parsed.recentDrops)) {
         state.recentDrops = parsed.recentDrops;
       }
+      if (Array.isArray(parsed.effects) && parsed.effects.length > 0) {
+        state.effects = normalizeEffectsList(parsed.effects);
+      }
       if (Array.isArray(parsed.rarities) && parsed.rarities.length > 0) {
         state.rarities = normalizeRaritiesList(parsed.rarities);
       }
@@ -1188,6 +1670,10 @@ async function init() {
       state.cases = [...DEFAULT_CASES];
     }
 
+    if (Array.isArray(cloudResult.effects) && cloudResult.effects.length > 0) {
+      state.effects = normalizeEffectsList(cloudResult.effects);
+    }
+
     if (Array.isArray(cloudResult.rarities) && cloudResult.rarities.length > 0) {
       state.rarities = normalizeRaritiesList(cloudResult.rarities);
     }
@@ -1201,6 +1687,9 @@ async function init() {
     if (!state.cases || state.cases.length === 0) state.cases = [...DEFAULT_CASES];
   }
 
+  if (!state.effects || state.effects.length === 0) {
+    state.effects = normalizeEffectsList(DEFAULT_EFFECTS);
+  }
   if (!state.rarities || state.rarities.length === 0) {
     state.rarities = normalizeRaritiesList(DEFAULT_RARITIES);
   }
@@ -1253,14 +1742,23 @@ async function init() {
           updated = true;
         }
       }
+      if (Array.isArray(fresh.effects) && fresh.effects.length > 0) {
+        const nextEffs = normalizeEffectsList(fresh.effects);
+        if (JSON.stringify(nextEffs) !== JSON.stringify(state.effects)) {
+          state.effects = nextEffs;
+          updated = true;
+        }
+      }
       if (Array.isArray(fresh.rarities) && fresh.rarities.length > 0) {
         const nextRars = normalizeRaritiesList(fresh.rarities);
         if (JSON.stringify(nextRars) !== JSON.stringify(state.rarities)) {
           state.rarities = nextRars;
-          syncDynamicRarityStyles();
           syncRaritySelects();
           updated = true;
         }
+      }
+      if (updated) {
+        syncDynamicRarityStyles();
       }
       if (Array.isArray(fresh.recentDrops)) {
         const mergedMap = new Map();
@@ -1302,6 +1800,7 @@ function saveState() {
       pool: state.pool,
       cases: state.cases,
       rarities: state.rarities,
+      effects: state.effects,
       inventory: state.inventory,
       droppedTemp: state.droppedTemp,
       recentDrops: state.recentDrops
@@ -1453,12 +1952,13 @@ function formatRankDisplay(rank) {
 
 function createCardElement(card, options = {}) {
   const rarityKey = normalizeRarityKey(card.rarity) || 'common';
+  const fxClass = getCardEffectClass(rarityKey);
   const isRareAnim = options.animateDrop && (card.isHolo || RARE_ANIM_TIERS.includes(rarityKey));
   const animClass = options.animateDrop ? (isRareAnim ? 'drop-anim-rare' : 'drop-anim') : '';
   const selectedClass = options.selected ? 'selected-card' : '';
 
   const div = document.createElement('div');
-  div.className = `gd-card rarity-${rarityKey} ${card.isHolo ? 'is-holo' : ''} ${animClass} ${selectedClass}`;
+  div.className = `gd-card rarity-${rarityKey} ${fxClass} ${card.isHolo ? 'is-holo' : ''} ${animClass} ${selectedClass}`;
 
   const fallbackImg = `https://placehold.co/400x225/141420/ffffff?text=${encodeURIComponent(card.name)}`;
 
@@ -1687,8 +2187,9 @@ function renderCasesPage() {
     for (let i = 0; i < 14; i++) {
       const sample = poolItems[i % poolItems.length];
       const rKey = normalizeRarityKey(sample.rarity) || 'common';
+      const fxClass = getCardEffectClass(rKey);
       const reelCard = document.createElement('div');
-      reelCard.className = `cs-reel-card rarity-${rKey}`;
+      reelCard.className = `cs-reel-card rarity-${rKey} ${fxClass}`;
       const rFallback = `https://placehold.co/240x135/141420/ffffff?text=${encodeURIComponent(sample.name)}`;
       reelCard.innerHTML = `
         <img src="${sample.image}" alt="${sample.name}" onerror="this.src='${rFallback}'" />
@@ -1760,8 +2261,9 @@ function openSelectedCase(instant = false) {
 
   slots.forEach(item => {
     const rKey = normalizeRarityKey(item.rarity) || 'common';
+    const fxClass = getCardEffectClass(rKey);
     const el = document.createElement('div');
-    el.className = `cs-reel-card rarity-${rKey}`;
+    el.className = `cs-reel-card rarity-${rKey} ${fxClass}`;
     const rFallback = `https://placehold.co/240x135/141420/ffffff?text=${encodeURIComponent(item.name)}`;
     el.innerHTML = `
       <img src="${item.image}" alt="${item.name}" onerror="this.src='${rFallback}'" />
@@ -2460,7 +2962,7 @@ function renderAdminCasesList() {
       actionLabel: 'Удалить',
       onAction: async (c) => {
         const nextCases = state.cases.filter(x => x.id !== c.id);
-        const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities);
+        const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities, state.effects);
         if (ok) {
           state.cases = nextCases;
           if (openedCaseId === c.id) {
@@ -2538,7 +3040,7 @@ function renderAdminPool() {
             return;
           }
           const nextPool = state.pool.filter(x => x.id !== c.id);
-          const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities);
+          const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects);
           if (ok) {
             state.pool = nextPool;
             saveState();
@@ -2699,7 +3201,7 @@ function bindEvents() {
     }
   });
 
-  // Админка: редкости и шансы
+  // Админка: редкости, эффекты и шансы
   const saveRaritiesBtn = document.getElementById('save-rarity-chances-btn');
   if (saveRaritiesBtn) {
     saveRaritiesBtn.addEventListener('click', async () => {
@@ -2713,22 +3215,30 @@ function bindEvents() {
 
       const nextRarities = state.rarities.map((r, idx) => {
         const tr = rows[idx];
+        const nextLabel = tr ? (tr.querySelector('.rarity-label-input').value.trim() || r.label) : r.label;
         const colorVal = tr ? tr.querySelector('.rarity-color-input').value : r.color;
+        const effectVal = tr ? normalizeEffectId(tr.querySelector('.rarity-effect-select').value) : normalizeEffectId(r.effectId);
         return {
           ...r,
+          label: nextLabel,
           color: colorVal || r.color,
+          effectId: effectVal,
           packChance: Number(normPack[idx].toFixed(6)),
           caseChance: Number(normCase[idx].toFixed(6))
         };
       });
 
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities);
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, state.effects);
       if (ok) {
         state.rarities = nextRarities;
         syncDynamicRarityStyles();
+        syncRaritySelects();
         saveState();
         renderAdminRaritiesManager();
-        showToast('Шансы редкостей обновлены!');
+        renderCollection();
+        renderCasesPage();
+        renderLiveDropsFeed();
+        showToast('Редкости, эффекты и шансы обновлены!');
       }
     });
   }
@@ -2737,14 +3247,18 @@ function bindEvents() {
   if (resetRaritiesBtn) {
     resetRaritiesBtn.addEventListener('click', async () => {
       const nextRarities = normalizeRaritiesList(DEFAULT_RARITIES);
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities);
+      const nextEffects = normalizeEffectsList(DEFAULT_EFFECTS);
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, nextEffects);
       if (ok) {
         state.rarities = nextRarities;
+        state.effects = nextEffects;
         syncDynamicRarityStyles();
         syncRaritySelects();
         saveState();
         renderAdminRaritiesManager();
-        showToast('Шансы сброшены к значениям по умолчанию');
+        renderCollection();
+        renderCasesPage();
+        showToast('Редкости и эффекты сброшены к значениям по умолчанию');
       }
     });
   }
@@ -2756,6 +3270,7 @@ function bindEvents() {
       const label = document.getElementById('new-rarity-label').value.trim();
       const customKey = document.getElementById('new-rarity-key').value.trim();
       const color = document.getElementById('new-rarity-color').value || '#38bdf8';
+      const effectId = normalizeEffectId(document.getElementById('new-rarity-effect').value);
       const packChance = Math.max(0, Number(document.getElementById('new-rarity-pack-chance').value) || 0);
       const caseChance = Math.max(0, Number(document.getElementById('new-rarity-case-chance').value) || 0);
 
@@ -2775,6 +3290,7 @@ function bindEvents() {
           ...nextRarities[existingIdx],
           label,
           color,
+          effectId,
           packChance,
           caseChance
         };
@@ -2785,6 +3301,7 @@ function bindEvents() {
             key,
             label,
             color,
+            effectId,
             packChance,
             caseChance,
             order: maxOrder + 1
@@ -2800,7 +3317,7 @@ function bindEvents() {
         caseChance: Number(normCase[i].toFixed(6))
       }));
 
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities);
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, state.effects);
       if (ok) {
         state.rarities = nextRarities;
         syncDynamicRarityStyles();
@@ -2808,7 +3325,50 @@ function bindEvents() {
         saveState();
         renderAdminRaritiesManager();
         addRarityForm.reset();
+        fillEffectSelect(document.getElementById('new-rarity-effect'), 'none');
         showToast(`Редкость "${label}" добавлена!`);
+      }
+    });
+  }
+
+  const addEffectForm = document.getElementById('add-effect-form');
+  if (addEffectForm) {
+    addEffectForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('new-effect-name').value.trim();
+      const styleMode = document.getElementById('new-effect-mode').value || 'pulse_glow';
+      const intensity = Math.max(0.3, Math.min(2.5, Number(document.getElementById('new-effect-intensity').value) || 1));
+      const useRarityColor = document.getElementById('new-effect-use-rarity-color').checked;
+      const pickedColor = document.getElementById('new-effect-color').value || '#22d3ee';
+
+      if (!name) {
+        showToast('Укажи название эффекта!');
+        return;
+      }
+
+      const baseSlug = normalizeEffectId(name) || 'custom_fx';
+      const id = baseSlug === 'none' ? `fx_${Date.now()}` : `${baseSlug}_${Date.now().toString(36).slice(-4)}`;
+
+      const nextEffects = [
+        ...state.effects,
+        {
+          id,
+          name,
+          styleMode,
+          intensity,
+          accentColor: useRarityColor ? '' : pickedColor
+        }
+      ];
+
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, nextEffects);
+      if (ok) {
+        state.effects = nextEffects;
+        syncDynamicRarityStyles();
+        saveState();
+        renderAdminRaritiesManager();
+        addEffectForm.reset();
+        document.getElementById('new-effect-use-rarity-color').checked = true;
+        showToast(`Эффект "${name}" создан!`);
       }
     });
   }
@@ -2868,7 +3428,7 @@ function bindEvents() {
     };
 
     const nextPool = [newLevel, ...state.pool];
-    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities);
+    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects);
     if (!ok) return;
 
     state.pool = nextPool;
@@ -2964,7 +3524,7 @@ function bindEvents() {
       };
 
       const nextCases = [newCase, ...state.cases];
-      const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities);
+      const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities, state.effects);
       if (!ok) return;
 
       state.cases = nextCases;
@@ -3042,7 +3602,7 @@ function bindEvents() {
         itemIds: checkedIds.length > 0 ? checkedIds : state.pool.map(lvl => lvl.id)
       };
 
-      const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities);
+      const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities, state.effects);
       if (!ok) return;
 
       state.cases = nextCases;
@@ -3096,7 +3656,7 @@ function bindEvents() {
       image: nextImage
     };
 
-    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities);
+    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects);
     if (!ok) return;
 
     state.pool = nextPool;
