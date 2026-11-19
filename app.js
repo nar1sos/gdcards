@@ -156,6 +156,7 @@ const RARE_ANIM_TIERS = ['legendary', 'apex', 'limit', 'future'];
 const HOLO_CHANCE = 0.12;
 const HOLO_MULTIPLIER = 3.5;
 const PACK_PRICE = 500;
+const CRAFT_REQUIRED_COUNT = 10;
 
 const REEL_SLOT_WIDTH = 212;
 const REEL_SLOT_GAP = 12;
@@ -180,6 +181,10 @@ let pendingCaseDropCard = null;
 let tradeActive = false;
 let userTradeIds = [];
 let botOfferCards = [];
+
+let selectedCraftRarityKey = null;
+let selectedCraftCardUids = [];
+let lastCraftedCard = null;
 
 let selectedUpgradeSourceId = null;
 let selectedUpgradeTargetKey = null;
@@ -295,6 +300,18 @@ function getRarityLabel(rarityKey) {
 function getRarityRankOrder(rarityKey) {
   const obj = getRarityObj(rarityKey);
   return obj.order || 1;
+}
+
+function getOrderedRarities() {
+  return [...state.rarities].sort((a, b) => (a.order || 999) - (b.order || 999));
+}
+
+function getNextRarityObj(rarityKey) {
+  const ordered = getOrderedRarities();
+  const normKey = normalizeRarityKey(rarityKey);
+  const idx = ordered.findIndex(r => r.key === normKey);
+  if (idx === -1 || idx >= ordered.length - 1) return null;
+  return ordered[idx + 1];
 }
 
 function getPackRarityWeights() {
@@ -681,10 +698,134 @@ function injectMinimalCaseAndFeedStyles() {
         outline: 2px dashed #38bdf8;
         outline-offset: 2px;
       }
+
+      .craft-top-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 16px 18px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(18, 22, 38, 0.9);
+        margin-bottom: 18px;
+      }
+
+      .craft-summary-stats {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+        font-size: 14px;
+      }
+
+      .craft-slots-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+
+      .craft-empty-slot {
+        min-height: 155px;
+        border-radius: 12px;
+        border: 1px dashed rgba(255, 255, 255, 0.22);
+        background: rgba(255, 255, 255, 0.02);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        opacity: 0.65;
+        padding: 8px;
+        text-align: center;
+        box-sizing: border-box;
+      }
+
+      .craft-result-box {
+        padding: 18px 20px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(20, 26, 44, 0.95);
+        margin-bottom: 22px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 20px;
+      }
     `;
     document.head.appendChild(style);
   }
   syncDynamicRarityStyles();
+}
+
+function ensureCraftsPageUI() {
+  const nav = document.querySelector('nav, .nav-bar, .navbar, .tabs-nav');
+  if (nav && !nav.querySelector('[data-tab="crafts"]')) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'nav-btn';
+    btn.dataset.tab = 'crafts';
+    btn.textContent = 'Крафты';
+    const adminBtn = nav.querySelector('[data-tab="admin"]');
+    if (adminBtn && adminBtn.parentNode === nav) {
+      nav.insertBefore(btn, adminBtn);
+    } else {
+      nav.appendChild(btn);
+    }
+  }
+
+  if (!document.getElementById('tab-crafts')) {
+    const adminTab = document.getElementById('tab-admin');
+    const main = (adminTab && adminTab.parentElement) || document.querySelector('main') || document.body;
+    const section = document.createElement('section');
+    section.id = 'tab-crafts';
+    section.className = 'tab-section';
+    section.innerHTML = `
+      <div class="section-header">
+        <h2 class="section-title">Крафты</h2>
+        <p class="hint">Выбери 10 карт одной редкости, чтобы скрафтить 1 карту следующей редкости. Итоговый уровень зависит от суммарной цены 10 карт.</p>
+      </div>
+
+      <div class="craft-top-bar">
+        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:12px;">
+          <label style="display:flex; flex-direction:column; gap:5px; font-size:13px;">
+            <span>Исходная редкость</span>
+            <select id="craft-rarity-select"></select>
+          </label>
+          <button type="button" id="craft-autofill-btn" class="btn-secondary">Автоподбор 10 карт</button>
+          <button type="button" id="craft-clear-btn" class="btn-secondary">Очистить</button>
+          <button type="button" id="craft-execute-btn" class="btn-primary" disabled>Скрафтить (0 / 10)</button>
+        </div>
+
+        <div class="craft-summary-stats">
+          <div>Выбрано: <strong id="craft-selected-count">0</strong> / 10</div>
+          <div>Сумма 10 карт: <strong id="craft-total-price">0</strong> ₽</div>
+          <div>Следующая редкость: <strong id="craft-next-rarity">—</strong></div>
+        </div>
+      </div>
+
+      <div id="craft-result-box" class="craft-result-box hidden">
+        <div style="flex:1; min-width:220px;">
+          <div style="font-size:13px; opacity:0.8; margin-bottom:6px;">Скрафченная карта:</div>
+          <div id="craft-result-title" style="font-size:18px; font-weight:700;"></div>
+          <div id="craft-result-meta" class="hint" style="margin-top:4px;"></div>
+        </div>
+        <div id="craft-result-card-wrap" style="width:230px; max-width:100%;"></div>
+      </div>
+
+      <h3 class="sub-title">Выбранные карты (<span id="craft-slots-count">0</span> / 10)</h3>
+      <div id="craft-selected-slots" class="craft-slots-grid"></div>
+
+      <h3 class="sub-title">Доступные карты в коллекции</h3>
+      <div id="craft-available-grid" class="cards-grid"></div>
+    `;
+
+    if (adminTab && adminTab.parentNode === main) {
+      main.insertBefore(section, adminTab);
+    } else {
+      main.appendChild(section);
+    }
+  }
 }
 
 function getCardPowerScore(card) {
@@ -1097,7 +1238,8 @@ function syncRaritySelects() {
     document.getElementById('edit-card-rarity'),
     document.getElementById('filter-rarity'),
     document.getElementById('upg-rarity-filter'),
-    document.getElementById('sell-rarity-select')
+    document.getElementById('sell-rarity-select'),
+    document.getElementById('craft-rarity-select')
   ];
 
   raritySelects.forEach(sel => {
@@ -1113,7 +1255,10 @@ function syncRaritySelects() {
       sel.appendChild(allOpt);
     }
 
-    state.rarities.forEach(r => {
+    const ordered = getOrderedRarities();
+    const listToRender = sel.id === 'craft-rarity-select' ? ordered.slice(0, -1) : ordered;
+
+    listToRender.forEach(r => {
       const opt = document.createElement('option');
       opt.value = r.key;
       opt.textContent = r.label;
@@ -1122,6 +1267,13 @@ function syncRaritySelects() {
 
     if (prevVal && Array.from(sel.options).some(o => o.value === prevVal)) {
       sel.value = prevVal;
+    } else if (sel.id === 'craft-rarity-select') {
+      if (selectedCraftRarityKey && Array.from(sel.options).some(o => o.value === selectedCraftRarityKey)) {
+        sel.value = selectedCraftRarityKey;
+      } else if (sel.options.length > 0) {
+        selectedCraftRarityKey = sel.options[0].value;
+        sel.value = selectedCraftRarityKey;
+      }
     }
   });
 }
@@ -1326,6 +1478,7 @@ function renderAdminEffectsCustomizer() {
         renderAdminEffectsCustomizer();
         renderCollection();
         renderCasesPage();
+        renderCraftsPage();
         showToast(`Эффект "${nextName}" сохранён!`);
       }
     });
@@ -1348,6 +1501,7 @@ function renderAdminEffectsCustomizer() {
           renderAdminEffectsCustomizer();
           renderCollection();
           renderCasesPage();
+          renderCraftsPage();
           showToast(`Эффект "${eff.name}" удалён`);
         }
       });
@@ -1420,6 +1574,7 @@ function renderAdminRaritiesManager() {
         renderAdminRaritiesManager();
         renderCollection();
         renderCasesPage();
+        renderCraftsPage();
         renderLiveDropsFeed();
         showToast(`Редкость "${updatedLabel}" сохранена!`);
       }
@@ -1456,6 +1611,7 @@ function renderAdminRaritiesManager() {
           renderAdminRaritiesManager();
           renderCollection();
           renderCasesPage();
+          renderCraftsPage();
           showToast(`Редкость "${r.label}" удалена`);
         }
       });
@@ -1716,6 +1872,7 @@ async function init() {
   injectMinimalCaseAndFeedStyles();
   ensureDroppedCardsAreaUI();
   ensureCasesPageUI();
+  ensureCraftsPageUI();
   ensureEditCaseModalUI();
   ensureBuyPackButtonVisible();
   ensureOpenAllPacksButton();
@@ -1732,6 +1889,7 @@ async function init() {
   renderLiveDropsFeed();
   renderDroppedCards(false);
   renderCasesPage();
+  renderCraftsPage();
   renderCollection();
   renderAdminPreview();
   renderAdminCasePoolCheckboxes();
@@ -1801,6 +1959,7 @@ async function init() {
         renderAdminCasesList();
         renderAdminRaritiesManager();
         renderCasesPage();
+        renderCraftsPage();
         if (document.getElementById('tab-upgrade').classList.contains('active') && !isSpinning) {
           renderUpgradePage();
         }
@@ -1848,6 +2007,7 @@ function setupNavigation() {
       if (targetSec) targetSec.classList.add('active');
 
       if (tab === 'cases') renderCasesPage();
+      if (tab === 'crafts') renderCraftsPage();
       if (tab === 'collection') renderCollection();
       if (tab === 'upgrade') renderUpgradePage();
       if (tab === 'trades' && tradeActive) renderTradeWorkspace();
@@ -2488,7 +2648,7 @@ function renderDroppedCards(animate = false) {
   if (totalEl) totalEl.textContent = total;
 }
 
-// 2. ТРЕЙДЫ С БОТОМ
+// 2. ТРЕЙДЫ С БОТОМ (ТОЛЬКО МЕНЬШЕ ИЛИ РОВНО СТОЛЬКО ЖЕ)
 function startTrade() {
   tradeActive = true;
   userTradeIds = [];
@@ -2508,55 +2668,42 @@ function getAllCatalogVariants() {
   return list;
 }
 
-function pickTradeTargetSum(userSum) {
-  const roll = Math.random();
-
-  if (roll < 0.13) {
-    const bonus = 500 + Math.random() * 500;
-    return Math.round(userSum + bonus);
-  }
-
-  if (roll < 0.35) {
-    const bonus = 100 + Math.random() * 400;
-    return Math.round(userSum + bonus);
-  }
-
-  const delta = (Math.random() * 240) - 120;
-  return Math.max(10, Math.round(userSum + delta));
-}
-
 function generateBotOffer() {
   const userCards = state.inventory.filter(c => userTradeIds.includes(c.uid));
-  const userSum = userCards.reduce((s, c) => s + c.price, 0);
+  const userSum = userCards.reduce((s, c) => s + (Number(c.price) || 0), 0);
 
-  if (userSum === 0) {
+  if (userSum <= 0) {
     botOfferCards = [];
     return;
   }
 
-  const variants = getAllCatalogVariants();
+  const variants = getAllCatalogVariants().filter(v => (Number(v.price) || 0) <= userSum);
   if (variants.length === 0) {
     botOfferCards = [];
     return;
   }
 
-  const targetSum = pickTradeTargetSum(userSum);
   let bestCombo = [];
-  let bestDiff = Infinity;
+  let bestSum = -1;
 
-  for (let i = 0; i < 800; i++) {
+  for (let i = 0; i < 1200; i++) {
     const count = Math.floor(Math.random() * 4) + 1;
     const combo = [];
-    for (let k = 0; k < count; k++) {
-      combo.push(variants[Math.floor(Math.random() * variants.length)]);
-    }
-    const comboSum = combo.reduce((s, item) => s + item.price, 0);
-    const diff = Math.abs(comboSum - targetSum);
+    let sum = 0;
 
-    if (diff < bestDiff) {
-      bestDiff = diff;
+    for (let k = 0; k < count; k++) {
+      const candidate = variants[Math.floor(Math.random() * variants.length)];
+      const p = Number(candidate.price) || 0;
+      if (sum + p <= userSum) {
+        combo.push(candidate);
+        sum += p;
+      }
+    }
+
+    if (sum <= userSum && sum > bestSum) {
+      bestSum = sum;
       bestCombo = combo;
-      if (diff === 0) break;
+      if (bestSum === userSum) break;
     }
   }
 
@@ -2604,8 +2751,8 @@ function renderTradeWorkspace() {
   } else {
     confirmBtn.disabled = false;
     const diff = botSum - userSum;
-    const diffLabel = diff > 0 ? `+${diff} ₽` : diff < 0 ? `${diff} ₽` : '0 ₽';
-    statusText.textContent = `Оффер: ${botSum} ₽ (${diffLabel} к твоим ${userSum} ₽)`;
+    const diffLabel = diff === 0 ? 'ровно' : `${diff} ₽`;
+    statusText.textContent = `Оффер бота: ${botSum} ₽ (${diffLabel} от твоих ${userSum} ₽)`;
   }
 
   state.inventory
@@ -2624,6 +2771,190 @@ function renderTradeWorkspace() {
         }
       }));
     });
+}
+
+// 2.5 КРАФТЫ (10 КАРТ ОДНОЙ РЕДКОСТИ -> 1 КАРТА СЛЕДУЮЩЕЙ РЕДКОСТИ ПО ЦЕНЕ)
+function getCraftTargetRarityObj(sourceRarityKey) {
+  const nextObj = getNextRarityObj(sourceRarityKey);
+  if (!nextObj) return null;
+
+  const ordered = getOrderedRarities();
+  const startIdx = ordered.findIndex(r => r.key === nextObj.key);
+  if (startIdx === -1) return nextObj;
+
+  for (let i = startIdx; i < ordered.length; i++) {
+    const candidateKey = ordered[i].key;
+    if (state.pool.some(lvl => normalizeRarityKey(lvl.rarity) === candidateKey)) {
+      return ordered[i];
+    }
+  }
+  return nextObj;
+}
+
+function getCraftCandidateBases(sourceRarityKey) {
+  const targetRarity = getCraftTargetRarityObj(sourceRarityKey);
+  if (!targetRarity) return [];
+  const exact = state.pool.filter(lvl => normalizeRarityKey(lvl.rarity) === targetRarity.key);
+  if (exact.length > 0) return exact;
+  return state.pool;
+}
+
+function pickCraftedCardFromPrice(sourceRarityKey, totalPrice) {
+  const targetRarity = getCraftTargetRarityObj(sourceRarityKey);
+  const bases = getCraftCandidateBases(sourceRarityKey);
+  if (!targetRarity || bases.length === 0) return null;
+
+  const isHolo = Math.random() < HOLO_CHANCE;
+  const variants = bases.map(base => ({
+    base,
+    isHolo,
+    price: Math.round(base.price * (isHolo ? HOLO_MULTIPLIER : 1))
+  }));
+
+  // Целевая стоимость результата масштабируется от суммы 10 исходных карт
+  const avgVariantPrice = variants.reduce((s, v) => s + v.price, 0) / variants.length || 1;
+  const referenceScale = Math.max(1, totalPrice / (avgVariantPrice * 1.15));
+
+  const scored = variants
+    .map(v => {
+      const scaledTarget = Math.max(1, Math.round(totalPrice * 0.65));
+      const diff = Math.abs(v.price - scaledTarget);
+      return { variant: v, diff, score: diff / referenceScale };
+    })
+    .sort((a, b) => a.score - b.score);
+
+  const topPool = scored.slice(0, Math.min(3, scored.length)).map(item => item.variant);
+  const chosen = topPool[Math.floor(Math.random() * topPool.length)];
+  return buildCardInstance(chosen.base, chosen.isHolo, 'craft');
+}
+
+function renderCraftsPage() {
+  ensureCraftsPageUI();
+  syncRaritySelects();
+
+  const raritySelect = document.getElementById('craft-rarity-select');
+  const slotsEl = document.getElementById('craft-selected-slots');
+  const availGrid = document.getElementById('craft-available-grid');
+  if (!raritySelect || !slotsEl || !availGrid) return;
+
+  const activeRarity = normalizeRarityKey(raritySelect.value || selectedCraftRarityKey);
+  selectedCraftRarityKey = activeRarity;
+
+  const matchingInventory = state.inventory.filter(c => normalizeRarityKey(c.rarity) === activeRarity);
+  const validUidSet = new Set(matchingInventory.map(c => c.uid));
+  selectedCraftCardUids = selectedCraftCardUids.filter(uid => validUidSet.has(uid)).slice(0, CRAFT_REQUIRED_COUNT);
+
+  const selectedCards = selectedCraftCardUids
+    .map(uid => matchingInventory.find(c => c.uid === uid))
+    .filter(Boolean);
+
+  const totalSum = selectedCards.reduce((s, c) => s + (Number(c.price) || 0), 0);
+  const targetRarity = getCraftTargetRarityObj(activeRarity);
+
+  document.getElementById('craft-selected-count').textContent = selectedCards.length;
+  document.getElementById('craft-slots-count').textContent = selectedCards.length;
+  document.getElementById('craft-total-price').textContent = totalSum;
+  document.getElementById('craft-next-rarity').textContent = targetRarity ? targetRarity.label : 'Максимальная';
+
+  const execBtn = document.getElementById('craft-execute-btn');
+  execBtn.textContent = `Скрафтить (${selectedCards.length} / ${CRAFT_REQUIRED_COUNT})`;
+  execBtn.disabled = selectedCards.length !== CRAFT_REQUIRED_COUNT || !targetRarity;
+
+  const autofillBtn = document.getElementById('craft-autofill-btn');
+  autofillBtn.disabled = matchingInventory.length === 0 || selectedCards.length >= CRAFT_REQUIRED_COUNT;
+
+  const resultBox = document.getElementById('craft-result-box');
+  const resultWrap = document.getElementById('craft-result-card-wrap');
+  if (lastCraftedCard) {
+    resultBox.classList.remove('hidden');
+    document.getElementById('craft-result-title').textContent =
+      `${lastCraftedCard.isHolo ? '✦ ' : ''}${lastCraftedCard.name} (${getRarityLabel(lastCraftedCard.rarity)})`;
+    document.getElementById('craft-result-meta').textContent =
+      `Цена: ${lastCraftedCard.price} ₽ · Карта добавлена в коллекцию`;
+    resultWrap.innerHTML = '';
+    resultWrap.appendChild(createCardElement(lastCraftedCard, { animateDrop: true }));
+  } else {
+    resultBox.classList.add('hidden');
+    resultWrap.innerHTML = '';
+  }
+
+  slotsEl.innerHTML = '';
+  for (let i = 0; i < CRAFT_REQUIRED_COUNT; i++) {
+    const card = selectedCards[i];
+    if (card) {
+      slotsEl.appendChild(createCardElement(card, {
+        selected: true,
+        onClick: () => {
+          selectedCraftCardUids = selectedCraftCardUids.filter(id => id !== card.uid);
+          renderCraftsPage();
+        }
+      }));
+    } else {
+      const emptySlot = document.createElement('div');
+      emptySlot.className = 'craft-empty-slot';
+      emptySlot.textContent = `Слот #${i + 1}`;
+      slotsEl.appendChild(emptySlot);
+    }
+  }
+
+  availGrid.innerHTML = '';
+  if (matchingInventory.length === 0) {
+    availGrid.innerHTML = `<div class="empty-box" style="grid-column: 1/-1;">В коллекции нет карт редкости ${getRarityLabel(activeRarity)}.</div>`;
+    return;
+  }
+
+  const sortedAvailable = [...matchingInventory].sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+  sortedAvailable.forEach(card => {
+    const isPicked = selectedCraftCardUids.includes(card.uid);
+    availGrid.appendChild(createCardElement(card, {
+      selected: isPicked,
+      onClick: () => {
+        if (isPicked) {
+          selectedCraftCardUids = selectedCraftCardUids.filter(id => id !== card.uid);
+        } else {
+          if (selectedCraftCardUids.length >= CRAFT_REQUIRED_COUNT) {
+            showToast(`Можно выбрать ровно ${CRAFT_REQUIRED_COUNT} карт!`);
+            return;
+          }
+          selectedCraftCardUids.push(card.uid);
+        }
+        renderCraftsPage();
+      }
+    }));
+  });
+}
+
+function executeCraft() {
+  const activeRarity = normalizeRarityKey(selectedCraftRarityKey);
+  if (!activeRarity || selectedCraftCardUids.length !== CRAFT_REQUIRED_COUNT) return;
+
+  const selectedUidSet = new Set(selectedCraftCardUids);
+  const consumedCards = state.inventory.filter(c => selectedUidSet.has(c.uid));
+  if (consumedCards.length !== CRAFT_REQUIRED_COUNT) {
+    showToast('Выбранные карты не найдены в инвентаре');
+    selectedCraftCardUids = [];
+    renderCraftsPage();
+    return;
+  }
+
+  const totalSum = consumedCards.reduce((s, c) => s + (Number(c.price) || 0), 0);
+  const crafted = pickCraftedCardFromPrice(activeRarity, totalSum);
+  if (!crafted) {
+    showToast('Не удалось подобрать карту для крафта');
+    return;
+  }
+
+  state.inventory = state.inventory.filter(c => !selectedUidSet.has(c.uid));
+  state.inventory.push(crafted);
+  selectedCraftCardUids = [];
+  lastCraftedCard = crafted;
+
+  recordDropToFeed(crafted, 'Крафт');
+  saveState();
+  updateHeader();
+  renderCraftsPage();
+  renderCollection();
+  showToast(`Скрафчено: ${crafted.name} (${getRarityLabel(crafted.rarity)})!`);
 }
 
 // 3. АПГРЕЙДЫ
@@ -3231,6 +3562,44 @@ function bindEvents() {
     showToast(`Продано всё за ${sum} ₽`);
   });
 
+  // Крафты
+  const craftRaritySelect = document.getElementById('craft-rarity-select');
+  if (craftRaritySelect) {
+    craftRaritySelect.addEventListener('change', () => {
+      selectedCraftRarityKey = normalizeRarityKey(craftRaritySelect.value);
+      selectedCraftCardUids = [];
+      renderCraftsPage();
+    });
+  }
+
+  const craftAutofillBtn = document.getElementById('craft-autofill-btn');
+  if (craftAutofillBtn) {
+    craftAutofillBtn.addEventListener('click', () => {
+      const matching = state.inventory
+        .filter(c => normalizeRarityKey(c.rarity) === selectedCraftRarityKey && !selectedCraftCardUids.includes(c.uid))
+        .sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+
+      for (const card of matching) {
+        if (selectedCraftCardUids.length >= CRAFT_REQUIRED_COUNT) break;
+        selectedCraftCardUids.push(card.uid);
+      }
+      renderCraftsPage();
+    });
+  }
+
+  const craftClearBtn = document.getElementById('craft-clear-btn');
+  if (craftClearBtn) {
+    craftClearBtn.addEventListener('click', () => {
+      selectedCraftCardUids = [];
+      renderCraftsPage();
+    });
+  }
+
+  const craftExecuteBtn = document.getElementById('craft-execute-btn');
+  if (craftExecuteBtn) {
+    craftExecuteBtn.addEventListener('click', executeCraft);
+  }
+
   // Трейды
   document.getElementById('start-trade-btn').addEventListener('click', startTrade);
   document.getElementById('reroll-bot-btn').addEventListener('click', () => {
@@ -3329,6 +3698,7 @@ function bindEvents() {
         renderAdminRaritiesManager();
         renderCollection();
         renderCasesPage();
+        renderCraftsPage();
         renderLiveDropsFeed();
         showToast('Редкости, эффекты и шансы обновлены!');
       }
@@ -3350,6 +3720,7 @@ function bindEvents() {
         renderAdminRaritiesManager();
         renderCollection();
         renderCasesPage();
+        renderCraftsPage();
         showToast('Редкости и эффекты сброшены к значениям по умолчанию');
       }
     });
@@ -3416,6 +3787,7 @@ function bindEvents() {
         syncRaritySelects();
         saveState();
         renderAdminRaritiesManager();
+        renderCraftsPage();
         addRarityForm.reset();
         fillEffectSelect(document.getElementById('new-rarity-effect'), 'none');
         showToast(`Редкость "${label}" добавлена!`);
@@ -3528,6 +3900,7 @@ function bindEvents() {
     renderAdminPool();
     renderAdminCasePoolCheckboxes();
     renderCasesPage();
+    renderCraftsPage();
     e.target.reset();
     fileInput.value = '';
     uploadedAdminImageDataUrl = '';
@@ -3756,6 +4129,7 @@ function bindEvents() {
     renderAdminPool();
     renderAdminCasePoolCheckboxes();
     renderCasesPage();
+    renderCraftsPage();
     closeEditModal();
     showToast(`Карточка "${state.pool[idx].name}" обновлена для всех!`);
   });
