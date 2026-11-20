@@ -1307,7 +1307,6 @@ function renderIncomingTradesPage() {
     state.incomingTrades = state.incomingTrades.filter(t => t.id !== activeTrade.id);
     inspectedIncomingTradeId = null;
 
-    upsertCurrentPlayerInRegistry();
     saveState();
     updateTradesUnreadBadge();
     renderCollection();
@@ -1555,7 +1554,7 @@ function renderLeaderboardPage() {
     const row = document.createElement('div');
     row.className = 'leaderboard-row';
     const fallback = `https://placehold.co/120x120/1d243b/ffffff?text=${encodeURIComponent(p.name || 'GD')}`;
-    const pCards = Array.isArray(p.inventory) ? p.inventory : [];
+    const pCards = p.id === state.playerId ? state.inventory : (Array.isArray(p.inventory) ? p.inventory : []);
     const pValue = getInventoryTotalValue(pCards);
 
     row.innerHTML = `
@@ -2751,16 +2750,10 @@ async function init() {
         const prevPlayersStr = JSON.stringify(state.players);
         const map = new Map();
         fresh.players.forEach(p => {
-          if (p && p.id) map.set(p.id, p);
-        });
-        const myEntry = map.get(state.playerId);
-        if (myEntry && Array.isArray(myEntry.inventory)) {
-          const cloudInvStr = JSON.stringify(myEntry.inventory);
-          if (cloudInvStr !== JSON.stringify(state.inventory)) {
-            state.inventory = myEntry.inventory;
-            renderCollection();
+          if (p && p.id && p.id !== state.playerId) {
+            map.set(p.id, p);
           }
-        }
+        });
         state.players = Array.from(map.values());
         upsertCurrentPlayerInRegistry();
         if (JSON.stringify(state.players) !== prevPlayersStr) {
@@ -4301,7 +4294,7 @@ function bindEvents() {
 
   const spotlightKeepBtn = document.getElementById('case-spotlight-keep-btn');
   if (spotlightKeepBtn) {
-    spotlightKeepBtn.addEventListener('click', () => {
+    spotlightKeepBtn.addEventListener('click', async () => {
       if (!pendingCaseDropCard) return;
       state.inventory.push(pendingCaseDropCard);
       const name = pendingCaseDropCard.name;
@@ -4309,6 +4302,10 @@ function bindEvents() {
       saveState();
       updateHeader();
       renderCollection();
+      renderLeaderboardPage();
+      if (isCloudConfigured()) {
+        await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+      }
       showToast(`Карта "${name}" добавлена в коллекцию!`);
     });
   }
@@ -4327,11 +4324,16 @@ function bindEvents() {
     });
   }
 
-  document.getElementById('keep-all-dropped-btn').addEventListener('click', () => {
+  document.getElementById('keep-all-dropped-btn').addEventListener('click', async () => {
     state.inventory.push(...state.droppedTemp);
     state.droppedTemp = [];
     saveState();
     renderDroppedCards(false);
+    renderCollection();
+    renderLeaderboardPage();
+    if (isCloudConfigured()) {
+      await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+    }
     showToast('Все карточки добавлены в коллекцию!');
   });
 
