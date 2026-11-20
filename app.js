@@ -157,16 +157,29 @@ let mutationChain = Promise.resolve();
 let cloudPushChain = Promise.resolve();
 let localDirtyUntil = 0;
 
-function markLocalMutation() {
+function markLocalMutation(holdMs = 20000) {
   state.version = (Number(state.version) || 1) + 1;
   state.updatedAt = Date.now();
-  localDirtyUntil = Date.now() + 12000;
+  localDirtyUntil = Math.max(localDirtyUntil, Date.now() + holdMs);
+}
+
+function mergeInventoriesByUid(primaryCards, secondaryCards) {
+  const map = new Map();
+  (Array.isArray(primaryCards) ? primaryCards : []).forEach(card => {
+    if (card && card.uid) map.set(card.uid, card);
+  });
+  (Array.isArray(secondaryCards) ? secondaryCards : []).forEach(card => {
+    if (card && card.uid && !map.has(card.uid)) {
+      map.set(card.uid, card);
+    }
+  });
+  return Array.from(map.values());
 }
 
 function runAtomic(fn) {
   mutationChain = mutationChain.then(async () => {
     const res = await fn();
-    markLocalMutation();
+    markLocalMutation(20000);
     saveState();
     return res;
   });
@@ -1299,7 +1312,7 @@ async function syncLatestCloudSnapshot() {
     const cloudSelfVer = Number(cloudSelf && cloudSelf.version) || 0;
     const localVer = Number(state.version) || 1;
     if (cloudSelf && Array.isArray(cloudSelf.inventory) && !isLocalFresh && cloudSelfVer > localVer) {
-      state.inventory = cloudSelf.inventory;
+      state.inventory = mergeInventoriesByUid(state.inventory, cloudSelf.inventory);
       state.version = cloudSelfVer;
       state.updatedAt = Number(cloudSelf.updatedAt) || Date.now();
     }
@@ -2947,6 +2960,11 @@ async function init() {
     }
 
     if (Array.isArray(cloudResult.players)) {
+      const cloudSelf = cloudResult.players.find(p => p && p.id === state.playerId);
+      if (cloudSelf && Array.isArray(cloudSelf.inventory)) {
+        state.inventory = mergeInventoriesByUid(state.inventory, cloudSelf.inventory);
+      }
+
       const mergedPlayersMap = new Map();
       cloudResult.players.forEach(p => {
         if (p && p.id && p.id !== state.playerId) mergedPlayersMap.set(p.id, p);
@@ -3083,7 +3101,7 @@ async function init() {
           );
 
         if (cloudSelf && Array.isArray(cloudSelf.inventory) && hasAcceptedTradeForMe) {
-          state.inventory = cloudSelf.inventory;
+          state.inventory = mergeInventoriesByUid(cloudSelf.inventory, state.inventory);
           state.version = Math.max(Number(state.version) || 1, Number(cloudSelf.version) || 1) + 1;
           state.updatedAt = Date.now();
           renderCollection();
@@ -3188,7 +3206,10 @@ function setupNavigation() {
       if (tab === 'trades') renderIncomingTradesPage();
       if (tab === 'crafts') renderCraftsPage();
       if (tab === 'collection') renderCollection();
-      if (tab === 'upgrade') renderUpgradePage();
+      if (tab === 'upgrade') {
+        localDirtyUntil = Math.max(localDirtyUntil, Date.now() + 20000);
+        renderUpgradePage();
+      }
       if (tab === 'admin') {
         ensureAdminCaseBuilderUI();
         ensureAdminRaritiesManagerUI();
@@ -3584,7 +3605,7 @@ function openSelectedCase(instant = false) {
 
   isOpeningCase = true;
   renderCaseDropSpotlight(null);
-  markLocalMutation();
+  markLocalMutation(20000);
   state.balance -= activeCase.price;
   saveState();
   updateHeader();
@@ -3640,7 +3661,7 @@ function openSelectedCase(instant = false) {
   const targetTranslate = Math.max(0, winIndex * step - centerOffset + jitter);
 
   const finishOpening = () => {
-    markLocalMutation();
+    markLocalMutation(20000);
     saveState();
     recordDropToFeed(wonCard, activeCase.name);
     renderCaseDropSpotlight(wonCard);
@@ -3674,7 +3695,7 @@ function openSelectedCase(instant = false) {
 function openPack() {
   if (state.packs <= 0 || isOpeningPack) return;
   isOpeningPack = true;
-  markLocalMutation();
+  markLocalMutation(20000);
   state.packs -= 1;
   state.packsOpened += 1;
 
@@ -3725,7 +3746,7 @@ function openPack() {
 function openAllPacks() {
   if (state.packs <= 0 || isOpeningPack) return;
   isOpeningPack = true;
-  markLocalMutation();
+  markLocalMutation(20000);
 
   const packsToOpen = state.packs;
   state.packs = 0;
@@ -4007,7 +4028,7 @@ function executeCraft() {
     return;
   }
 
-  markLocalMutation();
+  markLocalMutation(20000);
   state.inventory = state.inventory.filter(c => !selectedUidSet.has(c.uid));
   state.inventory.push(crafted);
   selectedCraftCardUids = [];
@@ -4051,6 +4072,7 @@ function getUpgradeChance() {
 }
 
 function renderUpgradePage() {
+  localDirtyUntil = Math.max(localDirtyUntil, Date.now() + 20000);
   syncRaritySelects();
   const srcSlot = document.getElementById('upg-source-slot');
   const tgtSlot = document.getElementById('upg-target-slot');
@@ -4092,6 +4114,7 @@ function renderUpgradePage() {
           selected: c.uid === selectedUpgradeSourceId,
           onClick: () => {
             if (isSpinning) return;
+            localDirtyUntil = Math.max(localDirtyUntil, Date.now() + 20000);
             selectedUpgradeSourceId = c.uid;
             renderUpgradePage();
           }
@@ -4129,6 +4152,7 @@ function renderUpgradePage() {
       selected: c.catalogKey === selectedUpgradeTargetKey,
       onClick: () => {
         if (isSpinning) return;
+        localDirtyUntil = Math.max(localDirtyUntil, Date.now() + 20000);
         selectedUpgradeTargetKey = c.catalogKey;
         renderUpgradePage();
       }
@@ -4142,6 +4166,7 @@ function runUpgrade() {
   if (!srcCard || !tgtCard || isSpinning) return;
 
   isSpinning = true;
+  localDirtyUntil = Math.max(localDirtyUntil, Date.now() + 25000);
   document.getElementById('run-upgrade-btn').disabled = true;
   const statusEl = document.getElementById('upgrade-status');
   statusEl.textContent = 'Крутим рулетку...';
@@ -4158,35 +4183,39 @@ function runUpgrade() {
   wheel.style.transform = `rotate(${finalRotation}deg)`;
 
   setTimeout(() => {
-    markLocalMutation();
-    const existsIdx = state.inventory.findIndex(c => c.uid === srcCard.uid);
-    if (existsIdx !== -1) {
-      state.inventory.splice(existsIdx, 1);
-    }
-
     let wonCardRef = null;
-    if (win) {
-      wonCardRef = {
-        ...tgtCard,
-        uid: 'upg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)
-      };
-      state.inventory.push(wonCardRef);
-      statusEl.style.color = '#4ade80';
-      statusEl.textContent = `УСПЕХ! Получена карта ${tgtCard.name}${tgtCard.isHolo ? ' [HOLO]' : ''}`;
-      showToast('Апгрейд прошёл успешно!');
-    } else {
-      statusEl.style.color = '#f87171';
-      statusEl.textContent = 'НЕУДАЧА! Карта сгорела.';
-      showToast('Апгрейд не удался');
-    }
 
-    selectedUpgradeSourceId = null;
-    saveState();
-    renderLeaderboardPage();
-    if (wonCardRef) {
-      recordDropToFeed(wonCardRef, 'Апгрейд');
-    }
-    queueCloudPush();
+    runAtomic(() => {
+      const existsIdx = state.inventory.findIndex(c => c.uid === srcCard.uid);
+      if (existsIdx !== -1) {
+        state.inventory.splice(existsIdx, 1);
+      }
+
+      if (win) {
+        wonCardRef = {
+          ...tgtCard,
+          uid: 'upg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+          favorite: false
+        };
+        state.inventory.push(wonCardRef);
+        statusEl.style.color = '#4ade80';
+        statusEl.textContent = `УСПЕХ! Получена карта ${tgtCard.name}${tgtCard.isHolo ? ' [HOLO]' : ''}`;
+        showToast('Апгрейд прошёл успешно!');
+      } else {
+        statusEl.style.color = '#f87171';
+        statusEl.textContent = 'НЕУДАЧА! Карта сгорела.';
+        showToast('Апгрейд не удался');
+      }
+
+      selectedUpgradeSourceId = null;
+    }).then(() => {
+      renderCollection();
+      renderLeaderboardPage();
+      if (wonCardRef) {
+        recordDropToFeed(wonCardRef, 'Апгрейд');
+      }
+      queueCloudPush();
+    });
 
     setTimeout(() => {
       wheel.style.transition = 'none';
