@@ -152,6 +152,8 @@ const DEFAULT_RARITIES = [
   { key: 'future', label: 'FUTURE', color: '#06b6d4', effectId: 'shimmer_sweep', packChance: 0.001, caseChance: 0.001, order: 7 }
 ];
 
+const DEFAULT_AVATAR = 'https://placehold.co/120x120/1d243b/ffffff?text=GD';
+
 const RARE_ANIM_TIERS = ['legendary', 'apex', 'limit', 'future'];
 const HOLO_CHANCE = 0.12;
 const HOLO_MULTIPLIER = 3.5;
@@ -164,6 +166,8 @@ const REEL_SLOT_GAP = 12;
 let state = {
   playerId: '',
   playerName: 'nar1',
+  playerAvatar: DEFAULT_AVATAR,
+  registered: false,
   balance: 500,
   packs: 0,
   packsOpened: 0,
@@ -173,14 +177,19 @@ let state = {
   effects: [],
   inventory: [],
   droppedTemp: [],
-  recentDrops: []
+  recentDrops: [],
+  players: [],
+  incomingTrades: []
 };
 
 let openedCaseId = null;
 let pendingCaseDropCard = null;
-let tradeActive = false;
-let userTradeIds = [];
-let botOfferCards = [];
+
+let inspectedPlayerId = null;
+let composingTradeTargetId = null;
+let outgoingOfferUids = [];
+let targetRequestedUids = [];
+let inspectedIncomingTradeId = null;
 
 let selectedCraftRarityKey = null;
 let selectedCraftCardUids = [];
@@ -193,6 +202,7 @@ let isOpeningPack = false;
 let isOpeningCase = false;
 let uploadedAdminImageDataUrl = '';
 let uploadedCaseImageDataUrl = '';
+let uploadedAvatarDataUrl = '';
 let editingCardImageDataUrl = '';
 let editingCaseImageDataUrl = '';
 let draggedAdminPoolCardId = null;
@@ -204,6 +214,34 @@ function isCloudConfigured() {
     JSONBIN_MASTER_KEY &&
     !JSONBIN_MASTER_KEY.includes('ВСТАВЬ_СЮДА')
   );
+}
+
+function getInventoryTotalValue(cards) {
+  if (!Array.isArray(cards)) return 0;
+  return cards.reduce((sum, c) => sum + (Number(c && c.price) || 0), 0);
+}
+
+function upsertCurrentPlayerInRegistry() {
+  const cleanName = String(state.playerName || 'nar1').trim() || 'nar1';
+  const cleanAvatar = state.playerAvatar || DEFAULT_AVATAR;
+  const invValue = getInventoryTotalValue(state.inventory);
+
+  const entry = {
+    id: state.playerId,
+    name: cleanName,
+    avatar: cleanAvatar,
+    inventory: Array.isArray(state.inventory) ? state.inventory : [],
+    inventoryValue: invValue,
+    cardsCount: Array.isArray(state.inventory) ? state.inventory.length : 0,
+    updatedAt: Date.now()
+  };
+
+  const map = new Map();
+  (Array.isArray(state.players) ? state.players : []).forEach(p => {
+    if (p && p.id) map.set(p.id, p);
+  });
+  map.set(entry.id, entry);
+  state.players = Array.from(map.values());
 }
 
 function normalizeRarityKey(raw) {
@@ -516,6 +554,114 @@ function injectMinimalCaseAndFeedStyles() {
         text-transform: uppercase;
       }
 
+      .nav-btn {
+        position: relative;
+      }
+
+      .trade-unread-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 5px;
+        margin-left: 6px;
+        border-radius: 999px;
+        background: #ef4444;
+        color: #ffffff;
+        font-size: 11px;
+        font-weight: 800;
+        line-height: 1;
+        box-shadow: 0 0 10px rgba(239, 68, 68, 0.75);
+      }
+
+      .trade-unread-badge.hidden {
+        display: none;
+      }
+
+      .profile-banner-card {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 14px 16px;
+        margin-bottom: 16px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(18, 22, 38, 0.92);
+      }
+
+      .profile-identity {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .player-avatar-img {
+        width: 52px;
+        height: 52px;
+        border-radius: 12px;
+        object-fit: cover;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: #141827;
+        flex-shrink: 0;
+      }
+
+      .leaderboard-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .leaderboard-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 14px 16px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(18, 22, 38, 0.92);
+        cursor: pointer;
+        transition: border-color 0.15s ease, transform 0.15s ease;
+      }
+
+      .leaderboard-row:hover {
+        border-color: rgba(56, 189, 248, 0.65);
+        transform: translateY(-1px);
+      }
+
+      .leaderboard-row-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .leaderboard-place {
+        min-width: 34px;
+        font-weight: 800;
+        font-size: 15px;
+        opacity: 0.9;
+      }
+
+      .incoming-trade-item {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 16px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(18, 22, 38, 0.92);
+      }
+
+      .incoming-trade-item.unread {
+        border-color: rgba(239, 68, 68, 0.7);
+        box-shadow: 0 0 14px rgba(239, 68, 68, 0.18);
+      }
+
       #case-detail-view {
         width: 100%;
         box-sizing: border-box;
@@ -758,14 +904,142 @@ function injectMinimalCaseAndFeedStyles() {
   syncDynamicRarityStyles();
 }
 
-function ensureCraftsPageUI() {
+function compressAvatarFileToDataUrl(file, callback) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const size = 128;
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, size, size);
+      callback(canvas.toDataURL('image/jpeg', 0.78));
+    };
+    img.onerror = () => callback(reader.result);
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function ensureProfileRegistrationUI() {
+  if (!document.getElementById('profile-registration-modal')) {
+    const modal = document.createElement('div');
+    modal.id = 'profile-registration-modal';
+    modal.className = 'gd-modal-backdrop hidden';
+    modal.innerHTML = `
+      <div class="gd-modal-card" style="max-width:440px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px;">
+          <h3 style="margin:0;">Профиль игрока</h3>
+          <button type="button" id="close-profile-modal-btn" class="btn-secondary" style="padding:4px 10px;">✕</button>
+        </div>
+        <form id="profile-registration-form" style="display:grid; gap:12px;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <img id="profile-modal-avatar-preview" src="${DEFAULT_AVATAR}" alt="Аватар" class="player-avatar-img" style="width:64px; height:64px;" />
+            <div class="hint">Укажи ник и выбери аватарку — они появятся в профиле коллекции и в лидерборде.</div>
+          </div>
+
+          <label style="display:flex; flex-direction:column; gap:6px;">
+            <span>Никнейм</span>
+            <input type="text" id="profile-nickname-input" maxlength="24" placeholder="Например: nar1" required />
+          </label>
+
+          <label style="display:flex; flex-direction:column; gap:6px;">
+            <span>Аватарка с ПК</span>
+            <input type="file" id="profile-avatar-file" accept="image/*" />
+          </label>
+
+          <label style="display:flex; flex-direction:column; gap:6px;">
+            <span>Или ссылка на аватарку (URL)</span>
+            <input type="text" id="profile-avatar-url" placeholder="https://..." />
+          </label>
+
+          <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:6px;">
+            <button type="submit" class="btn-primary">Сохранить профиль</button>
+          </div>
+        </form>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+
+  const colSection = document.getElementById('tab-collection');
+  if (colSection && !document.getElementById('collection-profile-banner')) {
+    const banner = document.createElement('div');
+    banner.id = 'collection-profile-banner';
+    banner.className = 'profile-banner-card';
+    banner.innerHTML = `
+      <div class="profile-identity">
+        <img id="collection-profile-avatar" src="${DEFAULT_AVATAR}" alt="Аватар" class="player-avatar-img" />
+        <div>
+          <div id="collection-profile-name" style="font-size:17px; font-weight:700;">nar1</div>
+          <div class="hint" id="collection-profile-sub">Профиль в коллекции</div>
+        </div>
+      </div>
+      <button type="button" id="edit-profile-btn" class="btn-secondary">Изменить ник / аватар</button>
+    `;
+    const headerOrStats = colSection.querySelector('.stats-row') || colSection.firstElementChild;
+    if (headerOrStats) {
+      colSection.insertBefore(banner, headerOrStats);
+    } else {
+      colSection.prepend(banner);
+    }
+  }
+}
+
+function syncProfileBannerUI() {
+  ensureProfileRegistrationUI();
+  const avatarEl = document.getElementById('collection-profile-avatar');
+  const nameEl = document.getElementById('collection-profile-name');
+  const previewEl = document.getElementById('profile-modal-avatar-preview');
+  const fallback = `https://placehold.co/120x120/1d243b/ffffff?text=${encodeURIComponent(state.playerName || 'GD')}`;
+
+  if (avatarEl) {
+    avatarEl.src = state.playerAvatar || fallback;
+    avatarEl.onerror = () => { avatarEl.src = fallback; };
+  }
+  if (nameEl) {
+    nameEl.textContent = state.playerName || 'nar1';
+  }
+  if (previewEl) {
+    previewEl.src = uploadedAvatarDataUrl || state.playerAvatar || fallback;
+    previewEl.onerror = () => { previewEl.src = fallback; };
+  }
+}
+
+function openProfileModal() {
+  ensureProfileRegistrationUI();
+  uploadedAvatarDataUrl = '';
+  const nameInp = document.getElementById('profile-nickname-input');
+  const urlInp = document.getElementById('profile-avatar-url');
+  const fileInp = document.getElementById('profile-avatar-file');
+
+  if (nameInp) nameInp.value = state.playerName || 'nar1';
+  if (fileInp) fileInp.value = '';
+  if (urlInp) {
+    urlInp.value = (state.playerAvatar || '').startsWith('data:') ? '' : (state.playerAvatar || '');
+  }
+  syncProfileBannerUI();
+
+  const modal = document.getElementById('profile-registration-modal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeProfileModal() {
+  uploadedAvatarDataUrl = '';
+  const modal = document.getElementById('profile-registration-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function ensureLeaderboardPageUI() {
   const nav = document.querySelector('nav, .nav-bar, .navbar, .tabs-nav');
-  if (nav && !nav.querySelector('[data-tab="crafts"]')) {
+  if (nav && !nav.querySelector('[data-tab="leaderboard"]')) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'nav-btn';
-    btn.dataset.tab = 'crafts';
-    btn.textContent = 'Крафты';
+    btn.dataset.tab = 'leaderboard';
+    btn.textContent = 'Лидерборд';
     const adminBtn = nav.querySelector('[data-tab="admin"]');
     if (adminBtn && adminBtn.parentNode === nav) {
       nav.insertBefore(btn, adminBtn);
@@ -774,50 +1048,67 @@ function ensureCraftsPageUI() {
     }
   }
 
-  if (!document.getElementById('tab-crafts')) {
+  if (!document.getElementById('tab-leaderboard')) {
     const adminTab = document.getElementById('tab-admin');
     const main = (adminTab && adminTab.parentElement) || document.querySelector('main') || document.body;
     const section = document.createElement('section');
-    section.id = 'tab-crafts';
+    section.id = 'tab-leaderboard';
     section.className = 'tab-section';
     section.innerHTML = `
-      <div class="section-header">
-        <h2 class="section-title">Крафты</h2>
-        <p class="hint">Выбери 10 карт одной редкости, чтобы скрафтить 1 карту следующей редкости. Итоговый уровень зависит от суммарной цены 10 карт.</p>
+      <div id="leaderboard-list-view">
+        <div class="section-header">
+          <h2 class="section-title">Лидерборд</h2>
+          <p class="hint">Рейтинг игроков по суммарной стоимости инвентаря. Нажми на игрока, чтобы открыть профиль и отправить трейд.</p>
+        </div>
+        <div id="leaderboard-rows" class="leaderboard-list"></div>
       </div>
 
-      <div class="craft-top-bar">
-        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:12px;">
-          <label style="display:flex; flex-direction:column; gap:5px; font-size:13px;">
-            <span>Исходная редкость</span>
-            <select id="craft-rarity-select"></select>
-          </label>
-          <button type="button" id="craft-autofill-btn" class="btn-secondary">Автоподбор 10 карт</button>
-          <button type="button" id="craft-clear-btn" class="btn-secondary">Очистить</button>
-          <button type="button" id="craft-execute-btn" class="btn-primary" disabled>Скрафтить (0 / 10)</button>
+      <div id="player-profile-view" class="hidden">
+        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px;">
+          <button type="button" id="back-to-leaderboard-btn" class="btn-secondary">← Назад к лидерборду</button>
+          <button type="button" id="open-player-trade-btn" class="btn-primary">Отправить трейд</button>
         </div>
 
-        <div class="craft-summary-stats">
-          <div>Выбрано: <strong id="craft-selected-count">0</strong> / 10</div>
-          <div>Сумма 10 карт: <strong id="craft-total-price">0</strong> ₽</div>
-          <div>Следующая редкость: <strong id="craft-next-rarity">—</strong></div>
+        <div class="profile-banner-card">
+          <div class="profile-identity">
+            <img id="inspected-player-avatar" src="${DEFAULT_AVATAR}" alt="" class="player-avatar-img" style="width:64px; height:64px;" />
+            <div>
+              <h2 id="inspected-player-name" style="margin:0 0 4px;"></h2>
+              <div id="inspected-player-stats" class="hint"></div>
+            </div>
+          </div>
         </div>
+
+        <h3 class="sub-title">Карты игрока</h3>
+        <div id="inspected-player-cards" class="cards-grid"></div>
       </div>
 
-      <div id="craft-result-box" class="craft-result-box hidden">
-        <div style="flex:1; min-width:220px;">
-          <div style="font-size:13px; opacity:0.8; margin-bottom:6px;">Скрафченная карта:</div>
-          <div id="craft-result-title" style="font-size:18px; font-weight:700;"></div>
-          <div id="craft-result-meta" class="hint" style="margin-top:4px;"></div>
+      <div id="compose-player-trade-view" class="hidden">
+        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px;">
+          <button type="button" id="back-to-player-profile-btn" class="btn-secondary">← Назад в профиль</button>
+          <button type="button" id="send-player-trade-submit-btn" class="btn-primary">Отправить предложение</button>
         </div>
-        <div id="craft-result-card-wrap" style="width:230px; max-width:100%;"></div>
+
+        <h2 id="compose-trade-title" class="section-title" style="margin-bottom:14px;"></h2>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px; margin-bottom:20px;">
+          <div style="padding:14px; border-radius:12px; border:1px solid rgba(255,255,255,0.14); background:rgba(18,22,38,0.9);">
+            <div style="margin-bottom:8px;"><strong>Твой оффер</strong> — <span id="compose-my-sum">0</span> ₽</div>
+            <div id="compose-my-selected-grid" class="cards-grid"></div>
+          </div>
+
+          <div style="padding:14px; border-radius:12px; border:1px solid rgba(255,255,255,0.14); background:rgba(18,22,38,0.9);">
+            <div style="margin-bottom:8px;"><strong>Хочешь получить</strong> — <span id="compose-target-sum">0</span> ₽</div>
+            <div id="compose-target-selected-grid" class="cards-grid"></div>
+          </div>
+        </div>
+
+        <h3 class="sub-title">Твои карты (нажми, чтобы добавить/убрать)</h3>
+        <div id="compose-my-inv-grid" class="cards-grid" style="margin-bottom:22px;"></div>
+
+        <h3 id="compose-target-inv-title" class="sub-title">Карты игрока (нажми, чтобы добавить/убрать)</h3>
+        <div id="compose-target-inv-grid" class="cards-grid"></div>
       </div>
-
-      <h3 class="sub-title">Выбранные карты (<span id="craft-slots-count">0</span> / 10)</h3>
-      <div id="craft-selected-slots" class="craft-slots-grid"></div>
-
-      <h3 class="sub-title">Доступные карты в коллекции</h3>
-      <div id="craft-available-grid" class="cards-grid"></div>
     `;
 
     if (adminTab && adminTab.parentNode === main) {
@@ -826,6 +1117,467 @@ function ensureCraftsPageUI() {
       main.appendChild(section);
     }
   }
+}
+
+function ensureIncomingTradesTabUI() {
+  const navBtn = document.querySelector('.nav-btn[data-tab="trades"]');
+  if (navBtn && !navBtn.querySelector('.trade-unread-badge')) {
+    const badge = document.createElement('span');
+    badge.id = 'trades-unread-badge';
+    badge.className = 'trade-unread-badge hidden';
+    badge.textContent = '0';
+    navBtn.appendChild(badge);
+  }
+
+  const tradesTab = document.getElementById('tab-trades');
+  if (!tradesTab) return;
+
+  tradesTab.innerHTML = `
+    <div class="section-header">
+      <h2 class="section-title">Входящие трейды</h2>
+      <p class="hint">Здесь отображаются предложения обмена от других игроков. Новые непросмотренные трейды отмечены красным счётчиком.</p>
+    </div>
+
+    <div id="incoming-trades-list" class="leaderboard-list"></div>
+
+    <div id="incoming-trade-detail" class="hidden" style="margin-top:20px; padding:18px; border-radius:14px; border:1px solid rgba(255,255,255,0.16); background:rgba(18,22,38,0.94);">
+      <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px;">
+        <div>
+          <h3 id="incoming-detail-title" style="margin:0 0 4px;"></h3>
+          <div id="incoming-detail-sums" class="hint"></div>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button type="button" id="accept-incoming-trade-btn" class="btn-primary">Принять трейд</button>
+          <button type="button" id="decline-incoming-trade-btn" class="btn-danger">Отклонить</button>
+          <button type="button" id="close-incoming-trade-btn" class="btn-secondary">Скрыть</button>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:16px;">
+        <div>
+          <div style="margin-bottom:8px; font-weight:600;">Игрок отдаёт тебе:</div>
+          <div id="incoming-from-cards" class="cards-grid"></div>
+        </div>
+        <div>
+          <div style="margin-bottom:8px; font-weight:600;">Игрок просит у тебя:</div>
+          <div id="incoming-to-cards" class="cards-grid"></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function getUnreadIncomingTrades() {
+  return (Array.isArray(state.incomingTrades) ? state.incomingTrades : []).filter(
+    t => t && t.toPlayerId === state.playerId && t.status === 'pending' && !t.seen
+  );
+}
+
+function updateTradesUnreadBadge() {
+  ensureIncomingTradesTabUI();
+  const badge = document.getElementById('trades-unread-badge');
+  if (!badge) return;
+
+  const unreadCount = getUnreadIncomingTrades().length;
+  if (unreadCount > 0) {
+    badge.textContent = String(unreadCount);
+    badge.classList.remove('hidden');
+  } else {
+    badge.textContent = '0';
+    badge.classList.add('hidden');
+  }
+}
+
+function renderIncomingTradesPage() {
+  ensureIncomingTradesTabUI();
+  updateTradesUnreadBadge();
+
+  const listEl = document.getElementById('incoming-trades-list');
+  const detailBox = document.getElementById('incoming-trade-detail');
+  if (!listEl || !detailBox) return;
+
+  const myTrades = (Array.isArray(state.incomingTrades) ? state.incomingTrades : [])
+    .filter(t => t && t.toPlayerId === state.playerId && t.status === 'pending')
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  listEl.innerHTML = '';
+  if (myTrades.length === 0) {
+    inspectedIncomingTradeId = null;
+    detailBox.classList.add('hidden');
+    listEl.innerHTML = '<div class="empty-box">Входящих предложений на трейд пока нет.</div>';
+    return;
+  }
+
+  myTrades.forEach(trade => {
+    const row = document.createElement('div');
+    row.className = `incoming-trade-item ${!trade.seen ? 'unread' : ''}`;
+    const fromSum = getInventoryTotalValue(trade.fromCards);
+    const toSum = getInventoryTotalValue(trade.toCards);
+
+    row.innerHTML = `
+      <div class="profile-identity">
+        <img src="${trade.fromAvatar || DEFAULT_AVATAR}" alt="${trade.fromName}" class="player-avatar-img" />
+        <div>
+          <div style="font-weight:700; display:flex; align-items:center; gap:8px;">
+            <span>Трейд от ${trade.fromName}</span>
+            ${!trade.seen ? '<span class="trade-unread-badge">NEW</span>' : ''}
+          </div>
+          <div class="hint">Даёт: ${(trade.fromCards || []).length} карт (${fromSum} ₽) · Хочет: ${(trade.toCards || []).length} карт (${toSum} ₽)</div>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button type="button" class="btn-secondary view-trade-btn">Смотреть трейд</button>
+      </div>
+    `;
+
+    row.querySelector('.view-trade-btn').addEventListener('click', async () => {
+      inspectedIncomingTradeId = trade.id;
+      if (!trade.seen) {
+        trade.seen = true;
+        saveState();
+        updateTradesUnreadBadge();
+        if (isCloudConfigured()) {
+          await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+        }
+      }
+      renderIncomingTradesPage();
+    });
+
+    listEl.appendChild(row);
+  });
+
+  const activeTrade = myTrades.find(t => t.id === inspectedIncomingTradeId);
+  if (!activeTrade) {
+    detailBox.classList.add('hidden');
+    return;
+  }
+
+  detailBox.classList.remove('hidden');
+  const fromSum = getInventoryTotalValue(activeTrade.fromCards);
+  const toSum = getInventoryTotalValue(activeTrade.toCards);
+
+  document.getElementById('incoming-detail-title').textContent = `Предложение от ${activeTrade.fromName}`;
+  document.getElementById('incoming-detail-sums').textContent =
+    `Вам предлагают: ${fromSum} ₽ · От вас хотят: ${toSum} ₽`;
+
+  const fromGrid = document.getElementById('incoming-from-cards');
+  const toGrid = document.getElementById('incoming-to-cards');
+  fromGrid.innerHTML = '';
+  toGrid.innerHTML = '';
+
+  (activeTrade.fromCards || []).forEach(c => fromGrid.appendChild(createCardElement(c)));
+  (activeTrade.toCards || []).forEach(c => toGrid.appendChild(createCardElement(c)));
+
+  const acceptBtn = document.getElementById('accept-incoming-trade-btn');
+  const declineBtn = document.getElementById('decline-incoming-trade-btn');
+  const closeBtn = document.getElementById('close-incoming-trade-btn');
+
+  acceptBtn.onclick = async () => {
+    const requestedUids = new Set((activeTrade.toCards || []).map(c => c.uid));
+    const myMatchingCards = state.inventory.filter(c => requestedUids.has(c.uid));
+
+    if (myMatchingCards.length !== requestedUids.size) {
+      showToast('У тебя больше нет некоторых запрошенных карт');
+      return;
+    }
+
+    const receivedFromSender = (activeTrade.fromCards || []).map(c => ({
+      ...c,
+      uid: `trd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    }));
+
+    state.inventory = state.inventory.filter(c => !requestedUids.has(c.uid));
+    state.inventory.push(...receivedFromSender);
+
+    const senderEntry = state.players.find(p => p.id === activeTrade.fromPlayerId);
+    if (senderEntry) {
+      const sentUids = new Set((activeTrade.fromCards || []).map(c => c.uid));
+      const senderRemaining = (Array.isArray(senderEntry.inventory) ? senderEntry.inventory : [])
+        .filter(c => !sentUids.has(c.uid));
+      const grantedToSender = myMatchingCards.map(c => ({
+        ...c,
+        uid: `trd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+      }));
+      senderEntry.inventory = [...senderRemaining, ...grantedToSender];
+      senderEntry.inventoryValue = getInventoryTotalValue(senderEntry.inventory);
+      senderEntry.cardsCount = senderEntry.inventory.length;
+      senderEntry.updatedAt = Date.now();
+    }
+
+    state.incomingTrades = state.incomingTrades.filter(t => t.id !== activeTrade.id);
+    inspectedIncomingTradeId = null;
+
+    upsertCurrentPlayerInRegistry();
+    saveState();
+    updateTradesUnreadBadge();
+    renderCollection();
+    renderLeaderboardPage();
+    renderIncomingTradesPage();
+
+    if (isCloudConfigured()) {
+      await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+    }
+
+    showToast(`Трейд с ${activeTrade.fromName} принят!`);
+  };
+
+  declineBtn.onclick = async () => {
+    state.incomingTrades = state.incomingTrades.filter(t => t.id !== activeTrade.id);
+    inspectedIncomingTradeId = null;
+    saveState();
+    updateTradesUnreadBadge();
+    renderIncomingTradesPage();
+
+    if (isCloudConfigured()) {
+      await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+    }
+
+    showToast('Трейд отклонён');
+  };
+
+  closeBtn.onclick = () => {
+    inspectedIncomingTradeId = null;
+    detailBox.classList.add('hidden');
+  };
+}
+
+function renderLeaderboardPage() {
+  ensureLeaderboardPageUI();
+  upsertCurrentPlayerInRegistry();
+
+  const listView = document.getElementById('leaderboard-list-view');
+  const profileView = document.getElementById('player-profile-view');
+  const composeView = document.getElementById('compose-player-trade-view');
+  const rowsEl = document.getElementById('leaderboard-rows');
+  if (!listView || !profileView || !composeView || !rowsEl) return;
+
+  const sortedPlayers = [...state.players].sort((a, b) => {
+    const valDiff = (Number(b.inventoryValue) || 0) - (Number(a.inventoryValue) || 0);
+    if (valDiff !== 0) return valDiff;
+    return (Number(b.cardsCount) || 0) - (Number(a.cardsCount) || 0);
+  });
+
+  if (composingTradeTargetId) {
+    const targetPlayer = sortedPlayers.find(p => p.id === composingTradeTargetId && p.id !== state.playerId);
+    if (!targetPlayer) {
+      composingTradeTargetId = null;
+    } else {
+      listView.classList.add('hidden');
+      profileView.classList.add('hidden');
+      composeView.classList.remove('hidden');
+
+      document.getElementById('compose-trade-title').textContent = `Трейд с игроком ${targetPlayer.name}`;
+      document.getElementById('compose-target-inv-title').textContent = `Карты игрока ${targetPlayer.name}`;
+
+      const myValidIds = new Set(state.inventory.map(c => c.uid));
+      outgoingOfferUids = outgoingOfferUids.filter(id => myValidIds.has(id));
+
+      const targetInv = Array.isArray(targetPlayer.inventory) ? targetPlayer.inventory : [];
+      const targetValidIds = new Set(targetInv.map(c => c.uid));
+      targetRequestedUids = targetRequestedUids.filter(id => targetValidIds.has(id));
+
+      const myPicked = state.inventory.filter(c => outgoingOfferUids.includes(c.uid));
+      const targetPicked = targetInv.filter(c => targetRequestedUids.includes(c.uid));
+
+      document.getElementById('compose-my-sum').textContent = getInventoryTotalValue(myPicked);
+      document.getElementById('compose-target-sum').textContent = getInventoryTotalValue(targetPicked);
+
+      const mySelGrid = document.getElementById('compose-my-selected-grid');
+      const tgtSelGrid = document.getElementById('compose-target-selected-grid');
+      mySelGrid.innerHTML = '';
+      tgtSelGrid.innerHTML = '';
+
+      myPicked.forEach(c => {
+        mySelGrid.appendChild(createCardElement(c, {
+          selected: true,
+          onClick: () => {
+            outgoingOfferUids = outgoingOfferUids.filter(id => id !== c.uid);
+            renderLeaderboardPage();
+          }
+        }));
+      });
+
+      targetPicked.forEach(c => {
+        tgtSelGrid.appendChild(createCardElement(c, {
+          selected: true,
+          onClick: () => {
+            targetRequestedUids = targetRequestedUids.filter(id => id !== c.uid);
+            renderLeaderboardPage();
+          }
+        }));
+      });
+
+      const myInvGrid = document.getElementById('compose-my-inv-grid');
+      myInvGrid.innerHTML = '';
+      if (state.inventory.length === 0) {
+        myInvGrid.innerHTML = '<div class="empty-box" style="grid-column:1/-1;">У тебя нет карт в инвентаре.</div>';
+      } else {
+        [...state.inventory]
+          .sort((a, b) => compareRanks(a.rank, b.rank))
+          .forEach(c => {
+            const isSel = outgoingOfferUids.includes(c.uid);
+            myInvGrid.appendChild(createCardElement(c, {
+              selected: isSel,
+              onClick: () => {
+                if (isSel) {
+                  outgoingOfferUids = outgoingOfferUids.filter(id => id !== c.uid);
+                } else {
+                  outgoingOfferUids.push(c.uid);
+                }
+                renderLeaderboardPage();
+              }
+            }));
+          });
+      }
+
+      const tgtInvGrid = document.getElementById('compose-target-inv-grid');
+      tgtInvGrid.innerHTML = '';
+      if (targetInv.length === 0) {
+        tgtInvGrid.innerHTML = '<div class="empty-box" style="grid-column:1/-1;">У этого игрока пока нет карт.</div>';
+      } else {
+        [...targetInv]
+          .sort((a, b) => compareRanks(a.rank, b.rank))
+          .forEach(c => {
+            const isSel = targetRequestedUids.includes(c.uid);
+            tgtInvGrid.appendChild(createCardElement(c, {
+              selected: isSel,
+              onClick: () => {
+                if (isSel) {
+                  targetRequestedUids = targetRequestedUids.filter(id => id !== c.uid);
+                } else {
+                  targetRequestedUids.push(c.uid);
+                }
+                renderLeaderboardPage();
+              }
+            }));
+          });
+      }
+
+      const sendBtn = document.getElementById('send-player-trade-submit-btn');
+      sendBtn.disabled = myPicked.length === 0 && targetPicked.length === 0;
+      sendBtn.onclick = async () => {
+        if (myPicked.length === 0 && targetPicked.length === 0) return;
+
+        const newTrade = {
+          id: `ptrade_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          fromPlayerId: state.playerId,
+          fromName: state.playerName || 'nar1',
+          fromAvatar: state.playerAvatar || DEFAULT_AVATAR,
+          toPlayerId: targetPlayer.id,
+          toName: targetPlayer.name,
+          fromCards: myPicked,
+          toCards: targetPicked,
+          status: 'pending',
+          seen: false,
+          createdAt: Date.now()
+        };
+
+        state.incomingTrades = [newTrade, ...state.incomingTrades];
+        outgoingOfferUids = [];
+        targetRequestedUids = [];
+        composingTradeTargetId = null;
+
+        saveState();
+        updateTradesUnreadBadge();
+        renderLeaderboardPage();
+        renderIncomingTradesPage();
+
+        if (isCloudConfigured()) {
+          await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+        }
+
+        showToast(`Трейд отправлен игроку ${targetPlayer.name}!`);
+      };
+
+      return;
+    }
+  }
+
+  if (inspectedPlayerId) {
+    const playerObj = sortedPlayers.find(p => p.id === inspectedPlayerId);
+    if (!playerObj) {
+      inspectedPlayerId = null;
+    } else {
+      listView.classList.add('hidden');
+      composeView.classList.add('hidden');
+      profileView.classList.remove('hidden');
+
+      const fallback = `https://placehold.co/120x120/1d243b/ffffff?text=${encodeURIComponent(playerObj.name || 'GD')}`;
+      const avEl = document.getElementById('inspected-player-avatar');
+      avEl.src = playerObj.avatar || fallback;
+      avEl.onerror = () => { avEl.src = fallback; };
+
+      document.getElementById('inspected-player-name').textContent =
+        playerObj.id === state.playerId ? `${playerObj.name} (Вы)` : playerObj.name;
+
+      const pCards = Array.isArray(playerObj.inventory) ? playerObj.inventory : [];
+      const pValue = getInventoryTotalValue(pCards);
+      document.getElementById('inspected-player-stats').textContent =
+        `Стоимость инвентаря: ${pValue} ₽ · Карт: ${pCards.length}`;
+
+      const tradeBtn = document.getElementById('open-player-trade-btn');
+      if (playerObj.id === state.playerId) {
+        tradeBtn.classList.add('hidden');
+      } else {
+        tradeBtn.classList.remove('hidden');
+        tradeBtn.onclick = () => {
+          composingTradeTargetId = playerObj.id;
+          outgoingOfferUids = [];
+          targetRequestedUids = [];
+          renderLeaderboardPage();
+        };
+      }
+
+      const pCardsGrid = document.getElementById('inspected-player-cards');
+      pCardsGrid.innerHTML = '';
+      if (pCards.length === 0) {
+        pCardsGrid.innerHTML = '<div class="empty-box" style="grid-column:1/-1;">У этого игрока пока нет карт.</div>';
+      } else {
+        [...pCards]
+          .sort((a, b) => compareRanks(a.rank, b.rank))
+          .forEach(c => pCardsGrid.appendChild(createCardElement(c)));
+      }
+      return;
+    }
+  }
+
+  listView.classList.remove('hidden');
+  profileView.classList.add('hidden');
+  composeView.classList.add('hidden');
+
+  rowsEl.innerHTML = '';
+  if (sortedPlayers.length === 0) {
+    rowsEl.innerHTML = '<div class="empty-box">Игроков в лидерборде пока нет.</div>';
+    return;
+  }
+
+  sortedPlayers.forEach((p, idx) => {
+    const row = document.createElement('div');
+    row.className = 'leaderboard-row';
+    const fallback = `https://placehold.co/120x120/1d243b/ffffff?text=${encodeURIComponent(p.name || 'GD')}`;
+    const pCards = Array.isArray(p.inventory) ? p.inventory : [];
+    const pValue = getInventoryTotalValue(pCards);
+
+    row.innerHTML = `
+      <div class="leaderboard-row-left">
+        <div class="leaderboard-place">#${idx + 1}</div>
+        <img src="${p.avatar || fallback}" alt="${p.name}" class="player-avatar-img" onerror="this.src='${fallback}'" />
+        <div>
+          <div style="font-weight:700; font-size:15px;">${p.name}${p.id === state.playerId ? ' (Вы)' : ''}</div>
+          <div class="hint">Карт в инвентаре: ${pCards.length}</div>
+        </div>
+      </div>
+      <div style="font-weight:800; font-size:16px;">${pValue} ₽</div>
+    `;
+
+    row.addEventListener('click', () => {
+      inspectedPlayerId = p.id;
+      composingTradeTargetId = null;
+      renderLeaderboardPage();
+    });
+
+    rowsEl.appendChild(row);
+  });
 }
 
 function getCardPowerScore(card) {
@@ -857,7 +1609,7 @@ function recordDropToFeed(card, sourceLabel = 'Пак') {
   renderLiveDropsFeed();
 
   if (isCloudConfigured()) {
-    pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects);
+    pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
   }
 }
 
@@ -917,7 +1669,7 @@ function renderLiveDropsFeed() {
 
 async function fetchSharedData() {
   if (!isCloudConfigured()) {
-    return { ok: false, pool: null, cases: null, recentDrops: null, rarities: null, effects: null };
+    return { ok: false, pool: null, cases: null, recentDrops: null, rarities: null, effects: null, players: null, incomingTrades: null };
   }
   try {
     const res = await fetch(`${JSONBIN_URL}/latest?nocache=${Date.now()}`, {
@@ -937,11 +1689,13 @@ async function fetchSharedData() {
       cases: Array.isArray(rec.cases) ? rec.cases : null,
       recentDrops: Array.isArray(rec.recentDrops) ? rec.recentDrops : null,
       rarities: Array.isArray(rec.rarities) ? rec.rarities : null,
-      effects: Array.isArray(rec.effects) ? rec.effects : null
+      effects: Array.isArray(rec.effects) ? rec.effects : null,
+      players: Array.isArray(rec.players) ? rec.players : null,
+      incomingTrades: Array.isArray(rec.incomingTrades) ? rec.incomingTrades : null
     };
   } catch (err) {
     console.error('Не удалось загрузить общие данные:', err);
-    return { ok: false, pool: null, cases: null, recentDrops: null, rarities: null, effects: null };
+    return { ok: false, pool: null, cases: null, recentDrops: null, rarities: null, effects: null, players: null, incomingTrades: null };
   }
 }
 
@@ -950,7 +1704,9 @@ async function pushSharedData(
   nextCases = state.cases,
   nextDrops = state.recentDrops,
   nextRarities = state.rarities,
-  nextEffects = state.effects
+  nextEffects = state.effects,
+  nextPlayers = state.players,
+  nextIncomingTrades = state.incomingTrades
 ) {
   if (!isCloudConfigured()) {
     return false;
@@ -967,7 +1723,9 @@ async function pushSharedData(
         cases: nextCases,
         recentDrops: nextDrops,
         rarities: nextRarities,
-        effects: nextEffects
+        effects: nextEffects,
+        players: nextPlayers,
+        incomingTrades: nextIncomingTrades
       })
     });
     if (!res.ok) {
@@ -1469,7 +2227,7 @@ function renderAdminEffectsCustomizer() {
           : item
       );
 
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, nextEffects);
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, nextEffects, state.players, state.incomingTrades);
       if (ok) {
         state.effects = nextEffects;
         syncDynamicRarityStyles();
@@ -1479,6 +2237,8 @@ function renderAdminEffectsCustomizer() {
         renderCollection();
         renderCasesPage();
         renderCraftsPage();
+        renderLeaderboardPage();
+        renderIncomingTradesPage();
         showToast(`Эффект "${nextName}" сохранён!`);
       }
     });
@@ -1491,7 +2251,7 @@ function renderAdminEffectsCustomizer() {
           normalizeEffectId(r.effectId) === eff.id ? { ...r, effectId: 'none' } : r
         );
 
-        const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, nextEffects);
+        const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, nextEffects, state.players, state.incomingTrades);
         if (ok) {
           state.effects = nextEffects;
           state.rarities = nextRarities;
@@ -1502,6 +2262,8 @@ function renderAdminEffectsCustomizer() {
           renderCollection();
           renderCasesPage();
           renderCraftsPage();
+          renderLeaderboardPage();
+          renderIncomingTradesPage();
           showToast(`Эффект "${eff.name}" удалён`);
         }
       });
@@ -1565,7 +2327,7 @@ function renderAdminRaritiesManager() {
         caseChance: Number(normCase[idx].toFixed(6))
       }));
 
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, state.effects);
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, state.effects, state.players, state.incomingTrades);
       if (ok) {
         state.rarities = nextRarities;
         syncDynamicRarityStyles();
@@ -1600,7 +2362,7 @@ function renderAdminRaritiesManager() {
           caseChance: Number(normCase[idx].toFixed(6))
         }));
 
-        const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, nextRarities, state.effects);
+        const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, nextRarities, state.effects, state.players, state.incomingTrades);
         if (ok) {
           state.pool = nextPool;
           state.rarities = nextRarities;
@@ -1773,7 +2535,7 @@ function ensureAdminSyncButton() {
       showToast('Пул пуст — нечего отправлять');
       return;
     }
-    const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects);
+    const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
     if (ok) {
       showToast(`Сохранено в облако: ${state.pool.length} карт, ${state.cases.length} кейсов, ${state.rarities.length} редкостей`);
     }
@@ -1806,6 +2568,8 @@ async function init() {
     try {
       const parsed = JSON.parse(saved);
       state.playerName = parsed.playerName || 'nar1';
+      state.playerAvatar = parsed.playerAvatar || DEFAULT_AVATAR;
+      state.registered = Boolean(parsed.registered);
       state.balance = parsed.balance ?? 500;
       state.packs = parsed.packs ?? 0;
       state.packsOpened = parsed.packsOpened ?? 0;
@@ -1825,6 +2589,12 @@ async function init() {
       }
       if (Array.isArray(parsed.rarities) && parsed.rarities.length > 0) {
         state.rarities = normalizeRaritiesList(parsed.rarities);
+      }
+      if (Array.isArray(parsed.players)) {
+        state.players = parsed.players;
+      }
+      if (Array.isArray(parsed.incomingTrades)) {
+        state.incomingTrades = parsed.incomingTrades;
       }
     } catch (e) {
       console.error(e);
@@ -1856,10 +2626,25 @@ async function init() {
     if (Array.isArray(cloudResult.recentDrops) && cloudResult.recentDrops.length > 0) {
       state.recentDrops = cloudResult.recentDrops;
     }
+
+    if (Array.isArray(cloudResult.players)) {
+      const mergedPlayersMap = new Map();
+      cloudResult.players.forEach(p => {
+        if (p && p.id) mergedPlayersMap.set(p.id, p);
+      });
+      state.players = Array.from(mergedPlayersMap.values());
+    }
+
+    if (Array.isArray(cloudResult.incomingTrades)) {
+      state.incomingTrades = cloudResult.incomingTrades;
+    }
+
+    upsertCurrentPlayerInRegistry();
     saveState();
   } else {
     if (!state.pool || state.pool.length === 0) state.pool = [...DEFAULT_POOL];
     if (!state.cases || state.cases.length === 0) state.cases = [...DEFAULT_CASES];
+    upsertCurrentPlayerInRegistry();
   }
 
   if (!state.effects || state.effects.length === 0) {
@@ -1872,7 +2657,9 @@ async function init() {
   injectMinimalCaseAndFeedStyles();
   ensureDroppedCardsAreaUI();
   ensureCasesPageUI();
-  ensureCraftsPageUI();
+  ensureLeaderboardPageUI();
+  ensureIncomingTradesTabUI();
+  ensureProfileRegistrationUI();
   ensureEditCaseModalUI();
   ensureBuyPackButtonVisible();
   ensureOpenAllPacksButton();
@@ -1883,13 +2670,16 @@ async function init() {
   hideFreePackTimerUI();
   syncRankInputsToFreeText();
   syncRaritySelects();
+  syncProfileBannerUI();
 
   setupNavigation();
   updateHeader();
+  updateTradesUnreadBadge();
   renderLiveDropsFeed();
   renderDroppedCards(false);
   renderCasesPage();
-  renderCraftsPage();
+  renderLeaderboardPage();
+  renderIncomingTradesPage();
   renderCollection();
   renderAdminPreview();
   renderAdminCasePoolCheckboxes();
@@ -1897,6 +2687,12 @@ async function init() {
   renderAdminCasesList();
   renderAdminRaritiesManager();
   bindEvents();
+
+  if (!state.registered) {
+    openProfileModal();
+  } else if (isCloudConfigured()) {
+    await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+  }
 
   if (isCloudConfigured()) {
     setInterval(async () => {
@@ -1951,6 +2747,35 @@ async function init() {
           updated = true;
         }
       }
+      if (Array.isArray(fresh.players)) {
+        const prevPlayersStr = JSON.stringify(state.players);
+        const map = new Map();
+        fresh.players.forEach(p => {
+          if (p && p.id) map.set(p.id, p);
+        });
+        const myEntry = map.get(state.playerId);
+        if (myEntry && Array.isArray(myEntry.inventory)) {
+          const cloudInvStr = JSON.stringify(myEntry.inventory);
+          if (cloudInvStr !== JSON.stringify(state.inventory)) {
+            state.inventory = myEntry.inventory;
+            renderCollection();
+          }
+        }
+        state.players = Array.from(map.values());
+        upsertCurrentPlayerInRegistry();
+        if (JSON.stringify(state.players) !== prevPlayersStr) {
+          renderLeaderboardPage();
+          updated = true;
+        }
+      }
+      if (Array.isArray(fresh.incomingTrades)) {
+        if (JSON.stringify(fresh.incomingTrades) !== JSON.stringify(state.incomingTrades)) {
+          state.incomingTrades = fresh.incomingTrades;
+          updateTradesUnreadBadge();
+          renderIncomingTradesPage();
+          updated = true;
+        }
+      }
 
       if (updated) {
         saveState();
@@ -1959,7 +2784,6 @@ async function init() {
         renderAdminCasesList();
         renderAdminRaritiesManager();
         renderCasesPage();
-        renderCraftsPage();
         if (document.getElementById('tab-upgrade').classList.contains('active') && !isSpinning) {
           renderUpgradePage();
         }
@@ -1969,9 +2793,12 @@ async function init() {
 }
 
 function saveState() {
+  upsertCurrentPlayerInRegistry();
   try {
     localStorage.setItem('gd_case_save_v1', JSON.stringify({
       playerName: state.playerName,
+      playerAvatar: state.playerAvatar,
+      registered: state.registered,
       balance: state.balance,
       packs: state.packs,
       packsOpened: state.packsOpened,
@@ -1981,7 +2808,9 @@ function saveState() {
       effects: state.effects,
       inventory: state.inventory,
       droppedTemp: state.droppedTemp,
-      recentDrops: state.recentDrops
+      recentDrops: state.recentDrops,
+      players: state.players,
+      incomingTrades: state.incomingTrades
     }));
   } catch (e) {
     showToast('Память браузера заполнена — удали часть тяжёлых картинок!');
@@ -2007,10 +2836,10 @@ function setupNavigation() {
       if (targetSec) targetSec.classList.add('active');
 
       if (tab === 'cases') renderCasesPage();
-      if (tab === 'crafts') renderCraftsPage();
+      if (tab === 'leaderboard') renderLeaderboardPage();
+      if (tab === 'trades') renderIncomingTradesPage();
       if (tab === 'collection') renderCollection();
       if (tab === 'upgrade') renderUpgradePage();
-      if (tab === 'trades' && tradeActive) renderTradeWorkspace();
       if (tab === 'admin') {
         ensureAdminCaseBuilderUI();
         ensureAdminRaritiesManagerUI();
@@ -2648,131 +3477,6 @@ function renderDroppedCards(animate = false) {
   if (totalEl) totalEl.textContent = total;
 }
 
-// 2. ТРЕЙДЫ С БОТОМ (ТОЛЬКО МЕНЬШЕ ИЛИ РОВНО СТОЛЬКО ЖЕ)
-function startTrade() {
-  tradeActive = true;
-  userTradeIds = [];
-  botOfferCards = [];
-  document.getElementById('trade-placeholder').classList.add('hidden');
-  document.getElementById('trade-workspace').classList.remove('hidden');
-  document.getElementById('trade-inventory-block').classList.remove('hidden');
-  renderTradeWorkspace();
-}
-
-function getAllCatalogVariants() {
-  const list = [];
-  state.pool.forEach(base => {
-    list.push({ base, isHolo: false, price: Math.round(base.price) });
-    list.push({ base, isHolo: true, price: Math.round(base.price * HOLO_MULTIPLIER) });
-  });
-  return list;
-}
-
-function generateBotOffer() {
-  const userCards = state.inventory.filter(c => userTradeIds.includes(c.uid));
-  const userSum = userCards.reduce((s, c) => s + (Number(c.price) || 0), 0);
-
-  if (userSum <= 0) {
-    botOfferCards = [];
-    return;
-  }
-
-  const variants = getAllCatalogVariants().filter(v => (Number(v.price) || 0) <= userSum);
-  if (variants.length === 0) {
-    botOfferCards = [];
-    return;
-  }
-
-  let bestCombo = [];
-  let bestSum = -1;
-
-  for (let i = 0; i < 1200; i++) {
-    const count = Math.floor(Math.random() * 4) + 1;
-    const combo = [];
-    let sum = 0;
-
-    for (let k = 0; k < count; k++) {
-      const candidate = variants[Math.floor(Math.random() * variants.length)];
-      const p = Number(candidate.price) || 0;
-      if (sum + p <= userSum) {
-        combo.push(candidate);
-        sum += p;
-      }
-    }
-
-    if (sum <= userSum && sum > bestSum) {
-      bestSum = sum;
-      bestCombo = combo;
-      if (bestSum === userSum) break;
-    }
-  }
-
-  botOfferCards = sortCardsBestFirst(
-    bestCombo.map(item => buildCardInstance(item.base, item.isHolo, 'trade'))
-  );
-}
-
-function renderTradeWorkspace() {
-  const userSlots = document.getElementById('user-offer-slots');
-  const botSlots = document.getElementById('bot-offer-slots');
-  const invGrid = document.getElementById('trade-user-inv');
-
-  userSlots.innerHTML = '';
-  botSlots.innerHTML = '';
-  invGrid.innerHTML = '';
-
-  const userCards = state.inventory.filter(c => userTradeIds.includes(c.uid));
-  const userSum = userCards.reduce((s, c) => s + c.price, 0);
-  const botSum = botOfferCards.reduce((s, c) => s + c.price, 0);
-
-  document.getElementById('user-offer-sum').textContent = userSum;
-  document.getElementById('bot-offer-sum').textContent = botSum;
-
-  userCards.forEach(c => {
-    userSlots.appendChild(createCardElement(c, {
-      onClick: () => {
-        userTradeIds = userTradeIds.filter(id => id !== c.uid);
-        generateBotOffer();
-        renderTradeWorkspace();
-      }
-    }));
-  });
-
-  botOfferCards.forEach(c => {
-    botSlots.appendChild(createCardElement(c));
-  });
-
-  const confirmBtn = document.getElementById('confirm-trade-btn');
-  const statusText = document.getElementById('bot-status-text');
-
-  if (userCards.length === 0) {
-    confirmBtn.disabled = true;
-    statusText.textContent = 'Добавь свои карты в трейд';
-  } else {
-    confirmBtn.disabled = false;
-    const diff = botSum - userSum;
-    const diffLabel = diff === 0 ? 'ровно' : `${diff} ₽`;
-    statusText.textContent = `Оффер бота: ${botSum} ₽ (${diffLabel} от твоих ${userSum} ₽)`;
-  }
-
-  state.inventory
-    .filter(c => !userTradeIds.includes(c.uid))
-    .sort((a, b) => compareRanks(a.rank, b.rank))
-    .forEach(c => {
-      invGrid.appendChild(createCardElement(c, {
-        onClick: () => {
-          if (userTradeIds.length >= 6) {
-            showToast('Максимум 6 карт в одном трейде');
-            return;
-          }
-          userTradeIds.push(c.uid);
-          generateBotOffer();
-          renderTradeWorkspace();
-        }
-      }));
-    });
-}
-
 // 2.5 КРАФТЫ (10 КАРТ ОДНОЙ РЕДКОСТИ -> 1 КАРТА СЛЕДУЮЩЕЙ РЕДКОСТИ ПО ЦЕНЕ)
 function getCraftTargetRarityObj(sourceRarityKey) {
   const nextObj = getNextRarityObj(sourceRarityKey);
@@ -2811,7 +3515,6 @@ function pickCraftedCardFromPrice(sourceRarityKey, totalPrice) {
     price: Math.round(base.price * (isHolo ? HOLO_MULTIPLIER : 1))
   }));
 
-  // Целевая стоимость результата масштабируется от суммы 10 исходных карт
   const avgVariantPrice = variants.reduce((s, v) => s + v.price, 0) / variants.length || 1;
   const referenceScale = Math.max(1, totalPrice / (avgVariantPrice * 1.15));
 
@@ -3129,6 +3832,7 @@ function runUpgrade() {
 function renderCollection() {
   ensureCollectionBulkSellControls();
   syncRaritySelects();
+  syncProfileBannerUI();
 
   const rarityFilter = document.getElementById('filter-rarity').value;
   const typeFilter = document.getElementById('filter-type').value;
@@ -3308,7 +4012,7 @@ function renderAdminCasesList() {
       actionLabel: 'Удалить',
       onAction: async (c) => {
         const nextCases = state.cases.filter(x => x.id !== c.id);
-        const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities, state.effects);
+        const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
         if (ok) {
           state.cases = nextCases;
           if (openedCaseId === c.id) {
@@ -3388,7 +4092,7 @@ async function moveAdminPoolCard(draggedId, targetId, placeAfter = false) {
   renderCasesPage();
 
   if (isCloudConfigured()) {
-    await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects);
+    await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
   }
 }
 
@@ -3409,7 +4113,7 @@ function renderAdminPool() {
           return;
         }
         const nextPool = state.pool.filter(x => x.id !== c.id);
-        const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects);
+        const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
         if (ok) {
           state.pool = nextPool;
           saveState();
@@ -3493,6 +4197,85 @@ function bindEvents() {
       saveState();
       updateHeader();
       showToast(`Куплен 1 пак за ${PACK_PRICE} ₽!`);
+    });
+  }
+
+  // Профиль / регистрация
+  const editProfileBtn = document.getElementById('edit-profile-btn');
+  if (editProfileBtn) editProfileBtn.addEventListener('click', openProfileModal);
+
+  const closeProfileBtn = document.getElementById('close-profile-modal-btn');
+  if (closeProfileBtn) closeProfileBtn.addEventListener('click', closeProfileModal);
+
+  const profileFileInp = document.getElementById('profile-avatar-file');
+  const profileUrlInp = document.getElementById('profile-avatar-url');
+  if (profileFileInp) {
+    profileFileInp.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) {
+        uploadedAvatarDataUrl = '';
+        syncProfileBannerUI();
+        return;
+      }
+      compressAvatarFileToDataUrl(file, (dataUrl) => {
+        uploadedAvatarDataUrl = dataUrl;
+        if (profileUrlInp) profileUrlInp.value = '';
+        syncProfileBannerUI();
+      });
+    });
+  }
+
+  if (profileUrlInp) {
+    profileUrlInp.addEventListener('input', () => {
+      if (profileUrlInp.value.trim()) {
+        uploadedAvatarDataUrl = '';
+        if (profileFileInp) profileFileInp.value = '';
+      }
+      syncProfileBannerUI();
+    });
+  }
+
+  const profileForm = document.getElementById('profile-registration-form');
+  if (profileForm) {
+    profileForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const nick = ((document.getElementById('profile-nickname-input') && document.getElementById('profile-nickname-input').value) || '').trim();
+      const urlVal = ((document.getElementById('profile-avatar-url') && document.getElementById('profile-avatar-url').value) || '').trim();
+      const nextAvatar = uploadedAvatarDataUrl || urlVal || state.playerAvatar || DEFAULT_AVATAR;
+
+      state.playerName = nick || 'nar1';
+      state.playerAvatar = nextAvatar;
+      state.registered = true;
+      upsertCurrentPlayerInRegistry();
+      saveState();
+      syncProfileBannerUI();
+      renderLeaderboardPage();
+      closeProfileModal();
+
+      if (isCloudConfigured()) {
+        await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+      }
+      showToast(`Профиль сохранён: ${state.playerName}`);
+    });
+  }
+
+  // Навигация внутри Лидерборда / профиля игрока / отправки трейда
+  const backToLbBtn = document.getElementById('back-to-leaderboard-btn');
+  if (backToLbBtn) {
+    backToLbBtn.addEventListener('click', () => {
+      inspectedPlayerId = null;
+      composingTradeTargetId = null;
+      renderLeaderboardPage();
+    });
+  }
+
+  const backToPlayerProfileBtn = document.getElementById('back-to-player-profile-btn');
+  if (backToPlayerProfileBtn) {
+    backToPlayerProfileBtn.addEventListener('click', () => {
+      composingTradeTargetId = null;
+      outgoingOfferUids = [];
+      targetRequestedUids = [];
+      renderLeaderboardPage();
     });
   }
 
@@ -3600,30 +4383,6 @@ function bindEvents() {
     craftExecuteBtn.addEventListener('click', executeCraft);
   }
 
-  // Трейды
-  document.getElementById('start-trade-btn').addEventListener('click', startTrade);
-  document.getElementById('reroll-bot-btn').addEventListener('click', () => {
-    generateBotOffer();
-    renderTradeWorkspace();
-  });
-  document.getElementById('cancel-trade-btn').addEventListener('click', () => {
-    tradeActive = false;
-    document.getElementById('trade-workspace').classList.add('hidden');
-    document.getElementById('trade-inventory-block').classList.add('hidden');
-    document.getElementById('trade-placeholder').classList.remove('hidden');
-  });
-  document.getElementById('confirm-trade-btn').addEventListener('click', () => {
-    if (userTradeIds.length === 0) return;
-    state.inventory = state.inventory.filter(c => !userTradeIds.includes(c.uid));
-    state.inventory.push(...botOfferCards);
-    botOfferCards.forEach(c => recordDropToFeed(c, 'Трейд'));
-    userTradeIds = [];
-    botOfferCards = [];
-    saveState();
-    renderTradeWorkspace();
-    showToast('Обмен с ботом успешно завершён!');
-  });
-
   // Апгрейды
   document.getElementById('upg-search-input').addEventListener('input', () => {
     if (!isSpinning) renderUpgradePage();
@@ -3689,7 +4448,7 @@ function bindEvents() {
         };
       });
 
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, state.effects);
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, state.effects, state.players, state.incomingTrades);
       if (ok) {
         state.rarities = nextRarities;
         syncDynamicRarityStyles();
@@ -3710,7 +4469,7 @@ function bindEvents() {
     resetRaritiesBtn.addEventListener('click', async () => {
       const nextRarities = normalizeRaritiesList(DEFAULT_RARITIES);
       const nextEffects = normalizeEffectsList(DEFAULT_EFFECTS);
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, nextEffects);
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, nextEffects, state.players, state.incomingTrades);
       if (ok) {
         state.rarities = nextRarities;
         state.effects = nextEffects;
@@ -3780,7 +4539,7 @@ function bindEvents() {
         caseChance: Number(normCase[i].toFixed(6))
       }));
 
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, state.effects);
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, state.effects, state.players, state.incomingTrades);
       if (ok) {
         state.rarities = nextRarities;
         syncDynamicRarityStyles();
@@ -3824,7 +4583,7 @@ function bindEvents() {
         }
       ];
 
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, nextEffects);
+      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, nextEffects, state.players, state.incomingTrades);
       if (ok) {
         state.effects = nextEffects;
         syncDynamicRarityStyles();
@@ -3892,7 +4651,7 @@ function bindEvents() {
     };
 
     const nextPool = [newLevel, ...state.pool];
-    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects);
+    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
     if (!ok) return;
 
     state.pool = nextPool;
@@ -3989,7 +4748,7 @@ function bindEvents() {
       };
 
       const nextCases = [newCase, ...state.cases];
-      const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities, state.effects);
+      const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
       if (!ok) return;
 
       state.cases = nextCases;
@@ -4067,7 +4826,7 @@ function bindEvents() {
         itemIds: checkedIds.length > 0 ? checkedIds : state.pool.map(lvl => lvl.id)
       };
 
-      const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities, state.effects);
+      const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
       if (!ok) return;
 
       state.cases = nextCases;
@@ -4121,7 +4880,7 @@ function bindEvents() {
       image: nextImage
     };
 
-    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects);
+    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
     if (!ok) return;
 
     state.pool = nextPool;
