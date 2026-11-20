@@ -3,7 +3,6 @@ const JSONBIN_BIN_ID = '6afc4b60ffd5d16053c85caa';
 const JSONBIN_MASTER_KEY = '$2a$10$eiZem/A1JhfYhF6bHWXE7uzoJ6D8QjuKpyPe5Hrg9i2osHoYhRrVK';
 const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
 
-// Стартовый пул (используется только если облако ещё не настроено или в облаке вообще нет массива pool)
 const DEFAULT_POOL = [
   {
     id: 'lvl_1',
@@ -105,41 +104,11 @@ const DEFAULT_CASES = [
 ];
 
 const DEFAULT_EFFECTS = [
-  {
-    id: 'none',
-    name: 'Без эффекта',
-    styleMode: 'none',
-    intensity: 1,
-    accentColor: ''
-  },
-  {
-    id: 'pulse_glow',
-    name: 'Пульсирующее свечение',
-    styleMode: 'pulse_glow',
-    intensity: 1.2,
-    accentColor: ''
-  },
-  {
-    id: 'shimmer_sweep',
-    name: 'Переливающийся блик',
-    styleMode: 'shimmer_sweep',
-    intensity: 1.1,
-    accentColor: ''
-  },
-  {
-    id: 'neon_border',
-    name: 'Неоновый контур',
-    styleMode: 'neon_border',
-    intensity: 1.3,
-    accentColor: ''
-  },
-  {
-    id: 'float_aura',
-    name: 'Плавная аура',
-    styleMode: 'float_aura',
-    intensity: 1.25,
-    accentColor: ''
-  }
+  { id: 'none', name: 'Без эффекта', styleMode: 'none', intensity: 1, accentColor: '' },
+  { id: 'pulse_glow', name: 'Пульсирующее свечение', styleMode: 'pulse_glow', intensity: 1.2, accentColor: '' },
+  { id: 'shimmer_sweep', name: 'Переливающийся блик', styleMode: 'shimmer_sweep', intensity: 1.1, accentColor: '' },
+  { id: 'neon_border', name: 'Неоновый контур', styleMode: 'neon_border', intensity: 1.3, accentColor: '' },
+  { id: 'float_aura', name: 'Плавная аура', styleMode: 'float_aura', intensity: 1.25, accentColor: '' }
 ];
 
 const DEFAULT_RARITIES = [
@@ -1119,6 +1088,76 @@ function ensureLeaderboardPageUI() {
   }
 }
 
+function ensureCraftsPageUI() {
+  const nav = document.querySelector('nav, .nav-bar, .navbar, .tabs-nav');
+  if (nav && !nav.querySelector('[data-tab="crafts"]')) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'nav-btn';
+    btn.dataset.tab = 'crafts';
+    btn.textContent = 'Крафты';
+    const colBtn = nav.querySelector('[data-tab="collection"]');
+    if (colBtn && colBtn.parentNode === nav) {
+      colBtn.insertAdjacentElement('afterend', btn);
+    } else {
+      nav.appendChild(btn);
+    }
+  }
+
+  if (!document.getElementById('tab-crafts')) {
+    const adminTab = document.getElementById('tab-admin');
+    const main = (adminTab && adminTab.parentElement) || document.querySelector('main') || document.body;
+    const section = document.createElement('section');
+    section.id = 'tab-crafts';
+    section.className = 'tab-section';
+    section.innerHTML = `
+      <div class="section-header">
+        <h2 class="section-title">Крафты (10 → 1)</h2>
+        <p class="hint">Выбери 10 карт одной редкости, чтобы скрафтить 1 карту следующей редкости с подбором по стоимости.</p>
+      </div>
+
+      <div class="craft-top-bar">
+        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px;">
+          <label style="display:flex; align-items:center; gap:8px;">
+            <span>Редкость:</span>
+            <select id="craft-rarity-select"></select>
+          </label>
+          <button type="button" id="craft-autofill-btn" class="btn-secondary">Автозаполнить (до 10)</button>
+          <button type="button" id="craft-clear-btn" class="btn-secondary">Очистить</button>
+          <button type="button" id="craft-execute-btn" class="btn-primary" disabled>Скрафтить (0 / 10)</button>
+        </div>
+
+        <div class="craft-summary-stats">
+          <div>Выбрано: <strong><span id="craft-selected-count">0</span> / 10</strong></div>
+          <div>Сумма выбранных: <strong><span id="craft-total-price">0</span> ₽</strong></div>
+          <div>Следующая редкость: <strong id="craft-next-rarity">—</strong></div>
+        </div>
+      </div>
+
+      <div id="craft-result-box" class="craft-result-box hidden">
+        <div id="craft-result-card-wrap"></div>
+        <div>
+          <div class="hint" style="margin-bottom:4px;">Результат крафта:</div>
+          <h3 id="craft-result-title" style="margin:0 0 6px;"></h3>
+          <div id="craft-result-meta" class="hint"></div>
+        </div>
+      </div>
+
+      <h3 class="sub-title">Слоты крафта (<span id="craft-slots-count">0</span> / 10)</h3>
+      <div id="craft-selected-slots" class="craft-slots-grid"></div>
+
+      <h3 class="sub-title">Доступные карты выбранной редкости</h3>
+      <div id="craft-available-grid" class="cards-grid"></div>
+    `;
+
+    if (adminTab && adminTab.parentNode === main) {
+      main.insertBefore(section, adminTab);
+    } else {
+      main.appendChild(section);
+    }
+  }
+}
+
 function ensureIncomingTradesTabUI() {
   const navBtn = document.querySelector('.nav-btn[data-tab="trades"]');
   if (navBtn && !navBtn.querySelector('.trade-unread-badge')) {
@@ -1167,6 +1206,90 @@ function ensureIncomingTradesTabUI() {
   `;
 }
 
+async function syncLatestCloudSnapshot() {
+  if (!isCloudConfigured()) return null;
+  const fresh = await fetchSharedData();
+  if (!fresh.ok) return null;
+
+  if (Array.isArray(fresh.pool) && fresh.pool.length > 0) state.pool = fresh.pool;
+  if (Array.isArray(fresh.cases) && fresh.cases.length > 0) state.cases = fresh.cases;
+  if (Array.isArray(fresh.effects) && fresh.effects.length > 0) state.effects = normalizeEffectsList(fresh.effects);
+  if (Array.isArray(fresh.rarities) && fresh.rarities.length > 0) {
+    state.rarities = normalizeRaritiesList(fresh.rarities);
+    syncRaritySelects();
+  }
+  if (Array.isArray(fresh.recentDrops)) {
+    const mergedMap = new Map();
+    [...fresh.recentDrops, ...state.recentDrops].forEach(d => {
+      if (d && d.uid) mergedMap.set(d.uid, d);
+    });
+    state.recentDrops = Array.from(mergedMap.values())
+      .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+      .slice(0, 35);
+  }
+
+  if (Array.isArray(fresh.players)) {
+    const map = new Map();
+    fresh.players.forEach(p => {
+      if (p && p.id && p.id !== state.playerId) {
+        map.set(p.id, p);
+      }
+    });
+    state.players = Array.from(map.values());
+  }
+  upsertCurrentPlayerInRegistry();
+
+  if (Array.isArray(fresh.incomingTrades)) {
+    state.incomingTrades = fresh.incomingTrades;
+  }
+
+  syncDynamicRarityStyles();
+  saveState();
+  return fresh;
+}
+
+function getPlayerInventoryById(playerId) {
+  if (playerId === state.playerId) {
+    return Array.isArray(state.inventory) ? state.inventory : [];
+  }
+  const found = (Array.isArray(state.players) ? state.players : []).find(p => p.id === playerId);
+  return found && Array.isArray(found.inventory) ? found.inventory : [];
+}
+
+function setPlayerInventoryById(playerId, nextInventory) {
+  const safeInv = Array.isArray(nextInventory) ? nextInventory : [];
+  if (playerId === state.playerId) {
+    state.inventory = safeInv;
+    upsertCurrentPlayerInRegistry();
+    return;
+  }
+  const map = new Map();
+  (Array.isArray(state.players) ? state.players : []).forEach(p => {
+    if (p && p.id) map.set(p.id, p);
+  });
+  const existing = map.get(playerId) || {
+    id: playerId,
+    name: 'Игрок',
+    avatar: DEFAULT_AVATAR
+  };
+  map.set(playerId, {
+    ...existing,
+    inventory: safeInv,
+    inventoryValue: getInventoryTotalValue(safeInv),
+    cardsCount: safeInv.length,
+    updatedAt: Date.now()
+  });
+  state.players = Array.from(map.values());
+}
+
+function cloneCardWithFreshUid(card, prefix = 'trd') {
+  return {
+    ...card,
+    uid: `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    favorite: false
+  };
+}
+
 function getUnreadIncomingTrades() {
   return (Array.isArray(state.incomingTrades) ? state.incomingTrades : []).filter(
     t => t && t.toPlayerId === state.playerId && t.status === 'pending' && !t.seen
@@ -1196,19 +1319,46 @@ function renderIncomingTradesPage() {
   const detailBox = document.getElementById('incoming-trade-detail');
   if (!listEl || !detailBox) return;
 
-  const myTrades = (Array.isArray(state.incomingTrades) ? state.incomingTrades : [])
+  const pendingForMe = (Array.isArray(state.incomingTrades) ? state.incomingTrades : [])
     .filter(t => t && t.toPlayerId === state.playerId && t.status === 'pending')
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
+  const mySentResolved = (Array.isArray(state.incomingTrades) ? state.incomingTrades : [])
+    .filter(t => t && t.fromPlayerId === state.playerId && t.status !== 'pending' && !t.senderNotified)
+    .sort((a, b) => (b.resolvedAt || b.createdAt || 0) - (a.resolvedAt || a.createdAt || 0));
+
   listEl.innerHTML = '';
-  if (myTrades.length === 0) {
+
+  mySentResolved.forEach(trade => {
+    const statusText = trade.status === 'accepted' ? 'Принят' : 'Отклонён';
+    const row = document.createElement('div');
+    row.className = 'incoming-trade-item';
+    row.innerHTML = `
+      <div>
+        <div style="font-weight:700;">Ваш трейд игроку ${trade.toName}: ${statusText}</div>
+        <div class="hint">Отдавали: ${(trade.fromCards || []).length} карт · Просили: ${(trade.toCards || []).length} карт</div>
+      </div>
+      <button type="button" class="btn-secondary dismiss-sent-status-btn">Ок</button>
+    `;
+    row.querySelector('.dismiss-sent-status-btn').addEventListener('click', async () => {
+      state.incomingTrades = state.incomingTrades.filter(item => item.id !== trade.id);
+      saveState();
+      renderIncomingTradesPage();
+      if (isCloudConfigured()) {
+        await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+      }
+    });
+    listEl.appendChild(row);
+  });
+
+  if (pendingForMe.length === 0 && mySentResolved.length === 0) {
     inspectedIncomingTradeId = null;
     detailBox.classList.add('hidden');
     listEl.innerHTML = '<div class="empty-box">Входящих предложений на трейд пока нет.</div>';
     return;
   }
 
-  myTrades.forEach(trade => {
+  pendingForMe.forEach(trade => {
     const row = document.createElement('div');
     row.className = `incoming-trade-item ${!trade.seen ? 'unread' : ''}`;
     const fromSum = getInventoryTotalValue(trade.fromCards);
@@ -1232,8 +1382,10 @@ function renderIncomingTradesPage() {
 
     row.querySelector('.view-trade-btn').addEventListener('click', async () => {
       inspectedIncomingTradeId = trade.id;
-      if (!trade.seen) {
-        trade.seen = true;
+      await syncLatestCloudSnapshot();
+      const targetTrade = state.incomingTrades.find(item => item.id === trade.id);
+      if (targetTrade && !targetTrade.seen) {
+        targetTrade.seen = true;
         saveState();
         updateTradesUnreadBadge();
         if (isCloudConfigured()) {
@@ -1246,7 +1398,7 @@ function renderIncomingTradesPage() {
     listEl.appendChild(row);
   });
 
-  const activeTrade = myTrades.find(t => t.id === inspectedIncomingTradeId);
+  const activeTrade = pendingForMe.find(t => t.id === inspectedIncomingTradeId);
   if (!activeTrade) {
     detailBox.classList.add('hidden');
     return;
@@ -1273,65 +1425,110 @@ function renderIncomingTradesPage() {
   const closeBtn = document.getElementById('close-incoming-trade-btn');
 
   acceptBtn.onclick = async () => {
-    const requestedUids = new Set((activeTrade.toCards || []).map(c => c.uid));
-    const myMatchingCards = state.inventory.filter(c => requestedUids.has(c.uid));
+    acceptBtn.disabled = true;
+    try {
+      await syncLatestCloudSnapshot();
 
-    if (myMatchingCards.length !== requestedUids.size) {
-      showToast('У тебя больше нет некоторых запрошенных карт');
-      return;
+      const freshTrade = state.incomingTrades.find(t => t.id === activeTrade.id && t.status === 'pending');
+      if (!freshTrade) {
+        showToast('Этот трейд уже неактуален');
+        inspectedIncomingTradeId = null;
+        renderIncomingTradesPage();
+        return;
+      }
+
+      const myInv = [...getPlayerInventoryById(state.playerId)];
+      const senderInv = [...getPlayerInventoryById(freshTrade.fromPlayerId)];
+
+      const requestedUids = (freshTrade.toCards || []).map(c => c.uid);
+      const offeredBySenderUids = (freshTrade.fromCards || []).map(c => c.uid);
+
+      const myInvByUid = new Map(myInv.map(c => [c.uid, c]));
+      const senderInvByUid = new Map(senderInv.map(c => [c.uid, c]));
+
+      const missingInMine = requestedUids.some(uid => !myInvByUid.has(uid));
+      const missingInSender = offeredBySenderUids.some(uid => !senderInvByUid.has(uid));
+
+      if (missingInMine) {
+        showToast('У тебя не хватает одной или нескольких запрошенных карт');
+        return;
+      }
+      if (missingInSender) {
+        showToast(`У ${freshTrade.fromName} больше нет части предложенных карт`);
+        state.incomingTrades = state.incomingTrades.filter(t => t.id !== freshTrade.id);
+        inspectedIncomingTradeId = null;
+        saveState();
+        updateTradesUnreadBadge();
+        renderIncomingTradesPage();
+        if (isCloudConfigured()) {
+          await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+        }
+        return;
+      }
+
+      const reqSet = new Set(requestedUids);
+      const offerSet = new Set(offeredBySenderUids);
+
+      const cardsGoingToSender = requestedUids.map(uid => cloneCardWithFreshUid(myInvByUid.get(uid), 'trd'));
+      const cardsGoingToMe = offeredBySenderUids.map(uid => cloneCardWithFreshUid(senderInvByUid.get(uid), 'trd'));
+
+      const nextMyInv = [
+        ...myInv.filter(c => !reqSet.has(c.uid)),
+        ...cardsGoingToMe
+      ];
+      const nextSenderInv = [
+        ...senderInv.filter(c => !offerSet.has(c.uid)),
+        ...cardsGoingToSender
+      ];
+
+      setPlayerInventoryById(state.playerId, nextMyInv);
+      setPlayerInventoryById(freshTrade.fromPlayerId, nextSenderInv);
+
+      state.incomingTrades = state.incomingTrades.map(t =>
+        t.id === freshTrade.id
+          ? { ...t, status: 'accepted', seen: true, resolvedAt: Date.now(), senderNotified: false }
+          : t
+      );
+      inspectedIncomingTradeId = null;
+
+      saveState();
+      updateTradesUnreadBadge();
+      renderCollection();
+      renderLeaderboardPage();
+      renderIncomingTradesPage();
+
+      if (isCloudConfigured()) {
+        await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+      }
+
+      showToast(`Обмен с ${freshTrade.fromName} успешно завершён!`);
+    } finally {
+      acceptBtn.disabled = false;
     }
-
-    const receivedFromSender = (activeTrade.fromCards || []).map(c => ({
-      ...c,
-      uid: `trd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-    }));
-
-    state.inventory = state.inventory.filter(c => !requestedUids.has(c.uid));
-    state.inventory.push(...receivedFromSender);
-
-    const senderEntry = state.players.find(p => p.id === activeTrade.fromPlayerId);
-    if (senderEntry) {
-      const sentUids = new Set((activeTrade.fromCards || []).map(c => c.uid));
-      const senderRemaining = (Array.isArray(senderEntry.inventory) ? senderEntry.inventory : [])
-        .filter(c => !sentUids.has(c.uid));
-      const grantedToSender = myMatchingCards.map(c => ({
-        ...c,
-        uid: `trd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-      }));
-      senderEntry.inventory = [...senderRemaining, ...grantedToSender];
-      senderEntry.inventoryValue = getInventoryTotalValue(senderEntry.inventory);
-      senderEntry.cardsCount = senderEntry.inventory.length;
-      senderEntry.updatedAt = Date.now();
-    }
-
-    state.incomingTrades = state.incomingTrades.filter(t => t.id !== activeTrade.id);
-    inspectedIncomingTradeId = null;
-
-    saveState();
-    updateTradesUnreadBadge();
-    renderCollection();
-    renderLeaderboardPage();
-    renderIncomingTradesPage();
-
-    if (isCloudConfigured()) {
-      await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-    }
-
-    showToast(`Трейд с ${activeTrade.fromName} принят!`);
   };
 
   declineBtn.onclick = async () => {
-    state.incomingTrades = state.incomingTrades.filter(t => t.id !== activeTrade.id);
-    inspectedIncomingTradeId = null;
-    saveState();
-    updateTradesUnreadBadge();
-    renderIncomingTradesPage();
+    declineBtn.disabled = true;
+    try {
+      await syncLatestCloudSnapshot();
+      state.incomingTrades = state.incomingTrades.map(t =>
+        t.id === activeTrade.id
+          ? { ...t, status: 'declined', seen: true, resolvedAt: Date.now(), senderNotified: false }
+          : t
+      );
+      inspectedIncomingTradeId = null;
+      saveState();
+      updateTradesUnreadBadge();
+      renderIncomingTradesPage();
 
-    if (isCloudConfigured()) {
-      await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+      if (isCloudConfigured()) {
+        await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+      }
+
+      showToast('Трейд отклонён');
+    } finally {
+      declineBtn.disabled = false;
     }
-
-    showToast('Трейд отклонён');
   };
 
   closeBtn.onclick = () => {
@@ -1456,36 +1653,69 @@ function renderLeaderboardPage() {
       sendBtn.disabled = myPicked.length === 0 && targetPicked.length === 0;
       sendBtn.onclick = async () => {
         if (myPicked.length === 0 && targetPicked.length === 0) return;
+        sendBtn.disabled = true;
+        try {
+          await syncLatestCloudSnapshot();
 
-        const newTrade = {
-          id: `ptrade_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          fromPlayerId: state.playerId,
-          fromName: state.playerName || 'nar1',
-          fromAvatar: state.playerAvatar || DEFAULT_AVATAR,
-          toPlayerId: targetPlayer.id,
-          toName: targetPlayer.name,
-          fromCards: myPicked,
-          toCards: targetPicked,
-          status: 'pending',
-          seen: false,
-          createdAt: Date.now()
-        };
+          const freshTarget = state.players.find(p => p.id === targetPlayer.id && p.id !== state.playerId);
+          if (!freshTarget) {
+            showToast('Игрок не найден в сети');
+            return;
+          }
 
-        state.incomingTrades = [newTrade, ...state.incomingTrades];
-        outgoingOfferUids = [];
-        targetRequestedUids = [];
-        composingTradeTargetId = null;
+          const myInvMap = new Map(state.inventory.map(c => [c.uid, c]));
+          const tgtInv = Array.isArray(freshTarget.inventory) ? freshTarget.inventory : [];
+          const tgtInvMap = new Map(tgtInv.map(c => [c.uid, c]));
 
-        saveState();
-        updateTradesUnreadBadge();
-        renderLeaderboardPage();
-        renderIncomingTradesPage();
+          const verifiedMyCards = outgoingOfferUids.map(uid => myInvMap.get(uid)).filter(Boolean);
+          const verifiedTargetCards = targetRequestedUids.map(uid => tgtInvMap.get(uid)).filter(Boolean);
 
-        if (isCloudConfigured()) {
-          await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+          if (verifiedMyCards.length !== outgoingOfferUids.length) {
+            showToast('Часть твоих карт больше недоступна');
+            outgoingOfferUids = verifiedMyCards.map(c => c.uid);
+            renderLeaderboardPage();
+            return;
+          }
+          if (verifiedTargetCards.length !== targetRequestedUids.length) {
+            showToast('Часть выбранных карт игрока уже недоступна');
+            targetRequestedUids = verifiedTargetCards.map(c => c.uid);
+            renderLeaderboardPage();
+            return;
+          }
+
+          const newTrade = {
+            id: `ptrade_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            fromPlayerId: state.playerId,
+            fromName: state.playerName || 'nar1',
+            fromAvatar: state.playerAvatar || DEFAULT_AVATAR,
+            toPlayerId: freshTarget.id,
+            toName: freshTarget.name,
+            fromCards: verifiedMyCards,
+            toCards: verifiedTargetCards,
+            status: 'pending',
+            seen: false,
+            senderNotified: false,
+            createdAt: Date.now()
+          };
+
+          state.incomingTrades = [newTrade, ...state.incomingTrades];
+          outgoingOfferUids = [];
+          targetRequestedUids = [];
+          composingTradeTargetId = null;
+
+          saveState();
+          updateTradesUnreadBadge();
+          renderLeaderboardPage();
+          renderIncomingTradesPage();
+
+          if (isCloudConfigured()) {
+            await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+          }
+
+          showToast(`Трейд отправлен игроку ${freshTarget.name}!`);
+        } finally {
+          sendBtn.disabled = false;
         }
-
-        showToast(`Трейд отправлен игроку ${targetPlayer.name}!`);
       };
 
       return;
@@ -2629,7 +2859,7 @@ async function init() {
     if (Array.isArray(cloudResult.players)) {
       const mergedPlayersMap = new Map();
       cloudResult.players.forEach(p => {
-        if (p && p.id) mergedPlayersMap.set(p.id, p);
+        if (p && p.id && p.id !== state.playerId) mergedPlayersMap.set(p.id, p);
       });
       state.players = Array.from(mergedPlayersMap.values());
     }
@@ -2658,6 +2888,7 @@ async function init() {
   ensureCasesPageUI();
   ensureLeaderboardPageUI();
   ensureIncomingTradesTabUI();
+  ensureCraftsPageUI();
   ensureProfileRegistrationUI();
   ensureEditCaseModalUI();
   ensureBuyPackButtonVisible();
@@ -2679,6 +2910,7 @@ async function init() {
   renderCasesPage();
   renderLeaderboardPage();
   renderIncomingTradesPage();
+  renderCraftsPage();
   renderCollection();
   renderAdminPreview();
   renderAdminCasePoolCheckboxes();
@@ -2748,6 +2980,18 @@ async function init() {
       }
       if (Array.isArray(fresh.players)) {
         const prevPlayersStr = JSON.stringify(state.players);
+        const cloudSelf = fresh.players.find(p => p && p.id === state.playerId);
+        const hasAcceptedTradeForMe =
+          Array.isArray(fresh.incomingTrades) &&
+          fresh.incomingTrades.some(
+            t => t && t.fromPlayerId === state.playerId && t.status === 'accepted' && !t.senderNotified
+          );
+
+        if (cloudSelf && Array.isArray(cloudSelf.inventory) && hasAcceptedTradeForMe) {
+          state.inventory = cloudSelf.inventory;
+          renderCollection();
+        }
+
         const map = new Map();
         fresh.players.forEach(p => {
           if (p && p.id && p.id !== state.playerId) {
@@ -2831,6 +3075,7 @@ function setupNavigation() {
       if (tab === 'cases') renderCasesPage();
       if (tab === 'leaderboard') renderLeaderboardPage();
       if (tab === 'trades') renderIncomingTradesPage();
+      if (tab === 'crafts') renderCraftsPage();
       if (tab === 'collection') renderCollection();
       if (tab === 'upgrade') renderUpgradePage();
       if (tab === 'admin') {
