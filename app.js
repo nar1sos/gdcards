@@ -209,6 +209,8 @@ let uploadedRegAvatarDataUrl = '';
 let uploadedProfileAvatarDataUrl = '';
 let draggedAdminPoolCardId = null;
 let isSavingCloud = false;
+let cloudSyncQueue = Promise.resolve();
+let lastRegistryWriteTs = 0;
 
 function isCloudConfigured() {
   return Boolean(
@@ -520,7 +522,8 @@ function syncDynamicRarityStyles() {
     `;
   });
 
-  styleEl.textContent = [...rarityRules, ...effectRules].join('\n');
+  styleEl.textContent = [...rarityRules, ...effectRules].join('
+');
 }
 
 function getCardEffectClass(rarityKey) {
@@ -1171,7 +1174,7 @@ async function applyPlayerProfileUpdate(newName, newAvatar, markRegistered = tru
     state.isRegistered = true;
   }
 
-  upsertSelfIntoRegistry();
+  upsertSelfIntoRegistry(Date.now());
   saveState();
   updateHeader();
   renderCollectionProfileBanner();
@@ -1214,11 +1217,12 @@ function sanitizeCardForRegistry(card) {
   };
 }
 
-function buildSelfRegistryEntry() {
+function buildSelfRegistryEntry(explicitUpdatedAt = null) {
   const cleanInv = Array.isArray(state.inventory)
     ? state.inventory.map(sanitizeCardForRegistry).filter(Boolean)
     : [];
   const invValue = getInventoryValue(cleanInv);
+  const ts = explicitUpdatedAt || lastRegistryWriteTs || Date.now();
   return {
     playerId: state.playerId,
     playerName: state.playerName || 'nar1',
@@ -1227,17 +1231,20 @@ function buildSelfRegistryEntry() {
     inventoryValue: invValue,
     cardsCount: cleanInv.length,
     inventory: cleanInv,
-    updatedAt: Date.now()
+    updatedAt: ts
   };
 }
 
-function upsertSelfIntoRegistry() {
+function upsertSelfIntoRegistry(explicitUpdatedAt = null) {
   if (!state.playerId) return;
-  const selfEntry = buildSelfRegistryEntry();
+  if (explicitUpdatedAt !== null) {
+    lastRegistryWriteTs = Math.max(lastRegistryWriteTs, Number(explicitUpdatedAt) || Date.now());
+  }
+  const selfEntry = buildSelfRegistryEntry(explicitUpdatedAt);
   const others = Array.isArray(state.playersRegistry)
     ? state.playersRegistry.filter(p => p && p.playerId && p.playerId !== state.playerId)
     : [];
-  state.playersRegistry = [selfEntry, ...others];
+  state.playersRegistry = normalizePlayersRegistryList([selfEntry, ...others]);
 }
 
 function normalizePlayersRegistryList(list) {
@@ -1251,7 +1258,7 @@ function normalizePlayersRegistryList(list) {
       ? item.inventory.map(sanitizeCardForRegistry).filter(Boolean)
       : [];
     const invValue = getInventoryValue(inv);
-    map.set(pid, {
+    const candidate = {
       playerId: pid,
       playerName: String(item.playerName || 'Player').trim() || 'Player',
       avatar: getSafeAvatarSrc(item.avatar, item.playerName),
@@ -1260,8 +1267,40 @@ function normalizePlayersRegistryList(list) {
       cardsCount: inv.length,
       inventory: inv,
       updatedAt: Number(item.updatedAt) || 0
-    });
+    };
+    const prev = map.get(pid);
+    if (!prev || (candidate.updatedAt || 0) >= (prev.updatedAt || 0)) {
+      map.set(pid, candidate);
+    }
   });
+  return Array.from(map.values());
+}
+
+function mergePlayersRegistryWithCloud(cloudRegistry) {
+  const normalizedCloud = normalizePlayersRegistryList(cloudRegistry);
+  const map = new Map(normalizedCloud.map(p => [p.playerId, p]));
+
+  // Добавляем всех локально известных игроков, которых вдруг нет в облачном снимке
+  normalizePlayersRegistryList(state.playersRegistry).forEach(localP => {
+    if (!map.has(localP.playerId)) {
+      map.set(localP.playerId, localP);
+    }
+  });
+
+  // Для самого себя: если облачная запись свежее локального состояния (например, приняли трейд на другом устройстве), берём облако
+  const cloudSelf = normalizedCloud.find(p => p.playerId === state.playerId);
+  const localSelf = buildSelfRegistryEntry();
+  if (cloudSelf && (cloudSelf.updatedAt || 0) > (localSelf.updatedAt || 0) && (cloudSelf.updatedAt || 0) > lastRegistryWriteTs) {
+    state.inventory = Array.isArray(cloudSelf.inventory) ? cloudSelf.inventory : state.inventory;
+    state.playerName = cloudSelf.playerName || state.playerName;
+    state.playerAvatar = getSafeAvatarSrc(cloudSelf.avatar, state.playerName);
+    state.balance = Math.max(0, Number(cloudSelf.balance) || state.balance);
+    lastRegistryWriteTs = cloudSelf.updatedAt || Date.now();
+    map.set(state.playerId, cloudSelf);
+  } else if (state.playerId) {
+    map.set(state.playerId, buildSelfRegistryEntry());
+  }
+
   return Array.from(map.values());
 }
 
@@ -1292,7 +1331,7 @@ function normalizeTradeOffersList(list) {
     const status = ['pending', 'accepted', 'declined', 'cancelled'].includes(item.status)
       ? item.status
       : 'pending';
-    map.set(id, {
+    const candidate = {
       id,
       fromPlayerId: String(item.fromPlayerId || ''),
       fromPlayerName: String(item.fromPlayerName || 'Player'),
@@ -1305,9 +1344,20 @@ function normalizeTradeOffersList(list) {
       status,
       createdAt: Number(item.createdAt) || 0,
       updatedAt: Number(item.updatedAt) || Number(item.createdAt) || 0
-    });
+    };
+    const prev = map.get(id);
+    if (!prev || (candidate.updatedAt || 0) >= (prev.updatedAt || 0)) {
+      map.set(id, candidate);
+    }
   });
   return Array.from(map.values()).sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+}
+
+function mergeTradeOffersWithCloud(cloudOffers) {
+  return normalizeTradeOffersList([
+    ...(Array.isArray(cloudOffers) ? cloudOffers : []),
+    ...(Array.isArray(state.tradeOffers) ? state.tradeOffers : [])
+  ]);
 }
 
 function getIncomingPendingTradesCount() {
@@ -1530,15 +1580,10 @@ async function syncCloudBeforeTradeAction() {
   if (!fresh.ok) return;
 
   if (Array.isArray(fresh.playersRegistry)) {
-    const incomingRegistry = normalizePlayersRegistryList(fresh.playersRegistry);
-    const selfCloud = incomingRegistry.find(p => p.playerId === state.playerId);
-    if (selfCloud && Array.isArray(selfCloud.inventory)) {
-      state.inventory = selfCloud.inventory;
-    }
-    state.playersRegistry = incomingRegistry;
+    state.playersRegistry = mergePlayersRegistryWithCloud(fresh.playersRegistry);
   }
   if (Array.isArray(fresh.tradeOffers)) {
-    state.tradeOffers = normalizeTradeOffersList(fresh.tradeOffers);
+    state.tradeOffers = mergeTradeOffersWithCloud(fresh.tradeOffers);
   }
   if (Array.isArray(fresh.pool) && fresh.pool.length > 0) state.pool = fresh.pool;
   if (Array.isArray(fresh.cases) && fresh.cases.length > 0) state.cases = fresh.cases;
@@ -1551,7 +1596,7 @@ async function sendTradeOffer() {
   if (!activeTradePartnerId || activeTradePartnerId === state.playerId) return;
 
   await syncCloudBeforeTradeAction();
-  upsertSelfIntoRegistry();
+  upsertSelfIntoRegistry(Date.now());
 
   const registryMap = new Map(normalizePlayersRegistryList(state.playersRegistry).map(p => [p.playerId, p]));
   const meEntry = registryMap.get(state.playerId) || buildSelfRegistryEntry();
@@ -1579,8 +1624,9 @@ async function sendTradeOffer() {
     return;
   }
 
+  const nowTs = Date.now();
   const newOffer = {
-    id: `offer_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    id: `offer_${nowTs}_${Math.random().toString(36).slice(2, 6)}`,
     fromPlayerId: meEntry.playerId,
     fromPlayerName: meEntry.playerName,
     fromPlayerAvatar: meEntry.avatar,
@@ -1590,8 +1636,8 @@ async function sendTradeOffer() {
     fromCards: myGivenCards,
     toCards: theirWantedCards,
     status: 'pending',
-    createdAt: Date.now(),
-    updatedAt: Date.now()
+    createdAt: nowTs,
+    updatedAt: nowTs
   };
 
   state.tradeOffers = normalizeTradeOffersList([newOffer, ...(state.tradeOffers || [])]);
@@ -1622,7 +1668,7 @@ async function respondToTradeOffer(offerId, decision) {
   if (!offerId || !['accepted', 'declined', 'cancelled'].includes(decision)) return;
 
   await syncCloudBeforeTradeAction();
-  upsertSelfIntoRegistry();
+  upsertSelfIntoRegistry(Date.now());
 
   const offers = normalizeTradeOffersList(state.tradeOffers);
   const idx = offers.findIndex(o => o.id === offerId);
@@ -1710,17 +1756,19 @@ async function respondToTradeOffer(offerId, decision) {
     myInvCopy.splice(foundIdx, 1);
   }
 
+  const tradeTs = Date.now();
   const nextMyInv = [
     ...myInvCopy,
-    ...resolvedSenderCards.map(c => ({ ...c, uid: `trd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}` }))
+    ...resolvedSenderCards.map(c => ({ ...c, uid: `trd_${tradeTs}_${Math.random().toString(36).slice(2, 6)}` }))
   ];
 
   const nextSenderInv = [
     ...senderInvCopy,
-    ...resolvedMyCards.map(c => ({ ...c, uid: `trd_${Date.now()}_${Math.random().toString(36).slice(2, 6)}` }))
+    ...resolvedMyCards.map(c => ({ ...c, uid: `trd_${tradeTs}_${Math.random().toString(36).slice(2, 6)}` }))
   ];
 
   state.inventory = nextMyInv;
+  lastRegistryWriteTs = Math.max(lastRegistryWriteTs, tradeTs);
 
   registryMap.set(state.playerId, {
     ...meEntry,
@@ -1730,7 +1778,7 @@ async function respondToTradeOffer(offerId, decision) {
     inventory: nextMyInv,
     inventoryValue: getInventoryValue(nextMyInv),
     cardsCount: nextMyInv.length,
-    updatedAt: Date.now()
+    updatedAt: tradeTs
   });
 
   registryMap.set(senderEntry.playerId, {
@@ -1738,11 +1786,11 @@ async function respondToTradeOffer(offerId, decision) {
     inventory: nextSenderInv,
     inventoryValue: getInventoryValue(nextSenderInv),
     cardsCount: nextSenderInv.length,
-    updatedAt: Date.now()
+    updatedAt: tradeTs
   });
 
   state.playersRegistry = Array.from(registryMap.values());
-  offers[idx] = { ...offer, status: 'accepted', updatedAt: Date.now() };
+  offers[idx] = { ...offer, status: 'accepted', updatedAt: tradeTs };
   state.tradeOffers = offers;
 
   resolvedSenderCards.forEach(c => recordDropToFeed(c, `Трейд с ${senderEntry.playerName}`));
@@ -2424,46 +2472,90 @@ async function pushSharedData(
   nextDrops = state.recentDrops,
   nextRarities = state.rarities,
   nextEffects = state.effects,
-  nextRegistry = state.playersRegistry,
-  nextTradeOffers = state.tradeOffers
+  nextRegistry = null,
+  nextTradeOffers = null
 ) {
   if (!isCloudConfigured()) {
     return false;
   }
-  if (isSavingCloud) {
-    await new Promise(r => setTimeout(r, 120));
-  }
-  isSavingCloud = true;
-  try {
-    upsertSelfIntoRegistry();
-    const registryToSend = Array.isArray(nextRegistry) ? nextRegistry : state.playersRegistry;
-    const offersToSend = normalizeTradeOffersList(Array.isArray(nextTradeOffers) ? nextTradeOffers : state.tradeOffers);
-    const res = await fetch(JSONBIN_URL, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Master-Key': JSONBIN_MASTER_KEY
-      },
-      body: JSON.stringify({
-        pool: nextPool,
-        cases: nextCases,
-        recentDrops: nextDrops,
-        rarities: nextRarities,
-        effects: nextEffects,
-        playersRegistry: registryToSend,
-        tradeOffers: offersToSend
-      })
-    });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
+
+  const runWrite = async () => {
+    isSavingCloud = true;
+    try {
+      upsertSelfIntoRegistry();
+      const latest = await fetchSharedData();
+
+      const poolToSend = Array.isArray(nextPool) ? nextPool : state.pool;
+      const casesToSend = Array.isArray(nextCases) ? nextCases : state.cases;
+      const raritiesToSend = Array.isArray(nextRarities) ? nextRarities : state.rarities;
+      const effectsToSend = Array.isArray(nextEffects) ? nextEffects : state.effects;
+
+      const dropsMap = new Map();
+      [
+        ...(latest.ok && Array.isArray(latest.recentDrops) ? latest.recentDrops : []),
+        ...(Array.isArray(nextDrops) ? nextDrops : state.recentDrops)
+      ].forEach(d => {
+        if (d && d.uid) dropsMap.set(d.uid, d);
+      });
+      const dropsToSend = Array.from(dropsMap.values())
+        .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+        .slice(0, 35);
+
+      const registryMap = new Map(
+        normalizePlayersRegistryList(latest.ok && Array.isArray(latest.playersRegistry) ? latest.playersRegistry : []).map(p => [p.playerId, p])
+      );
+      const explicitRegistry = Array.isArray(nextRegistry) ? nextRegistry : state.playersRegistry;
+      normalizePlayersRegistryList(explicitRegistry).forEach(item => {
+        const prev = registryMap.get(item.playerId);
+        if (!prev || (item.updatedAt || 0) >= (prev.updatedAt || 0) || item.playerId === state.playerId) {
+          registryMap.set(item.playerId, item);
+        }
+      });
+      if (state.playerId) {
+        registryMap.set(state.playerId, buildSelfRegistryEntry());
+      }
+      const registryToSend = Array.from(registryMap.values());
+
+      const explicitOffers = Array.isArray(nextTradeOffers) ? nextTradeOffers : state.tradeOffers;
+      const offersToSend = normalizeTradeOffersList([
+        ...(latest.ok && Array.isArray(latest.tradeOffers) ? latest.tradeOffers : []),
+        ...explicitOffers
+      ]);
+
+      const res = await fetch(JSONBIN_URL, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Master-Key': JSONBIN_MASTER_KEY
+        },
+        body: JSON.stringify({
+          pool: poolToSend,
+          cases: casesToSend,
+          recentDrops: dropsToSend,
+          rarities: raritiesToSend,
+          effects: effectsToSend,
+          playersRegistry: registryToSend,
+          tradeOffers: offersToSend
+        })
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      state.playersRegistry = registryToSend;
+      state.tradeOffers = offersToSend;
+      state.recentDrops = dropsToSend;
+      return true;
+    } catch (err) {
+      console.error('Ошибка отправки общих данных:', err);
+      return false;
+    } finally {
+      isSavingCloud = false;
     }
-    return true;
-  } catch (err) {
-    console.error('Ошибка отправки общих данных:', err);
-    return false;
-  } finally {
-    isSavingCloud = false;
-  }
+  };
+
+  cloudSyncQueue = cloudSyncQueue.then(runWrite, runWrite);
+  return cloudSyncQueue;
 }
 
 function hideFreePackTimerUI() {
@@ -3299,6 +3391,7 @@ async function init() {
       state.packsOpened = Math.max(0, Number(parsed.packsOpened ?? 0) || 0);
       state.inventory = Array.isArray(parsed.inventory) ? parsed.inventory : [];
       state.droppedTemp = Array.isArray(parsed.droppedTemp) ? parsed.droppedTemp : [];
+      lastRegistryWriteTs = Number(parsed.lastRegistryWriteTs) || 0;
       if (Array.isArray(parsed.pool) && parsed.pool.length > 0) {
         state.pool = parsed.pool;
       }
@@ -3348,20 +3441,21 @@ async function init() {
     }
 
     if (Array.isArray(cloudResult.recentDrops) && cloudResult.recentDrops.length > 0) {
-      state.recentDrops = cloudResult.recentDrops;
+      const dropsMap = new Map();
+      [...cloudResult.recentDrops, ...state.recentDrops].forEach(d => {
+        if (d && d.uid) dropsMap.set(d.uid, d);
+      });
+      state.recentDrops = Array.from(dropsMap.values())
+        .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+        .slice(0, 35);
     }
 
     if (Array.isArray(cloudResult.playersRegistry)) {
-      const cloudRegistry = normalizePlayersRegistryList(cloudResult.playersRegistry);
-      const cloudMe = cloudRegistry.find(p => p.playerId === state.playerId);
-      if (cloudMe && (!state.inventory || state.inventory.length === 0) && Array.isArray(cloudMe.inventory) && cloudMe.inventory.length > 0) {
-        state.inventory = cloudMe.inventory;
-      }
-      state.playersRegistry = cloudRegistry;
+      state.playersRegistry = mergePlayersRegistryWithCloud(cloudResult.playersRegistry);
     }
 
     if (Array.isArray(cloudResult.tradeOffers)) {
-      state.tradeOffers = normalizeTradeOffersList(cloudResult.tradeOffers);
+      state.tradeOffers = mergeTradeOffersWithCloud(cloudResult.tradeOffers);
     }
 
     upsertSelfIntoRegistry();
@@ -3422,6 +3516,7 @@ async function init() {
 
   if (isCloudConfigured()) {
     setInterval(async () => {
+      if (isSavingCloud) return;
       const fresh = await fetchSharedData();
       if (!fresh.ok) return;
 
@@ -3475,18 +3570,7 @@ async function init() {
       }
 
       if (Array.isArray(fresh.playersRegistry)) {
-        const incomingRegistry = normalizePlayersRegistryList(fresh.playersRegistry);
-        const selfCloud = incomingRegistry.find(p => p.playerId === state.playerId);
-        if (selfCloud && Array.isArray(selfCloud.inventory)) {
-          if (JSON.stringify(selfCloud.inventory) !== JSON.stringify(state.inventory)) {
-            state.inventory = selfCloud.inventory;
-            updated = true;
-          }
-        }
-        const mergedReg = normalizePlayersRegistryList([
-          ...incomingRegistry,
-          buildSelfRegistryEntry()
-        ]);
+        const mergedReg = mergePlayersRegistryWithCloud(fresh.playersRegistry);
         if (JSON.stringify(mergedReg) !== JSON.stringify(state.playersRegistry)) {
           state.playersRegistry = mergedReg;
           updated = true;
@@ -3494,7 +3578,7 @@ async function init() {
       }
 
       if (Array.isArray(fresh.tradeOffers)) {
-        const nextOffers = normalizeTradeOffersList(fresh.tradeOffers);
+        const nextOffers = mergeTradeOffersWithCloud(fresh.tradeOffers);
         if (JSON.stringify(nextOffers) !== JSON.stringify(state.tradeOffers)) {
           state.tradeOffers = nextOffers;
           updated = true;
@@ -3530,6 +3614,7 @@ function saveState() {
       balance: state.balance,
       packs: state.packs,
       packsOpened: state.packsOpened,
+      lastRegistryWriteTs: lastRegistryWriteTs,
       pool: state.pool,
       cases: state.cases,
       rarities: state.rarities,
@@ -5715,34 +5800,59 @@ function bindEvents() {
       if (idx === -1) return;
 
       const current = state.pool[idx];
-      const urlVal = document.getElementById('edit-card-image').value.trim();
-      const nextImage = editingCardImageDataUrl || urlVal || current.image;
       const rawRank = document.getElementById('edit-card-rank').value.trim();
       const parsedNum = parseRankValue(rawRank);
+      const rank = parsedNum !== null ? parsedNum : (rawRank || current.rank);
+      const name = document.getElementById('edit-card-name').value.trim() || current.name;
+      const verifier = document.getElementById('edit-card-verifier').value.trim();
+      const publisher = document.getElementById('edit-card-publisher').value.trim();
+      const rarity = normalizeRarityKey(document.getElementById('edit-card-rarity').value) || current.rarity;
+      const price = Number(document.getElementById('edit-card-price').value) || current.price;
+      const urlVal = document.getElementById('edit-card-image').value.trim();
+      const nextImage = editingCardImageDataUrl || urlVal || current.image;
 
-      const nextPool = [...state.pool];
-      nextPool[idx] = {
+      const updatedCard = {
         ...current,
-        rank: parsedNum !== null ? parsedNum : rawRank,
-        name: document.getElementById('edit-card-name').value.trim(),
-        verifier: document.getElementById('edit-card-verifier').value.trim(),
-        publisher: document.getElementById('edit-card-publisher').value.trim(),
-        rarity: normalizeRarityKey(document.getElementById('edit-card-rarity').value) || 'common',
-        price: Number(document.getElementById('edit-card-price').value),
+        rank,
+        name,
+        verifier,
+        publisher,
+        rarity,
+        price,
         image: nextImage
       };
+
+      const nextPool = [...state.pool];
+      nextPool[idx] = updatedCard;
 
       const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects);
       if (!ok) return;
 
       state.pool = nextPool;
+      state.inventory = state.inventory.map(invCard => {
+        if (invCard.templateId === id || invCard.id === id) {
+          return {
+            ...invCard,
+            rank: updatedCard.rank,
+            name: updatedCard.name,
+            verifier: updatedCard.verifier,
+            publisher: updatedCard.publisher,
+            rarity: updatedCard.rarity,
+            image: updatedCard.image,
+            price: Math.round(updatedCard.price * (invCard.isHolo ? HOLO_MULTIPLIER : 1))
+          };
+        }
+        return invCard;
+      });
+
       saveState();
       renderAdminPool();
       renderAdminCasePoolCheckboxes();
       renderCasesPage();
       renderCraftsPage();
+      renderCollection();
       closeEditModal();
-      showToast(`Карточка "${state.pool[idx].name}" обновлена для всех!`);
+      showToast('Уровень обновлён у всех игроков!');
     });
   }
 }
