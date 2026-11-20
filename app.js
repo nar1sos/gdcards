@@ -137,6 +137,8 @@ let state = {
   playerName: 'nar1',
   playerAvatar: DEFAULT_AVATAR,
   registered: false,
+  version: 1,
+  updatedAt: 0,
   balance: 500,
   packs: 0,
   packsOpened: 0,
@@ -150,6 +152,59 @@ let state = {
   players: [],
   incomingTrades: []
 };
+
+let mutationChain = Promise.resolve();
+let cloudPushChain = Promise.resolve();
+let localDirtyUntil = 0;
+
+function markLocalMutation() {
+  state.version = (Number(state.version) || 1) + 1;
+  state.updatedAt = Date.now();
+  localDirtyUntil = Date.now() + 12000;
+}
+
+function runAtomic(fn) {
+  mutationChain = mutationChain.then(async () => {
+    const res = await fn();
+    markLocalMutation();
+    saveState();
+    return res;
+  });
+  return mutationChain;
+}
+
+function queueCloudPush(snapshot = null) {
+  if (!isCloudConfigured()) return Promise.resolve(false);
+  const payload = snapshot || {
+    pool: state.pool,
+    cases: state.cases,
+    recentDrops: state.recentDrops,
+    rarities: state.rarities,
+    effects: state.effects,
+    players: state.players,
+    incomingTrades: state.incomingTrades,
+    playerMeta: {
+      id: state.playerId,
+      name: state.playerName,
+      avatar: state.playerAvatar,
+      version: state.version,
+      updatedAt: state.updatedAt,
+      inventory: state.inventory
+    }
+  };
+  cloudPushChain = cloudPushChain.then(() =>
+    pushSharedData(
+      payload.pool,
+      payload.cases,
+      payload.recentDrops,
+      payload.rarities,
+      payload.effects,
+      payload.players,
+      payload.incomingTrades
+    )
+  );
+  return cloudPushChain;
+}
 
 let openedCaseId = null;
 let pendingCaseDropCard = null;
@@ -191,18 +246,25 @@ function getInventoryTotalValue(cards) {
 }
 
 function upsertCurrentPlayerInRegistry() {
+  if (!state.playerId) return;
   const cleanName = String(state.playerName || 'nar1').trim() || 'nar1';
   const cleanAvatar = state.playerAvatar || DEFAULT_AVATAR;
-  const invValue = getInventoryTotalValue(state.inventory);
+  const safeInv = Array.isArray(state.inventory) ? state.inventory : [];
+  const invValue = getInventoryTotalValue(safeInv);
+
+  const existingSelf = (Array.isArray(state.players) ? state.players : []).find(p => p && p.id === state.playerId);
+  const effectiveVersion = Math.max(Number(state.version) || 1, Number(existingSelf && existingSelf.version) || 1);
+  const effectiveUpdatedAt = Math.max(Number(state.updatedAt) || 0, Number(existingSelf && existingSelf.updatedAt) || 0) || Date.now();
 
   const entry = {
     id: state.playerId,
     name: cleanName,
     avatar: cleanAvatar,
-    inventory: Array.isArray(state.inventory) ? state.inventory : [],
+    version: effectiveVersion,
+    inventory: safeInv,
     inventoryValue: invValue,
-    cardsCount: Array.isArray(state.inventory) ? state.inventory.length : 0,
-    updatedAt: Date.now()
+    cardsCount: safeInv.length,
+    updatedAt: effectiveUpdatedAt
   };
 
   const map = new Map();
@@ -1211,16 +1273,20 @@ async function syncLatestCloudSnapshot() {
   const fresh = await fetchSharedData();
   if (!fresh.ok) return null;
 
-  if (Array.isArray(fresh.pool) && fresh.pool.length > 0) state.pool = fresh.pool;
-  if (Array.isArray(fresh.cases) && fresh.cases.length > 0) state.cases = fresh.cases;
-  if (Array.isArray(fresh.effects) && fresh.effects.length > 0) state.effects = normalizeEffectsList(fresh.effects);
-  if (Array.isArray(fresh.rarities) && fresh.rarities.length > 0) {
+  const isLocalFresh = Date.now() < localDirtyUntil;
+
+  if (Array.isArray(fresh.pool) && fresh.pool.length > 0 && !isLocalFresh) state.pool = fresh.pool;
+  if (Array.isArray(fresh.cases) && fresh.cases.length > 0 && !isLocalFresh) state.cases = fresh.cases;
+  if (Array.isArray(fresh.effects) && fresh.effects.length > 0 && !isLocalFresh) {
+    state.effects = normalizeEffectsList(fresh.effects);
+  }
+  if (Array.isArray(fresh.rarities) && fresh.rarities.length > 0 && !isLocalFresh) {
     state.rarities = normalizeRaritiesList(fresh.rarities);
     syncRaritySelects();
   }
   if (Array.isArray(fresh.recentDrops)) {
     const mergedMap = new Map();
-    [...fresh.recentDrops, ...state.recentDrops].forEach(d => {
+    [...state.recentDrops, ...fresh.recentDrops].forEach(d => {
       if (d && d.uid) mergedMap.set(d.uid, d);
     });
     state.recentDrops = Array.from(mergedMap.values())
@@ -1229,6 +1295,15 @@ async function syncLatestCloudSnapshot() {
   }
 
   if (Array.isArray(fresh.players)) {
+    const cloudSelf = fresh.players.find(p => p && p.id === state.playerId);
+    const cloudSelfVer = Number(cloudSelf && cloudSelf.version) || 0;
+    const localVer = Number(state.version) || 1;
+    if (cloudSelf && Array.isArray(cloudSelf.inventory) && !isLocalFresh && cloudSelfVer > localVer) {
+      state.inventory = cloudSelf.inventory;
+      state.version = cloudSelfVer;
+      state.updatedAt = Number(cloudSelf.updatedAt) || Date.now();
+    }
+
     const map = new Map();
     fresh.players.forEach(p => {
       if (p && p.id && p.id !== state.playerId) {
@@ -1240,7 +1315,18 @@ async function syncLatestCloudSnapshot() {
   upsertCurrentPlayerInRegistry();
 
   if (Array.isArray(fresh.incomingTrades)) {
-    state.incomingTrades = fresh.incomingTrades;
+    const tradeMap = new Map();
+    (Array.isArray(state.incomingTrades) ? state.incomingTrades : []).forEach(t => {
+      if (t && t.id) tradeMap.set(t.id, t);
+    });
+    fresh.incomingTrades.forEach(t => {
+      if (!t || !t.id) return;
+      const prev = tradeMap.get(t.id);
+      if (!prev || (Number(t.resolvedAt || t.createdAt || 0) >= Number(prev.resolvedAt || prev.createdAt || 0))) {
+        tradeMap.set(t.id, { ...(prev || {}), ...t });
+      }
+    });
+    state.incomingTrades = Array.from(tradeMap.values());
   }
 
   syncDynamicRarityStyles();
@@ -1835,10 +1921,11 @@ function recordDropToFeed(card, sourceLabel = 'Пак') {
   };
 
   state.recentDrops = [entry, ...state.recentDrops].slice(0, 35);
+  saveState();
   renderLiveDropsFeed();
 
   if (isCloudConfigured()) {
-    pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+    queueCloudPush();
   }
 }
 
@@ -2729,22 +2816,23 @@ function updateCollectionBulkSellButton() {
 function sellCollectionByRarity() {
   const select = document.getElementById('sell-rarity-select');
   const rarity = select ? select.value : 'all';
-  const targets = getCollectionSellCandidates(rarity);
-  if (targets.length === 0) return;
-
-  const targetUidSet = new Set(targets.map(c => c.uid));
-  const sum = targets.reduce((s, c) => s + c.price, 0);
-
-  state.inventory = state.inventory.filter(c => !targetUidSet.has(c.uid));
-  state.balance += sum;
-  saveState();
-  updateHeader();
-  renderCollection();
-
-  const desc = rarity === 'all'
-    ? `Проданы все карты (${targets.length} шт.) за ${sum} ₽`
-    : `Проданы карты редкости ${getRarityLabel(rarity)} (${targets.length} шт.) за ${sum} ₽`;
-  showToast(desc);
+  runAtomic(() => {
+    const targets = getCollectionSellCandidates(rarity);
+    if (targets.length === 0) return;
+    const targetUidSet = new Set(targets.map(c => c.uid));
+    const sum = targets.reduce((s, c) => s + (Number(c.price) || 0), 0);
+    state.inventory = state.inventory.filter(c => !targetUidSet.has(c.uid));
+    state.balance += sum;
+    const desc = rarity === 'all'
+      ? `Проданы все карты (${targets.length} шт.) за ${sum} ₽`
+      : `Проданы карты редкости ${getRarityLabel(rarity)} (${targets.length} шт.) за ${sum} ₽`;
+    showToast(desc);
+  }).then(() => {
+    updateHeader();
+    renderCollection();
+    renderLeaderboardPage();
+    queueCloudPush();
+  });
 }
 
 function ensureAdminSyncButton() {
@@ -2799,6 +2887,8 @@ async function init() {
       state.playerName = parsed.playerName || 'nar1';
       state.playerAvatar = parsed.playerAvatar || DEFAULT_AVATAR;
       state.registered = Boolean(parsed.registered);
+      state.version = Number(parsed.version) || 1;
+      state.updatedAt = Number(parsed.updatedAt) || 0;
       state.balance = parsed.balance ?? 500;
       state.packs = parsed.packs ?? 0;
       state.packsOpened = parsed.packsOpened ?? 0;
@@ -2927,8 +3017,13 @@ async function init() {
 
   if (isCloudConfigured()) {
     setInterval(async () => {
+      if (isSpinning || isOpeningPack || isOpeningCase || Date.now() < localDirtyUntil) {
+        return;
+      }
       const fresh = await fetchSharedData();
-      if (!fresh.ok) return;
+      if (!fresh.ok || isSpinning || isOpeningPack || isOpeningCase || Date.now() < localDirtyUntil) {
+        return;
+      }
 
       let updated = false;
       if (Array.isArray(fresh.pool) && fresh.pool.length > 0) {
@@ -2966,7 +3061,7 @@ async function init() {
       }
       if (Array.isArray(fresh.recentDrops)) {
         const mergedMap = new Map();
-        [...fresh.recentDrops, ...state.recentDrops].forEach(d => {
+        [...state.recentDrops, ...fresh.recentDrops].forEach(d => {
           if (d && d.uid) mergedMap.set(d.uid, d);
         });
         const mergedDrops = Array.from(mergedMap.values())
@@ -2989,6 +3084,8 @@ async function init() {
 
         if (cloudSelf && Array.isArray(cloudSelf.inventory) && hasAcceptedTradeForMe) {
           state.inventory = cloudSelf.inventory;
+          state.version = Math.max(Number(state.version) || 1, Number(cloudSelf.version) || 1) + 1;
+          state.updatedAt = Date.now();
           renderCollection();
         }
 
@@ -3006,8 +3103,20 @@ async function init() {
         }
       }
       if (Array.isArray(fresh.incomingTrades)) {
-        if (JSON.stringify(fresh.incomingTrades) !== JSON.stringify(state.incomingTrades)) {
-          state.incomingTrades = fresh.incomingTrades;
+        const tradeMap = new Map();
+        (Array.isArray(state.incomingTrades) ? state.incomingTrades : []).forEach(t => {
+          if (t && t.id) tradeMap.set(t.id, t);
+        });
+        fresh.incomingTrades.forEach(t => {
+          if (!t || !t.id) return;
+          const prev = tradeMap.get(t.id);
+          if (!prev || (Number(t.resolvedAt || t.createdAt || 0) >= Number(prev.resolvedAt || prev.createdAt || 0))) {
+            tradeMap.set(t.id, { ...(prev || {}), ...t });
+          }
+        });
+        const nextTrades = Array.from(tradeMap.values());
+        if (JSON.stringify(nextTrades) !== JSON.stringify(state.incomingTrades)) {
+          state.incomingTrades = nextTrades;
           updateTradesUnreadBadge();
           renderIncomingTradesPage();
           updated = true;
@@ -3036,6 +3145,8 @@ function saveState() {
       playerName: state.playerName,
       playerAvatar: state.playerAvatar,
       registered: state.registered,
+      version: state.version,
+      updatedAt: state.updatedAt,
       balance: state.balance,
       packs: state.packs,
       packsOpened: state.packsOpened,
@@ -3284,12 +3395,16 @@ function prependDroppedCardElement(grid, card, animate = true) {
     animateDrop: animate,
     actionLabel: `Продать за ${card.price} ₽`,
     onAction: (c) => {
-      state.balance += c.price;
-      state.droppedTemp = state.droppedTemp.filter(x => x.uid !== c.uid);
-      saveState();
-      updateHeader();
-      renderDroppedCards(false);
-      showToast(`Продано за ${c.price} ₽`);
+      runAtomic(() => {
+        const idx = state.droppedTemp.findIndex(x => x.uid === c.uid);
+        if (idx === -1) return;
+        const [removed] = state.droppedTemp.splice(idx, 1);
+        state.balance += Number(removed.price) || 0;
+        showToast(`Продано за ${removed.price} ₽`);
+      }).then(() => {
+        updateHeader();
+        renderDroppedCards(false);
+      });
     }
   });
   grid.prepend(cardEl);
@@ -3469,6 +3584,7 @@ function openSelectedCase(instant = false) {
 
   isOpeningCase = true;
   renderCaseDropSpotlight(null);
+  markLocalMutation();
   state.balance -= activeCase.price;
   saveState();
   updateHeader();
@@ -3524,6 +3640,8 @@ function openSelectedCase(instant = false) {
   const targetTranslate = Math.max(0, winIndex * step - centerOffset + jitter);
 
   const finishOpening = () => {
+    markLocalMutation();
+    saveState();
     recordDropToFeed(wonCard, activeCase.name);
     renderCaseDropSpotlight(wonCard);
 
@@ -3556,19 +3674,21 @@ function openSelectedCase(instant = false) {
 function openPack() {
   if (state.packs <= 0 || isOpeningPack) return;
   isOpeningPack = true;
+  markLocalMutation();
   state.packs -= 1;
   state.packsOpened += 1;
 
   const rolledRaw = [];
   for (let i = 0; i < 5; i++) {
-    rolledRaw.push(rollSingleCard());
+    const c = rollSingleCard();
+    if (c) rolledRaw.push(c);
   }
   const rolled = sortCardsBestFirst(rolledRaw);
   state.droppedTemp.unshift(...rolled);
-  rolled.forEach(c => recordDropToFeed(c, 'Пак'));
 
   saveState();
   updateHeader();
+  rolled.forEach(c => recordDropToFeed(c, 'Пак'));
 
   const packBox = document.getElementById('pack-box-visual');
   if (packBox) {
@@ -3605,6 +3725,7 @@ function openPack() {
 function openAllPacks() {
   if (state.packs <= 0 || isOpeningPack) return;
   isOpeningPack = true;
+  markLocalMutation();
 
   const packsToOpen = state.packs;
   state.packs = 0;
@@ -3613,15 +3734,16 @@ function openAllPacks() {
   const rolledRaw = [];
   for (let p = 0; p < packsToOpen; p++) {
     for (let i = 0; i < 5; i++) {
-      rolledRaw.push(rollSingleCard());
+      const c = rollSingleCard();
+      if (c) rolledRaw.push(c);
     }
   }
   const rolled = sortCardsBestFirst(rolledRaw);
   state.droppedTemp.unshift(...rolled);
-  rolled.slice(0, 8).forEach(c => recordDropToFeed(c, 'Все паки'));
 
   saveState();
   updateHeader();
+  rolled.slice(0, 8).forEach(c => recordDropToFeed(c, 'Все паки'));
 
   const packBox = document.getElementById('pack-box-visual');
   if (packBox) {
@@ -3885,16 +4007,19 @@ function executeCraft() {
     return;
   }
 
+  markLocalMutation();
   state.inventory = state.inventory.filter(c => !selectedUidSet.has(c.uid));
   state.inventory.push(crafted);
   selectedCraftCardUids = [];
   lastCraftedCard = crafted;
 
-  recordDropToFeed(crafted, 'Крафт');
   saveState();
   updateHeader();
   renderCraftsPage();
   renderCollection();
+  renderLeaderboardPage();
+  recordDropToFeed(crafted, 'Крафт');
+  queueCloudPush();
   showToast(`Скрафчено: ${crafted.name} (${getRarityLabel(crafted.rarity)})!`);
 }
 
@@ -4033,15 +4158,19 @@ function runUpgrade() {
   wheel.style.transform = `rotate(${finalRotation}deg)`;
 
   setTimeout(() => {
-    state.inventory = state.inventory.filter(c => c.uid !== srcCard.uid);
+    markLocalMutation();
+    const existsIdx = state.inventory.findIndex(c => c.uid === srcCard.uid);
+    if (existsIdx !== -1) {
+      state.inventory.splice(existsIdx, 1);
+    }
 
+    let wonCardRef = null;
     if (win) {
-      const wonCard = {
+      wonCardRef = {
         ...tgtCard,
         uid: 'upg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6)
       };
-      state.inventory.push(wonCard);
-      recordDropToFeed(wonCard, 'Апгрейд');
+      state.inventory.push(wonCardRef);
       statusEl.style.color = '#4ade80';
       statusEl.textContent = `УСПЕХ! Получена карта ${tgtCard.name}${tgtCard.isHolo ? ' [HOLO]' : ''}`;
       showToast('Апгрейд прошёл успешно!');
@@ -4053,6 +4182,11 @@ function runUpgrade() {
 
     selectedUpgradeSourceId = null;
     saveState();
+    renderLeaderboardPage();
+    if (wonCardRef) {
+      recordDropToFeed(wonCardRef, 'Апгрейд');
+    }
+    queueCloudPush();
 
     setTimeout(() => {
       wheel.style.transition = 'none';
@@ -4112,12 +4246,18 @@ function renderCollection() {
       showFav: true,
       actionLabel: `Продать (${card.price} ₽)`,
       onAction: (c) => {
-        state.balance += c.price;
-        state.inventory = state.inventory.filter(x => x.uid !== c.uid);
-        saveState();
-        updateHeader();
-        renderCollection();
-        showToast(`Продано за ${c.price} ₽`);
+        runAtomic(() => {
+          const idx = state.inventory.findIndex(x => x.uid === c.uid);
+          if (idx === -1) return;
+          const [removed] = state.inventory.splice(idx, 1);
+          state.balance += Number(removed.price) || 0;
+          showToast(`Продано за ${removed.price} ₽`);
+        }).then(() => {
+          updateHeader();
+          renderCollection();
+          renderLeaderboardPage();
+          queueCloudPush();
+        });
       }
     }));
   });
@@ -4541,55 +4681,60 @@ function bindEvents() {
   if (spotlightKeepBtn) {
     spotlightKeepBtn.addEventListener('click', async () => {
       if (!pendingCaseDropCard) return;
-      state.inventory.push(pendingCaseDropCard);
-      const name = pendingCaseDropCard.name;
+      const cardToKeep = { ...pendingCaseDropCard };
       renderCaseDropSpotlight(null);
-      saveState();
+      await runAtomic(() => {
+        if (!state.inventory.some(item => item.uid === cardToKeep.uid)) {
+          state.inventory.push(cardToKeep);
+        }
+      });
       updateHeader();
       renderCollection();
       renderLeaderboardPage();
-      if (isCloudConfigured()) {
-        await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-      }
-      showToast(`Карта "${name}" добавлена в коллекцию!`);
+      await queueCloudPush();
+      showToast(`Карта "${cardToKeep.name}" добавлена в коллекцию!`);
     });
   }
 
   const spotlightSellBtn = document.getElementById('case-spotlight-sell-btn');
   if (spotlightSellBtn) {
-    spotlightSellBtn.addEventListener('click', () => {
+    spotlightSellBtn.addEventListener('click', async () => {
       if (!pendingCaseDropCard) return;
-      const sum = pendingCaseDropCard.price;
-      const name = pendingCaseDropCard.name;
-      state.balance += sum;
+      const cardToSell = { ...pendingCaseDropCard };
       renderCaseDropSpotlight(null);
-      saveState();
+      await runAtomic(() => {
+        state.balance += Number(cardToSell.price) || 0;
+      });
       updateHeader();
-      showToast(`Карта "${name}" продана за ${sum} ₽`);
+      showToast(`Карта "${cardToSell.name}" продана за ${cardToSell.price} ₽`);
     });
   }
 
   document.getElementById('keep-all-dropped-btn').addEventListener('click', async () => {
-    state.inventory.push(...state.droppedTemp);
-    state.droppedTemp = [];
-    saveState();
+    await runAtomic(() => {
+      if (!Array.isArray(state.droppedTemp) || state.droppedTemp.length === 0) return;
+      const existingUids = new Set(state.inventory.map(c => c.uid));
+      const toAdd = state.droppedTemp.filter(c => !existingUids.has(c.uid));
+      state.inventory.push(...toAdd);
+      state.droppedTemp = [];
+    });
     renderDroppedCards(false);
     renderCollection();
     renderLeaderboardPage();
-    if (isCloudConfigured()) {
-      await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-    }
+    await queueCloudPush();
     showToast('Все карточки добавлены в коллекцию!');
   });
 
-  document.getElementById('sell-all-dropped-btn').addEventListener('click', () => {
-    const sum = state.droppedTemp.reduce((s, c) => s + c.price, 0);
-    state.balance += sum;
-    state.droppedTemp = [];
-    saveState();
+  document.getElementById('sell-all-dropped-btn').addEventListener('click', async () => {
+    await runAtomic(() => {
+      if (!Array.isArray(state.droppedTemp) || state.droppedTemp.length === 0) return;
+      const sum = state.droppedTemp.reduce((s, c) => s + (Number(c.price) || 0), 0);
+      state.balance += sum;
+      state.droppedTemp = [];
+      showToast(`Продано всё за ${sum} ₽`);
+    });
     updateHeader();
     renderDroppedCards(false);
-    showToast(`Продано всё за ${sum} ₽`);
   });
 
   // Крафты
