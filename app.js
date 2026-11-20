@@ -59,6 +59,7 @@ function createInitialState() {
       { uid: "init_3", cardId: "c2", isHolo: false },
       { uid: "init_4", cardId: "c4", isHolo: true }
     ],
+    history: [],
     stats: {
       packsOpened: 0,
       casesOpened: 0,
@@ -85,15 +86,43 @@ function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return createInitialState();
     const parsed = JSON.parse(raw);
-    return { ...createInitialState(), ...parsed };
+    const base = createInitialState();
+    return {
+      ...base,
+      ...parsed,
+      inventory: Array.isArray(parsed.inventory) ? parsed.inventory : base.inventory,
+      history: Array.isArray(parsed.history) ? parsed.history : base.history,
+      stats: { ...base.stats, ...(parsed.stats || {}) }
+    };
   } catch {
     return createInitialState();
   }
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.error("Ошибка сохранения в localStorage:", e);
+  }
   renderTopbar();
+}
+
+function recordDropHistory(sourceLabel, card, isHolo) {
+  const rarity = getRarity(card.rarityId);
+  const price = getCardPrice(card, isHolo);
+  state.history.unshift({
+    id: `h_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    source: sourceLabel,
+    cardName: card.name,
+    rarityName: rarity.name,
+    isHolo,
+    price,
+    time: new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+  });
+  if (state.history.length > 150) {
+    state.history.length = 150;
+  }
 }
 
 function formatRub(num) {
@@ -269,6 +298,7 @@ function openPacksCount(count) {
     const inst = rollCardInstance(pool);
     state.inventory.push(inst);
     drops.push(inst);
+    recordDropHistory("Пак (500 ₽)", getCard(inst.cardId), inst.isHolo);
   }
 
   saveState();
@@ -277,7 +307,7 @@ function openPacksCount(count) {
   showcase.innerHTML = "";
   drops.forEach(d => {
     const card = getCard(d.cardId);
-    showcase.appendChild(renderCardElement(card, d.isHolo, { extraBadge: "ВЫБИТО" }));
+    showcase.appendChild(renderCardElement(card, d.isHolo, { extraBadge: "СОХРАНЕНО" }));
   });
 
   renderPacksPage();
@@ -389,6 +419,7 @@ document.getElementById("spinCaseBtn").addEventListener("click", () => {
 
   const winInstance = rollCardInstance(pool);
   state.inventory.push(winInstance);
+  recordDropHistory(`Кейс: ${cs.name}`, getCard(winInstance.cardId), winInstance.isHolo);
   saveState();
 
   const track = document.getElementById("rouletteTrack");
@@ -431,7 +462,7 @@ document.getElementById("spinCaseBtn").addEventListener("click", () => {
     const winCard = getCard(winInstance.cardId);
     const resBox = document.getElementById("caseSpinResult");
     resBox.innerHTML = "";
-    resBox.appendChild(renderCardElement(winCard, winInstance.isHolo, { extraBadge: "ВЫИГРЫШ" }));
+    resBox.appendChild(renderCardElement(winCard, winInstance.isHolo, { extraBadge: "СОХРАНЕНО" }));
   }, 4300);
 });
 
@@ -547,7 +578,6 @@ document.getElementById("rollUpgradeBtn").addEventListener("click", () => {
   const targetPrice = getCardPrice(upgradeTargetCard.card, upgradeTargetCard.isHolo);
   const chance = calcUpgradeChance(myPrice, targetPrice);
 
-  // Сжигаем исходную карту при попытке апгрейда
   state.inventory.splice(myIdx, 1);
   upgradeSelectedUid = null;
 
@@ -563,6 +593,7 @@ document.getElementById("rollUpgradeBtn").addEventListener("click", () => {
       isHolo: upgradeTargetCard.isHolo
     };
     state.inventory.push(newInst);
+    recordDropHistory("Апгрейд (Успех)", upgradeTargetCard.card, upgradeTargetCard.isHolo);
     resBox.appendChild(renderCardElement(upgradeTargetCard.card, upgradeTargetCard.isHolo, { extraBadge: "УСПЕХ!" }));
   } else {
     state.stats.upgradesLost += 1;
@@ -632,15 +663,12 @@ document.getElementById("executeTradeBtn").addEventListener("click", () => {
     }
   });
 
-  // Бот даёт ровно в стоимость или чуть меньше (от 82% до 100% суммы игрока)
   const ratio = 0.82 + Math.random() * 0.18;
   const targetBotBudget = Math.max(100, Math.round(mySum * ratio));
 
-  // Удаляем карты игрока
   state.inventory = state.inventory.filter(item => !toRemove.includes(item.uid));
   tradeSelectedUids.clear();
 
-  // Подбираем набор карт бота в пределах targetBotBudget
   const candidates = [];
   state.cards.forEach(c => {
     candidates.push({ card: c, isHolo: false, price: getCardPrice(c, false) });
@@ -657,7 +685,6 @@ document.getElementById("executeTradeBtn").addEventListener("click", () => {
     botSum += pick.price;
   }
 
-  // Если не набралось ни одной карты (например, очень малая сумма) — выдаём компенсацию в рублях
   let cashDiff = 0;
   if (!botItems.length) {
     cashDiff = targetBotBudget;
@@ -669,6 +696,7 @@ document.getElementById("executeTradeBtn").addEventListener("click", () => {
         cardId: b.card.id,
         isHolo: b.isHolo
       });
+      recordDropHistory("Трейд с ботом", b.card, b.isHolo);
     });
   }
 
@@ -790,7 +818,6 @@ document.getElementById("executeCraftBtn").addEventListener("click", () => {
   }
   if (!nextTierCards.length) nextTierCards = state.cards;
 
-  // Чем дороже вложенные 10 карт, тем выше вес более дорогих карт следующей редкости
   const chosenCard = pickWeighted(nextTierCards, c => {
     const ratio = c.basePrice / Math.max(100, avgPrice * 2.2);
     return Math.max(0.1, Math.min(5, ratio));
@@ -808,6 +835,7 @@ document.getElementById("executeCraftBtn").addEventListener("click", () => {
   };
   state.inventory.push(newInst);
   state.stats.craftsDone += 1;
+  recordDropHistory(`Крафт ➔ ${nextRarity.name}`, chosenCard, isHolo);
   saveState();
 
   const resBox = document.getElementById("craftResultBox");
@@ -817,8 +845,14 @@ document.getElementById("executeCraftBtn").addEventListener("click", () => {
   renderCraftsPage();
 });
 
-// 6. КОЛЛЕКЦИЯ И СТАТИСТИКА
+// 6. КОЛЛЕКЦИЯ, СТАТИСТИКА И ИСТОРИЯ
 document.getElementById("collectionSortSelect").addEventListener("change", renderCollectionPage);
+
+document.getElementById("clearHistoryBtn").addEventListener("click", () => {
+  state.history = [];
+  saveState();
+  renderCollectionPage();
+});
 
 document.getElementById("sellDupesBtn").addEventListener("click", () => {
   const seen = new Set();
@@ -885,6 +919,27 @@ function renderCollectionPage() {
     el.appendChild(sellBtn);
     grid.appendChild(el);
   });
+
+  const historyEl = document.getElementById("dropHistoryList");
+  historyEl.innerHTML = "";
+  if (!state.history.length) {
+    historyEl.innerHTML = `<div class="muted small">История пока пуста — открой пак, кейс или сделай крафт/трейд.</div>`;
+  } else {
+    state.history.forEach(h => {
+      const row = document.createElement("div");
+      row.className = "history-row";
+      row.innerHTML = `
+        <div>
+          <span class="muted small">[${escapeHtml(h.time)}]</span>
+          <strong>${escapeHtml(h.source)}</strong>:
+          <span>${escapeHtml(h.cardName)}</span>
+          <span class="muted small">(${escapeHtml(h.rarityName)}${h.isHolo ? ", HOLO" : ""})</span>
+        </div>
+        <span class="card-price">${formatRub(h.price)}</span>
+      `;
+      historyEl.appendChild(row);
+    });
+  }
 }
 
 // 7. АДМИНКА
@@ -907,7 +962,7 @@ document.getElementById("adminLogoutBtn").addEventListener("click", () => {
 });
 
 document.getElementById("resetDefaultDataBtn").addEventListener("click", () => {
-  if (!confirm("Сбросить баланс, инвентарь, редкости, кейсы и карточки к начальным?")) return;
+  if (!confirm("Сбросить баланс, инвентарь, историю, редкости, кейсы и карточки к начальным?")) return;
   state = createInitialState();
   saveState();
   renderAdminPage();
@@ -926,7 +981,6 @@ function renderAdminPage() {
   lockBox.classList.add("hidden");
   panel.classList.remove("hidden");
 
-  // Селект редкостей для формы добавления карты
   const raritySel = document.getElementById("cardRaritySelect");
   raritySel.innerHTML = "";
   state.rarities.forEach(r => {
@@ -936,7 +990,6 @@ function renderAdminPage() {
     raritySel.appendChild(opt);
   });
 
-  // Список редкостей
   const rarList = document.getElementById("adminRaritiesList");
   rarList.innerHTML = "";
   state.rarities.forEach((r, idx) => {
@@ -982,7 +1035,6 @@ function renderAdminPage() {
     rarList.appendChild(row);
   });
 
-  // Список карточек
   const cardsList = document.getElementById("adminCardsList");
   cardsList.innerHTML = "";
   state.cards.forEach(c => {
@@ -1004,7 +1056,6 @@ function renderAdminPage() {
     cardsList.appendChild(row);
   });
 
-  // Выбор карт для нового кейса
   const picker = document.getElementById("newCaseCardsPicker");
   picker.innerHTML = "";
   state.cards.forEach(c => {
@@ -1020,7 +1071,6 @@ function renderAdminPage() {
     picker.appendChild(btn);
   });
 
-  // Список кейсов
   const casesList = document.getElementById("adminCasesList");
   casesList.innerHTML = "";
   state.cases.forEach(cs => {
