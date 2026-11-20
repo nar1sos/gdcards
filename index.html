@@ -3,325 +3,364 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GD Demon Case — Extreme Demon Cards</title>
-  <link rel="stylesheet" href="style.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+  <title>GD EXTREME BATTLE — Case & Card Simulator</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="navbar">
-    <div class="nav-left">
-      <div class="logo">GD<span>CASE</span></div>
-      <nav class="nav-links">
-        <button class="nav-btn active" data-tab="packs">Паки</button>
-        <button class="nav-btn" data-tab="trades">Трейды</button>
-        <button class="nav-btn" data-tab="upgrade">Апгрейды</button>
-        <button class="nav-btn" data-tab="collection">Коллекция</button>
-        <button class="nav-btn admin-tab-btn" data-tab="admin">Админка</button>
-      </nav>
+  <div class="bg-grid"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-badge">GD</span>
+      <div>
+        <div class="brand-title">EXTREME BATTLE</div>
+        <div class="brand-sub">SIMULATOR • VIRTUAL ₽</div>
+      </div>
     </div>
-    <div class="nav-right">
-      <div class="stat-pill packs-pill">
-        <span>Паков:</span> <strong id="header-packs">1</strong>
+
+    <nav class="nav" id="mainNav">
+      <button class="nav-btn active" data-page="packs">1. Паки</button>
+      <button class="nav-btn" data-page="cases">2. Кейсы</button>
+      <button class="nav-btn" data-page="upgrades">3. Апгрейды</button>
+      <button class="nav-btn" data-page="trades">4. Трейды</button>
+      <button class="nav-btn" data-page="crafts">5. Крафты</button>
+      <button class="nav-btn" data-page="collection">6. Коллекция</button>
+      <button class="nav-btn admin-nav" data-page="admin">7. Админка</button>
+    </nav>
+
+    <div class="wallet-box">
+      <div class="balance-pill">
+        <span class="bal-label">БАЛАНС:</span>
+        <span id="balanceValue" class="bal-amount">0 ₽</span>
       </div>
-      <div class="stat-pill balance-pill">
-        <strong id="header-balance">500</strong> <span>₽</span>
-      </div>
+      <button id="freeRubBtn" class="btn btn-accent btn-sm" title="Получить бонус">+2 500 ₽</button>
     </div>
   </header>
 
   <main class="container">
     <!-- 1. СТРАНИЦА ПАКОВ -->
-    <section id="tab-packs" class="tab-section active">
-      <div class="pack-hero">
+    <section id="page-packs" class="page active">
+      <div class="page-head">
+        <div>
+          <h1>Паки Extreme Demon</h1>
+          <p class="muted">Открывай паки за <strong>500 ₽</strong>. Внутри обычные и редкие дорогие <strong>HOLO</strong> карточки.</p>
+        </div>
+        <div class="sort-bar">
+          <label>Сортировка пула:</label>
+          <select id="packsSortSelect" class="input select">
+            <option value="rarity_desc">Редкость (сначала редкие)</option>
+            <option value="rarity_asc">Редкость (сначала частые)</option>
+            <option value="price_desc">Цена (дорогие → дешёвые)</option>
+            <option value="price_asc">Цена (дешёвые → дорогие)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="pack-hero card-panel">
         <div class="pack-visual">
-          <div class="pack-box" id="pack-box-visual">
-            <div class="pack-glow"></div>
-            <span class="pack-badge">EXTREME DEMON PACK</span>
-            <h2>5 КАРТОЧЕК</h2>
-            <p>Шанс на HOLO: 12%</p>
+          <div class="pack-box-art">
+            <div class="pack-tag">EXTREME PACK</div>
+            <div class="pack-price-big">500 ₽</div>
+            <div class="pack-mini">NORMAL &amp; HOLO</div>
           </div>
         </div>
-
-        <div class="pack-controls">
-          <div class="timer-card">
-            <span class="timer-label">Новый бесплатный пак через:</span>
-            <div class="timer-value" id="pack-timer">01:00</div>
-            <div class="progress-bar"><div class="progress-fill" id="pack-progress"></div></div>
-          </div>
-
-          <div class="pack-actions">
-            <button id="open-pack-btn" class="btn-primary">Открыть пак (1)</button>
-            <button id="buy-pack-btn" class="btn-secondary">Купить пак за 250 ₽</button>
-          </div>
-
-          <div class="drop-rates">
-            <span class="rate-tag rarity-common">Common 67.5%</span>
-            <span class="rate-tag rarity-epic">Epic 31.5%</span>
-            <span class="rate-tag rarity-mythic">Mythic 0.4%</span>
-            <span class="rate-tag rarity-legendary">Legendary 0.3%</span>
-            <span class="rate-tag rarity-apex">Apex 0.2%</span>
-            <span class="rate-tag rarity-limit">Limit 0.1%</span>
+        <div class="pack-actions">
+          <h2>Extreme Demon Pack — 500 ₽</h2>
+          <p class="muted">Выпадает 1 карточка уровня из пула активных карт. Шанс получить <strong>HOLO</strong>-версию ниже, но цена выше (x2.4).</p>
+          <div class="btn-row">
+            <button id="buyOnePackBtn" class="btn btn-primary">Открыть пак (500 ₽)</button>
+            <button id="buyFivePacksBtn" class="btn btn-secondary">Открыть x5 (2 500 ₽)</button>
           </div>
         </div>
       </div>
 
-      <div id="pack-result-area" class="pack-result hidden">
-        <div class="result-header">
-          <h3>Выпавшие карточки:</h3>
-          <div class="result-btns">
-            <button id="sell-all-dropped-btn" class="btn-danger">Продать всё (<span id="dropped-total-price">0</span> ₽)</button>
-            <button id="keep-all-dropped-btn" class="btn-primary">Забрать в коллекцию</button>
-          </div>
-        </div>
-        <div id="dropped-cards-grid" class="cards-grid"></div>
-      </div>
+      <div id="packDropResult" class="drop-showcase"></div>
+
+      <h3 class="section-title">Доступные карточки в паках</h3>
+      <div id="packsPoolGrid" class="cards-grid"></div>
     </section>
 
-    <!-- 2. СТРАНИЦА ТРЕЙДОВ -->
-    <section id="tab-trades" class="tab-section">
-      <div class="section-header">
-        <h2>Трейд с ботом</h2>
-        <button id="start-trade-btn" class="btn-primary">Начать активный трейд</button>
-      </div>
-
-      <div id="trade-placeholder" class="empty-box">
-        Нажмите «Начать активный трейд», чтобы подключиться к боту и обменять свои карты.
-      </div>
-
-      <div id="trade-workspace" class="trade-workspace hidden">
-        <div class="trade-panel">
-          <div class="panel-head">
-            <h3>Твоё предложение (<span id="user-offer-sum">0</span> ₽)</h3>
-            <span class="hint">Выбери до 6 карт снизу</span>
+    <!-- 2. СТРАНИЦА КЕЙСОВ -->
+    <section id="page-cases" class="page">
+      <div id="casesListView">
+        <div class="page-head">
+          <div>
+            <h1>CS-Стиль Кейсы</h1>
+            <p class="muted">Выбери кейс, чтобы открыть страницу рулетки и посмотреть содержимое по редкостям.</p>
           </div>
-          <div id="user-offer-slots" class="trade-slots"></div>
         </div>
-
-        <div class="trade-middle">
-          <div class="bot-status" id="bot-status-text">Бот ожидает твои карты...</div>
-          <button id="confirm-trade-btn" class="btn-primary" disabled>Подтвердить обмен</button>
-          <button id="cancel-trade-btn" class="btn-secondary">Отменить трейд</button>
-        </div>
-
-        <div class="trade-panel">
-          <div class="panel-head">
-            <h3>Предложение бота (<span id="bot-offer-sum">0</span> ₽)</h3>
-            <button id="reroll-bot-btn" class="btn-small">Другой оффер</button>
-          </div>
-          <div id="bot-offer-slots" class="trade-slots"></div>
-        </div>
+        <div id="casesGrid" class="cases-grid"></div>
       </div>
 
-      <div id="trade-inventory-block" class="hidden">
-        <h3 class="sub-title">Твой инвентарь (нажми, чтобы добавить в трейд):</h3>
-        <div id="trade-user-inv" class="cards-grid"></div>
+      <div id="caseDetailView" class="hidden">
+        <div class="page-head">
+          <button id="backToCasesBtn" class="btn btn-ghost">← Назад ко всем кейсам</button>
+          <div class="sort-bar">
+            <label>Сортировка содержимого:</label>
+            <select id="caseContentsSort" class="input select">
+              <option value="rarity_desc">По редкости (редкие → частые)</option>
+              <option value="rarity_asc">По редкости (частые → редкие)</option>
+              <option value="price_desc">По цене (убывание)</option>
+              <option value="price_asc">По цене (возрастание)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card-panel roulette-panel">
+          <div class="case-detail-header">
+            <div>
+              <h2 id="activeCaseTitle">Кейс</h2>
+              <p id="activeCaseDesc" class="muted"></p>
+            </div>
+            <div class="case-spin-controls">
+              <div id="activeCasePrice" class="price-tag">0 ₽</div>
+              <button id="spinCaseBtn" class="btn btn-primary">Крутить рулетку</button>
+            </div>
+          </div>
+
+          <div class="roulette-viewport">
+            <div class="roulette-pointer">▼</div>
+            <div id="rouletteTrack" class="roulette-track"></div>
+          </div>
+
+          <div id="caseSpinResult" class="drop-showcase"></div>
+        </div>
+
+        <h3 class="section-title">Содержимое кейса</h3>
+        <div id="caseContentsGrid" class="cards-grid"></div>
       </div>
     </section>
 
     <!-- 3. СТРАНИЦА АПГРЕЙДОВ -->
-    <section id="tab-upgrade" class="tab-section">
-      <div class="upgrade-arena">
-        <div class="upgrade-box">
-          <h3>Твоя карта</h3>
-          <div id="upg-source-slot" class="upg-slot">Выбери карту ниже</div>
+    <section id="page-upgrades" class="page">
+      <div class="page-head">
+        <div>
+          <h1>Апгрейды карточек</h1>
+          <p class="muted">Выбери свою карту из коллекции и одну из <strong>15 случайных карт</strong>. При проигрыше твоя карта сгорает.</p>
         </div>
-
-        <div class="upgrade-wheel-box">
-          <div class="wheel-wrapper">
-            <div class="wheel-pointer">▼</div>
-            <div class="wheel-circle" id="upgrade-wheel">
-              <div class="wheel-inner">
-                <span id="upg-chance-text">0%</span>
-                <small>ШАНС</small>
-              </div>
-            </div>
-          </div>
-          <button id="run-upgrade-btn" class="btn-primary" disabled>Апгрейднуть</button>
-          <div id="upgrade-status" class="upgrade-status"></div>
-        </div>
-
-        <div class="upgrade-box">
-          <h3>Цель апгрейда</h3>
-          <div id="upg-target-slot" class="upg-slot">Выбери карту справа/снизу</div>
+        <div class="sort-bar">
+          <label>Сортировка инвентаря:</label>
+          <select id="upgradeInvSort" class="input select">
+            <option value="price_desc">По цене (дорогие → дешёвые)</option>
+            <option value="price_asc">По цене (дешёвые → дорогие)</option>
+            <option value="rarity_desc">По редкости (редкие → частые)</option>
+            <option value="rarity_asc">По редкости (частые → редкие)</option>
+          </select>
         </div>
       </div>
 
-      <div class="upgrade-lists">
-        <div>
-          <h3 class="sub-title">1. Выбери свою карту для апгрейда:</h3>
-          <div id="upg-user-cards" class="cards-grid compact-grid scroll-grid"></div>
+      <div class="upgrade-layout">
+        <div class="card-panel">
+          <h3>1. Твоя карта</h3>
+          <div id="upgradeMyCardsGrid" class="cards-grid compact-grid"></div>
         </div>
-        <div>
-          <div class="sub-title-row">
-            <h3 class="sub-title">2. Выбери любую карту (Обычные и Holo):</h3>
-            <span class="hint" id="upg-catalog-count">0 карт</span>
+
+        <div class="card-panel upgrade-center">
+          <h3>2. Шанс апгрейда</h3>
+          <div class="upgrade-matchup">
+            <div id="upgradeSourceSlot" class="slot-box empty">Выбери свою карту</div>
+            <div class="vs-badge">➔</div>
+            <div id="upgradeTargetSlot" class="slot-box empty">Выбери цель из 15</div>
           </div>
-          <div class="upgrade-search-row">
-            <input type="text" id="upg-search-input" placeholder="Поиск по названию или #топу..." />
-            <select id="upg-type-filter">
-              <option value="all">Все (Обычные + Holo)</option>
-              <option value="holo">Только Holo</option>
-              <option value="normal">Только Обычные</option>
-            </select>
-            <select id="upg-rarity-filter">
-              <option value="all">Все редкости</option>
-              <option value="limit">Limit</option>
-              <option value="apex">Apex</option>
-              <option value="legendary">Legendary</option>
-              <option value="mythic">Mythic</option>
-              <option value="epic">Epic</option>
-              <option value="common">Common</option>
-            </select>
+          <div class="chance-readout">
+            <span>Шанс успеха:</span>
+            <strong id="upgradeChanceText">—</strong>
           </div>
-          <div id="upg-target-cards" class="cards-grid compact-grid scroll-grid"></div>
+          <button id="rollUpgradeBtn" class="btn btn-primary" disabled>Апгрейдить</button>
+          <div id="upgradeResultBox" class="drop-showcase"></div>
         </div>
+      </div>
+
+      <div class="card-panel" style="margin-top: 20px;">
+        <div class="page-head">
+          <h3>3. 15 случайных целей</h3>
+          <button id="rerollTargetsBtn" class="btn btn-secondary btn-sm">Обновить 15 карт</button>
+        </div>
+        <div id="upgradeTargetsGrid" class="cards-grid compact-grid"></div>
       </div>
     </section>
 
-    <!-- 4. СТРАНИЦА КОЛЛЕКЦИИ -->
-    <section id="tab-collection" class="tab-section">
-      <div class="stats-bar">
-        <div class="stat-card"><span>Всего карт</span><strong id="stat-total-cards">0</strong></div>
-        <div class="stat-card"><span>Holo карт</span><strong id="stat-holo-cards">0</strong></div>
-        <div class="stat-card"><span>Стоимость инвентаря</span><strong id="stat-inv-value">0 ₽</strong></div>
-        <div class="stat-card"><span>Открыто паков</span><strong id="stat-packs-opened">0</strong></div>
+    <!-- 4. СТРАНИЦА ТРЕЙДОВ -->
+    <section id="page-trades" class="page">
+      <div class="page-head">
+        <div>
+          <h1>Трейды с ботом</h1>
+          <p class="muted">Выбери свои карты и нажми <strong>Трейд</strong>. Бот предложит карты на сумму <strong>ровно</strong> или <strong>чуть меньше</strong> твоей.</p>
+        </div>
+        <div class="sort-bar">
+          <label>Сортировка:</label>
+          <select id="tradeSortSelect" class="input select">
+            <option value="price_desc">По цене (дорогие → дешёвые)</option>
+            <option value="price_asc">По цене (дешёвые → дорогие)</option>
+            <option value="rarity_desc">По редкости (редкие → частые)</option>
+            <option value="rarity_asc">По редкости (частые → редкие)</option>
+          </select>
+        </div>
       </div>
 
-      <div class="filters-bar">
-        <select id="filter-rarity">
-          <option value="all">Все редкости</option>
-          <option value="limit">Limit</option>
-          <option value="apex">Apex</option>
-          <option value="legendary">Legendary</option>
-          <option value="mythic">Mythic</option>
-          <option value="epic">Epic</option>
-          <option value="common">Common</option>
-        </select>
-        <select id="filter-type">
-          <option value="all">Все типы (Обычные + Holo)</option>
-          <option value="holo">Только Holo</option>
-          <option value="normal">Только Обычные</option>
-        </select>
-        <label class="checkbox-label">
-          <input type="checkbox" id="filter-fav" /> Только избранные ★
-        </label>
+      <div class="card-panel trade-bar">
+        <div>
+          <div>Твоя сумма: <strong id="tradeMySum">0 ₽</strong> (выбрано карт: <strong id="tradeMyCount">0</strong>)</div>
+          <div class="muted small">Диапазон оффера бота: от 82% до 100% твоей суммы</div>
+        </div>
+        <div class="btn-row">
+          <button id="clearTradeBtn" class="btn btn-ghost">Очистить</button>
+          <button id="executeTradeBtn" class="btn btn-primary">Трейд</button>
+        </div>
       </div>
 
-      <div id="collection-grid" class="cards-grid"></div>
+      <div id="tradeBotResult" class="drop-showcase"></div>
+
+      <h3 class="section-title">Твой инвентарь для обмена</h3>
+      <div id="tradeInventoryGrid" class="cards-grid"></div>
     </section>
 
-    <!-- 5. СТРАНИЦА АДМИНА -->
-    <section id="tab-admin" class="tab-section">
-      <div id="admin-lock" class="admin-lock">
-        <h2>Доступ в панель администратора</h2>
-        <p>Введите пароль для управления пулом карт</p>
-        <div class="lock-row">
-          <input type="password" id="admin-pass-input" placeholder="Введите пароль..." />
-          <button id="admin-login-btn" class="btn-primary">Войти</button>
+    <!-- 5. СТРАНИЦА КРАФТОВ -->
+    <section id="page-crafts" class="page">
+      <div class="page-head">
+        <div>
+          <h1>Крафты (10 карт ➔ 1 карта следующей редкости)</h1>
+          <p class="muted">Выбери <strong>10 карт одной редкости</strong> и получи 1 карту следующей редкости. Чем выше цена твоих 10 карт, тем выше шанс на более дорогую карту следующей редкости.</p>
         </div>
-        <p id="admin-error" class="error-text"></p>
+        <div class="sort-bar">
+          <label>Сортировка:</label>
+          <select id="craftSortSelect" class="input select">
+            <option value="rarity_asc">По редкости (частые → редкие)</option>
+            <option value="rarity_desc">По редкости (редкие → частые)</option>
+            <option value="price_desc">По цене (дорогие → дешёвые)</option>
+            <option value="price_asc">По цене (дешёвые → дорогие)</option>
+          </select>
+        </div>
       </div>
 
-      <div id="admin-panel" class="hidden">
-        <div class="admin-grid">
-          <form id="add-card-form" class="admin-form">
-            <h3>Добавить новую карточку в пак</h3>
-            <label>Топ в Demon List (#)
-              <input type="number" id="card-rank" min="1" value="9" required />
-            </label>
-            <label>Название уровня
-              <input type="text" id="card-name" placeholder="Например: ORBIT" required />
-            </label>
-            <label>Verified by (необязательно)
-              <input type="text" id="card-verifier" placeholder="Например: Zoink" />
-            </label>
-            <label>Published by (необязательно)
-              <input type="text" id="card-publisher" placeholder="Например: MindCap" />
-            </label>
-            <label>Редкость
-              <select id="card-rarity">
-                <option value="common">Common (Синяя)</option>
-                <option value="epic">Epic (Фиолетовая)</option>
-                <option value="mythic" selected>Mythic (Красная)</option>
-                <option value="legendary">Legendary (Желтая)</option>
-                <option value="apex">Apex (Разноцветная)</option>
-                <option value="limit">Limit (Черно-бирюзовая)</option>
-              </select>
-            </label>
-            <label>Базовая цена (₽) — для Holo умножается на x3.5
-              <input type="number" id="card-price" min="10" value="100" required />
-            </label>
-            <label>Загрузить картинку с компьютера
-              <input type="file" id="card-file" accept="image/*" />
-            </label>
-            <label>ИЛИ вставить URL картинки (если не выбираешь файл)
-              <input type="url" id="card-image" placeholder="https://i.ytimg.com/vi/.../maxresdefault.jpg" />
-            </label>
-            <button type="submit" class="btn-primary">Добавить уровень в пул</button>
-          </form>
+      <div class="card-panel craft-status-bar">
+        <div>
+          <span>Выбрано карт: <strong id="craftSelectedCount">0 / 10</strong></span>
+          <span class="sep">|</span>
+          <span>Редкость: <strong id="craftSelectedRarity">—</strong></span>
+          <span class="sep">|</span>
+          <span>Сумма 10 карт: <strong id="craftSelectedSum">0 ₽</strong></span>
+        </div>
+        <div class="btn-row">
+          <button id="craftAutoFillBtn" class="btn btn-secondary btn-sm">Автоподбор 10 дешёвых</button>
+          <button id="craftClearBtn" class="btn btn-ghost btn-sm">Сброс</button>
+          <button id="executeCraftBtn" class="btn btn-primary" disabled>Скрафтить</button>
+        </div>
+      </div>
 
-          <div class="admin-preview">
-            <h3>Превью карточки (Обычная и Holo)</h3>
-            <div class="preview-pair" id="admin-preview-box"></div>
+      <div id="craftResultBox" class="drop-showcase"></div>
+
+      <div id="craftInventoryGrid" class="cards-grid"></div>
+    </section>
+
+    <!-- 6. СТРАНИЦА КОЛЛЕКЦИИ -->
+    <section id="page-collection" class="page">
+      <div class="page-head">
+        <div>
+          <h1>Коллекция и статистика</h1>
+          <p class="muted">Все твои выбитые карты, статистика и быстрая продажа лишних копий.</p>
+        </div>
+        <div class="sort-bar">
+          <label>Сортировка:</label>
+          <select id="collectionSortSelect" class="input select">
+            <option value="rarity_desc">По редкости (редкие → частые)</option>
+            <option value="rarity_asc">По редкости (частые → редкие)</option>
+            <option value="price_desc">По цене (дорогие → дешёвые)</option>
+            <option value="price_asc">По цене (дешёвые → дорогие)</option>
+          </select>
+          <button id="sellDupesBtn" class="btn btn-secondary btn-sm">Продать дубликаты</button>
+        </div>
+      </div>
+
+      <div id="statsGrid" class="stats-grid"></div>
+
+      <h3 class="section-title">Твои карточки</h3>
+      <div id="collectionGrid" class="cards-grid"></div>
+    </section>
+
+    <!-- 7. СТРАНИЦА АДМИНА -->
+    <section id="page-admin" class="page">
+      <div id="adminLockBox" class="card-panel admin-lock">
+        <h2>Вход в панель администратора</h2>
+        <p class="muted">Введите пароль доступа для управления редкостями, эффектами, кейсами и карточками.</p>
+        <div class="btn-row">
+          <input id="adminPasswordInput" type="password" class="input" placeholder="Пароль..." />
+          <button id="adminLoginBtn" class="btn btn-primary">Войти</button>
+        </div>
+        <div id="adminAuthError" class="error-text"></div>
+      </div>
+
+      <div id="adminPanel" class="hidden">
+        <div class="page-head">
+          <div>
+            <h1>Админ-панель</h1>
+            <p class="muted">Управление редкостями, эффектами на редкости, кейсами и карточками уровней GD.</p>
+          </div>
+          <div class="btn-row">
+            <button id="resetDefaultDataBtn" class="btn btn-danger btn-sm">Сбросить к дефолту</button>
+            <button id="adminLogoutBtn" class="btn btn-ghost btn-sm">Выйти</button>
           </div>
         </div>
 
-        <h3 class="sub-title">Все доступные карточки в игре (<span id="pool-count">0</span>):</h3>
-        <div id="admin-pool-grid" class="cards-grid"></div>
+        <!-- Редкости и эффекты -->
+        <div class="card-panel admin-section">
+          <h3>Редкости и эффекты</h3>
+          <div class="form-grid-4">
+            <input id="newRarityName" class="input" placeholder="Название (например, Godlike)" />
+            <input id="newRarityColor" class="input" placeholder="Цвет/градиент (#ff00aa или linear-gradient(...))" />
+            <select id="newRarityEffect" class="input select">
+              <option value="none">Эффект: Без эффекта</option>
+              <option value="glow">Эффект: Неоновое свечение (glow)</option>
+              <option value="pulse">Эффект: Пульсация (pulse)</option>
+              <option value="rainbow">Эффект: Перелив радугой (rainbow)</option>
+              <option value="glitch">Эффект: Глитч/Сдвиг (glitch)</option>
+            </select>
+            <input id="newRarityWeight" type="number" class="input" placeholder="Вес выпадения (например, 5)" value="5" />
+          </div>
+          <button id="addRarityBtn" class="btn btn-primary btn-sm" style="margin-top: 10px;">+ Добавить редкость</button>
+          <div id="adminRaritiesList" class="admin-list"></div>
+        </div>
+
+        <!-- Карточки -->
+        <div class="card-panel admin-section">
+          <h3>Добавить / редактировать карточку уровня GD</h3>
+          <div class="form-grid-4">
+            <input id="cardNameInput" class="input" placeholder="Название уровня (напр. Tidal Wave)" />
+            <input id="cardCreatorInput" class="input" placeholder="Автор / Верфикатор (напр. OniLink)" />
+            <select id="cardRaritySelect" class="input select"></select>
+            <input id="cardPriceInput" type="number" class="input" placeholder="Базовая цена в ₽ (напр. 1200)" />
+          </div>
+          <div class="form-grid-2" style="margin-top: 10px;">
+            <input id="cardImageInput" class="input" placeholder="URL картинки (необязательно, можно оставить пустым)" />
+            <label class="checkbox-label">
+              <input id="cardInPackCheckbox" type="checkbox" checked />
+              Выпадает из стандартных паков (500 ₽)
+            </label>
+          </div>
+          <button id="saveCardBtn" class="btn btn-primary btn-sm" style="margin-top: 10px;">+ Добавить карточку</button>
+
+          <h4 style="margin-top: 18px;">Все карточки в базе</h4>
+          <div id="adminCardsList" class="admin-list"></div>
+        </div>
+
+        <!-- Кейсы -->
+        <div class="card-panel admin-section">
+          <h3>Создать кейс</h3>
+          <div class="form-grid-3">
+            <input id="newCaseName" class="input" placeholder="Название кейса (напр. Pink & Black Case)" />
+            <input id="newCasePrice" type="number" class="input" placeholder="Цена кейса в ₽ (напр. 1500)" />
+            <input id="newCaseDesc" class="input" placeholder="Описание кейса" />
+          </div>
+          <div id="newCaseCardsPicker" class="picker-chips"></div>
+          <button id="createCaseBtn" class="btn btn-primary btn-sm" style="margin-top: 10px;">+ Создать кейс</button>
+
+          <h4 style="margin-top: 18px;">Существующие кейсы</h4>
+          <div id="adminCasesList" class="admin-list"></div>
+        </div>
       </div>
     </section>
   </main>
 
-  <!-- Модалка редактирования карточки в админке -->
-  <div id="edit-card-modal" class="modal-backdrop hidden">
-    <div class="modal-box">
-      <div class="modal-header">
-        <h3>Изменить карточку</h3>
-        <button id="close-edit-modal-btn" class="btn-small">✕</button>
-      </div>
-      <form id="edit-card-form" class="admin-form">
-        <input type="hidden" id="edit-card-id" />
-        <label>Топ в Demon List (#)
-          <input type="number" id="edit-card-rank" min="1" required />
-        </label>
-        <label>Название уровня
-          <input type="text" id="edit-card-name" required />
-        </label>
-        <label>Verified by (необязательно)
-          <input type="text" id="edit-card-verifier" />
-        </label>
-        <label>Published by (необязательно)
-          <input type="text" id="edit-card-publisher" />
-        </label>
-        <label>Редкость
-          <select id="edit-card-rarity">
-            <option value="common">Common (Синяя)</option>
-            <option value="epic">Epic (Фиолетовая)</option>
-            <option value="mythic">Mythic (Красная)</option>
-            <option value="legendary">Legendary (Желтая)</option>
-            <option value="apex">Apex (Разноцветная)</option>
-            <option value="limit">Limit (Черно-бирюзовая)</option>
-          </select>
-        </label>
-        <label>Базовая цена (₽)
-          <input type="number" id="edit-card-price" min="10" required />
-        </label>
-        <label>Новая картинка с компьютера (оставь пустым, чтобы не менять)
-          <input type="file" id="edit-card-file" accept="image/*" />
-        </label>
-        <label>ИЛИ новый URL картинки
-          <input type="url" id="edit-card-image" placeholder="https://..." />
-        </label>
-        <div class="modal-actions">
-          <button type="button" id="cancel-edit-btn" class="btn-secondary">Отмена</button>
-          <button type="submit" class="btn-primary">Сохранить изменения</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div id="toast" class="toast"></div>
   <script src="app.js"></script>
 </body>
 </html>
