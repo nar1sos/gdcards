@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GD EXTREME BATTLE — Case & Card Simulator</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <div class="bg-grid"></div>
@@ -43,10 +43,10 @@
       <div class="page-head">
         <div>
           <h1>Паки Extreme Demon</h1>
-          <p class="muted">Открывай паки за <strong>500 ₽</strong>. Внутри обычные и редкие дорогие <strong>HOLO</strong> карточки.</p>
+          <p class="muted">Открывай паки за <strong>500 ₽</strong>. Внутри обычные и редкие дорогие <strong>HOLO</strong> карточки. Все выбитые карты сохраняются автоматически.</p>
         </div>
         <div class="sort-bar">
-          <label>Сортировка пула:</label>
+          <label for="packsSortSelect">Сортировка пула:</label>
           <select id="packsSortSelect" class="input select">
             <option value="rarity_desc">Редкость (сначала редкие)</option>
             <option value="rarity_asc">Редкость (сначала частые)</option>
@@ -96,7 +96,7 @@
         <div class="page-head">
           <button id="backToCasesBtn" class="btn btn-ghost">← Назад ко всем кейсам</button>
           <div class="sort-bar">
-            <label>Сортировка содержимого:</label>
+            <label for="caseContentsSort">Сортировка содержимого:</label>
             <select id="caseContentsSort" class="input select">
               <option value="rarity_desc">По редкости (редкие → частые)</option>
               <option value="rarity_asc">По редкости (частые → редкие)</option>
@@ -139,7 +139,7 @@
           <p class="muted">Выбери свою карту из коллекции и одну из <strong>15 случайных карт</strong>. При проигрыше твоя карта сгорает.</p>
         </div>
         <div class="sort-bar">
-          <label>Сортировка инвентаря:</label>
+          <label for="upgradeInvSort">Сортировка инвентаря:</label>
           <select id="upgradeInvSort" class="input select">
             <option value="price_desc">По цене (дорогие → дешёвые)</option>
             <option value="price_asc">По цене (дешёвые → дорогие)</option>
@@ -188,7 +188,7 @@
           <p class="muted">Выбери свои карты и нажми <strong>Трейд</strong>. Бот предложит карты на сумму <strong>ровно</strong> или <strong>чуть меньше</strong> твоей.</p>
         </div>
         <div class="sort-bar">
-          <label>Сортировка:</label>
+          <label for="tradeSortSelect">Сортировка:</label>
           <select id="tradeSortSelect" class="input select">
             <option value="price_desc">По цене (дорогие → дешёвые)</option>
             <option value="price_asc">По цене (дешёвые → дорогие)</option>
@@ -223,7 +223,7 @@
           <p class="muted">Выбери <strong>10 карт одной редкости</strong> и получи 1 карту следующей редкости. Чем выше цена твоих 10 карт, тем выше шанс на более дорогую карту следующей редкости.</p>
         </div>
         <div class="sort-bar">
-          <label>Сортировка:</label>
+          <label for="craftSortSelect">Сортировка:</label>
           <select id="craftSortSelect" class="input select">
             <option value="rarity_asc">По редкости (частые → редкие)</option>
             <option value="rarity_desc">По редкости (редкие → частые)</option>
@@ -258,10 +258,10 @@
       <div class="page-head">
         <div>
           <h1>Коллекция и статистика</h1>
-          <p class="muted">Все твои выбитые карты, статистика и быстрая продажа лишних копий.</p>
+          <p class="muted">Все твои сохранённые карточки, статистика и история того, что ты открывал и выбивал.</p>
         </div>
         <div class="sort-bar">
-          <label>Сортировка:</label>
+          <label for="collectionSortSelect">Сортировка:</label>
           <select id="collectionSortSelect" class="input select">
             <option value="rarity_desc">По редкости (редкие → частые)</option>
             <option value="rarity_asc">По редкости (частые → редкие)</option>
@@ -276,6 +276,12 @@
 
       <h3 class="section-title">Твои карточки</h3>
       <div id="collectionGrid" class="cards-grid"></div>
+
+      <div class="page-head" style="margin-top: 32px;">
+        <h3 class="section-title" style="margin: 0;">История открытий и выбитых карт</h3>
+        <button id="clearHistoryBtn" class="btn btn-ghost btn-sm">Очистить историю</button>
+      </div>
+      <div id="dropHistoryList" class="history-list"></div>
     </section>
 
     <!-- 7. СТРАНИЦА АДМИНА -->
@@ -302,7 +308,6 @@
           </div>
         </div>
 
-        <!-- Редкости и эффекты -->
         <div class="card-panel admin-section">
           <h3>Редкости и эффекты</h3>
           <div class="form-grid-4">
@@ -321,7 +326,6 @@
           <div id="adminRaritiesList" class="admin-list"></div>
         </div>
 
-        <!-- Карточки -->
         <div class="card-panel admin-section">
           <h3>Добавить / редактировать карточку уровня GD</h3>
           <div class="form-grid-4">
@@ -343,7 +347,6 @@
           <div id="adminCardsList" class="admin-list"></div>
         </div>
 
-        <!-- Кейсы -->
         <div class="card-panel admin-section">
           <h3>Создать кейс</h3>
           <div class="form-grid-3">
@@ -361,6 +364,6 @@
     </section>
   </main>
 
-  <script src="app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
