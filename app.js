@@ -1,4 +1,3 @@
-// === НАСТРОЙКИ ОБЩЕГО ПУЛА КАРТ, КЕЙСОВ И ЛАЙВ-ДРОПОВ (JSONBin.io) ===
 const JSONBIN_BIN_ID = '6afc4b60ffd5d16053c85caa';
 const JSONBIN_MASTER_KEY = '$2a$10$eiZem/A1JhfYhF6bHWXE7uzoJ6D8QjuKpyPe5Hrg9i2osHoYhRrVK';
 const JSONBIN_URL = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
@@ -131,6 +130,7 @@ const CRAFT_REQUIRED_COUNT = 10;
 
 const REEL_SLOT_WIDTH = 212;
 const REEL_SLOT_GAP = 12;
+const LIVE_POLL_INTERVAL_MS = 2500;
 
 let state = {
   playerId: '',
@@ -156,6 +156,8 @@ let state = {
 let mutationChain = Promise.resolve();
 let cloudPushChain = Promise.resolve();
 let localDirtyUntil = 0;
+let lastPublishedSelfSignature = '';
+let isPollingCloud = false;
 
 function markLocalMutation(holdMs = 20000) {
   state.version = (Number(state.version) || 1) + 1;
@@ -176,6 +178,63 @@ function mergeInventoriesByUid(primaryCards, secondaryCards) {
   return Array.from(map.values());
 }
 
+function getPlayerCardsArray(playerObj) {
+  if (!playerObj || typeof playerObj !== 'object') return [];
+  if (Array.isArray(playerObj.inventory)) return playerObj.inventory;
+  if (Array.isArray(playerObj.cards)) return playerObj.cards;
+  return [];
+}
+
+function pickBetterPlayerRecord(existing, incoming) {
+  if (!existing) return incoming;
+  if (!incoming) return existing;
+
+  const exInv = getPlayerCardsArray(existing);
+  const inInv = getPlayerCardsArray(incoming);
+  const exVer = Number(existing.version) || 0;
+  const inVer = Number(incoming.version) || 0;
+  const exTime = Number(existing.updatedAt) || 0;
+  const inTime = Number(incoming.updatedAt) || 0;
+
+  // Если входящий профиль несёт полный инвентарь, а существующий пустой или урезанный — берём богаче
+  if (inInv.length > exInv.length && inVer >= exVer) {
+    return {
+      ...existing,
+      ...incoming,
+      inventory: inInv,
+      inventoryValue: getInventoryTotalValue(inInv),
+      cardsCount: inInv.length,
+      version: Math.max(exVer, inVer),
+      updatedAt: Math.max(exTime, inTime)
+    };
+  }
+
+  // Если у incoming новее версия или новее timestamp, но инвентарь пустой/меньше при том же или меньшем count — бережно не теряем карты
+  if (inVer > exVer || (inVer === exVer && inTime > exTime)) {
+    const mergedInv = inInv.length > 0 ? inInv : exInv;
+    return {
+      ...existing,
+      ...incoming,
+      inventory: mergedInv,
+      inventoryValue: getInventoryTotalValue(mergedInv),
+      cardsCount: mergedInv.length,
+      version: Math.max(exVer, inVer),
+      updatedAt: Math.max(exTime, inTime)
+    };
+  }
+
+  const keepInv = exInv.length >= inInv.length ? exInv : inInv;
+  return {
+    ...incoming,
+    ...existing,
+    inventory: keepInv,
+    inventoryValue: getInventoryTotalValue(keepInv),
+    cardsCount: keepInv.length,
+    version: Math.max(exVer, inVer),
+    updatedAt: Math.max(exTime, inTime)
+  };
+}
+
 function runAtomic(fn) {
   mutationChain = mutationChain.then(async () => {
     const res = await fn();
@@ -186,8 +245,19 @@ function runAtomic(fn) {
   return mutationChain;
 }
 
-function queueCloudPush(snapshot = null) {
+function queueCloudPush(snapshot = null, force = false) {
   if (!isCloudConfigured()) return Promise.resolve(false);
+  upsertCurrentPlayerInRegistry();
+
+  const selfEntry = (state.players || []).find(p => p && p.id === state.playerId);
+  const selfSig = selfEntry
+    ? `${selfEntry.id}|${selfEntry.name}|${selfEntry.avatar}|${selfEntry.version}|${getPlayerCardsArray(selfEntry).length}|${getInventoryTotalValue(getPlayerCardsArray(selfEntry))}`
+    : '';
+
+  if (!force && snapshot === null && selfSig && selfSig === lastPublishedSelfSignature) {
+    return Promise.resolve(true);
+  }
+
   const payload = snapshot || {
     pool: state.pool,
     cases: state.cases,
@@ -195,27 +265,69 @@ function queueCloudPush(snapshot = null) {
     rarities: state.rarities,
     effects: state.effects,
     players: state.players,
-    incomingTrades: state.incomingTrades,
-    playerMeta: {
-      id: state.playerId,
-      name: state.playerName,
-      avatar: state.playerAvatar,
-      version: state.version,
-      updatedAt: state.updatedAt,
-      inventory: state.inventory
-    }
+    incomingTrades: state.incomingTrades
   };
-  cloudPushChain = cloudPushChain.then(() =>
-    pushSharedData(
+
+  cloudPushChain = cloudPushChain.then(async () => {
+    // Перед записью подтягиваем свежий снэпшот, чтобы не затереть инвентарь других игроков
+    const latest = await fetchSharedData();
+    let mergedPlayers = Array.isArray(payload.players) ? [...payload.players] : [];
+    let mergedTrades = Array.isArray(payload.incomingTrades) ? [...payload.incomingTrades] : [];
+
+    if (latest.ok) {
+      if (Array.isArray(latest.players)) {
+        const pMap = new Map();
+        latest.players.forEach(p => {
+          if (p && p.id) pMap.set(p.id, p);
+        });
+        mergedPlayers.forEach(p => {
+          if (!p || !p.id) return;
+          if (p.id === state.playerId) {
+            pMap.set(p.id, p);
+          } else {
+            pMap.set(p.id, pickBetterPlayerRecord(pMap.get(p.id), p));
+          }
+        });
+        mergedPlayers = Array.from(pMap.values());
+      }
+
+      if (Array.isArray(latest.incomingTrades)) {
+        const tMap = new Map();
+        latest.incomingTrades.forEach(t => {
+          if (t && t.id) tMap.set(t.id, t);
+        });
+        mergedTrades.forEach(t => {
+          if (!t || !t.id) return;
+          const prev = tMap.get(t.id);
+          if (!prev || (Number(t.resolvedAt || t.createdAt || 0) >= Number(prev.resolvedAt || prev.createdAt || 0))) {
+            tMap.set(t.id, { ...(prev || {}), ...t });
+          }
+        });
+        mergedTrades = Array.from(tMap.values());
+      }
+    }
+
+    const ok = await pushSharedData(
       payload.pool,
       payload.cases,
       payload.recentDrops,
       payload.rarities,
       payload.effects,
-      payload.players,
-      payload.incomingTrades
-    )
-  );
+      mergedPlayers,
+      mergedTrades
+    );
+
+    if (ok) {
+      if (selfSig) lastPublishedSelfSignature = selfSig;
+      if (Array.isArray(latest.players) && latest.ok) {
+        state.players = mergedPlayers.filter(p => p && p.id !== state.playerId);
+        upsertCurrentPlayerInRegistry();
+        saveState();
+      }
+    }
+    return ok;
+  });
+
   return cloudPushChain;
 }
 
@@ -1101,8 +1213,13 @@ function ensureLeaderboardPageUI() {
     section.innerHTML = `
       <div id="leaderboard-list-view">
         <div class="section-header">
-          <h2 class="section-title">Лидерборд</h2>
-          <p class="hint">Рейтинг игроков по суммарной стоимости инвентаря. Нажми на игрока, чтобы открыть профиль и отправить трейд.</p>
+          <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px;">
+            <div>
+              <h2 class="section-title" style="margin-bottom:4px;">Лидерборд</h2>
+              <p class="hint" style="margin:0;">Рейтинг игроков по суммарной стоимости инвентаря в реальном времени. Нажми на игрока, чтобы открыть профиль и отправить трейд.</p>
+            </div>
+            <button type="button" id="refresh-leaderboard-btn" class="btn-secondary">Обновить профили</button>
+          </div>
         </div>
         <div id="leaderboard-rows" class="leaderboard-list"></div>
       </div>
@@ -1110,7 +1227,10 @@ function ensureLeaderboardPageUI() {
       <div id="player-profile-view" class="hidden">
         <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px;">
           <button type="button" id="back-to-leaderboard-btn" class="btn-secondary">← Назад к лидерборду</button>
-          <button type="button" id="open-player-trade-btn" class="btn-primary">Отправить трейд</button>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button type="button" id="refresh-inspected-profile-btn" class="btn-secondary">Обновить профиль</button>
+            <button type="button" id="open-player-trade-btn" class="btn-primary">Отправить трейд</button>
+          </div>
         </div>
 
         <div class="profile-banner-card">
@@ -1281,70 +1401,98 @@ function ensureIncomingTradesTabUI() {
   `;
 }
 
-async function syncLatestCloudSnapshot() {
+async function syncLatestCloudSnapshot(options = {}) {
+  const { forcePlayersSync = false } = options;
   if (!isCloudConfigured()) return null;
-  const fresh = await fetchSharedData();
-  if (!fresh.ok) return null;
+  if (isPollingCloud && !forcePlayersSync) return null;
 
-  const isLocalFresh = Date.now() < localDirtyUntil;
+  isPollingCloud = true;
+  try {
+    const fresh = await fetchSharedData();
+    if (!fresh.ok) return null;
 
-  if (Array.isArray(fresh.pool) && fresh.pool.length > 0 && !isLocalFresh) state.pool = fresh.pool;
-  if (Array.isArray(fresh.cases) && fresh.cases.length > 0 && !isLocalFresh) state.cases = fresh.cases;
-  if (Array.isArray(fresh.effects) && fresh.effects.length > 0 && !isLocalFresh) {
-    state.effects = normalizeEffectsList(fresh.effects);
-  }
-  if (Array.isArray(fresh.rarities) && fresh.rarities.length > 0 && !isLocalFresh) {
-    state.rarities = normalizeRaritiesList(fresh.rarities);
-    syncRaritySelects();
-  }
-  if (Array.isArray(fresh.recentDrops)) {
-    const mergedMap = new Map();
-    [...state.recentDrops, ...fresh.recentDrops].forEach(d => {
-      if (d && d.uid) mergedMap.set(d.uid, d);
-    });
-    state.recentDrops = Array.from(mergedMap.values())
-      .sort((a, b) => (b.ts || 0) - (a.ts || 0))
-      .slice(0, 35);
-  }
+    const isLocalFresh = Date.now() < localDirtyUntil;
 
-  if (Array.isArray(fresh.players)) {
-    const cloudSelf = fresh.players.find(p => p && p.id === state.playerId);
-    const cloudSelfVer = Number(cloudSelf && cloudSelf.version) || 0;
-    const localVer = Number(state.version) || 1;
-    if (cloudSelf && Array.isArray(cloudSelf.inventory) && !isLocalFresh && cloudSelfVer > localVer) {
-      state.inventory = mergeInventoriesByUid(state.inventory, cloudSelf.inventory);
-      state.version = cloudSelfVer;
-      state.updatedAt = Number(cloudSelf.updatedAt) || Date.now();
+    if (Array.isArray(fresh.pool) && fresh.pool.length > 0 && !isLocalFresh) state.pool = fresh.pool;
+    if (Array.isArray(fresh.cases) && fresh.cases.length > 0 && !isLocalFresh) state.cases = fresh.cases;
+    if (Array.isArray(fresh.effects) && fresh.effects.length > 0 && !isLocalFresh) {
+      state.effects = normalizeEffectsList(fresh.effects);
+    }
+    if (Array.isArray(fresh.rarities) && fresh.rarities.length > 0 && !isLocalFresh) {
+      state.rarities = normalizeRaritiesList(fresh.rarities);
+      syncRaritySelects();
+    }
+    if (Array.isArray(fresh.recentDrops)) {
+      const mergedMap = new Map();
+      [...state.recentDrops, ...fresh.recentDrops].forEach(d => {
+        if (d && d.uid) mergedMap.set(d.uid, d);
+      });
+      state.recentDrops = Array.from(mergedMap.values())
+        .sort((a, b) => (b.ts || 0) - (a.ts || 0))
+        .slice(0, 35);
     }
 
-    const map = new Map();
-    fresh.players.forEach(p => {
-      if (p && p.id && p.id !== state.playerId) {
-        map.set(p.id, p);
-      }
-    });
-    state.players = Array.from(map.values());
-  }
-  upsertCurrentPlayerInRegistry();
+    if (Array.isArray(fresh.players)) {
+      const cloudSelf = fresh.players.find(p => p && p.id === state.playerId);
+      const cloudSelfCards = getPlayerCardsArray(cloudSelf);
+      const cloudSelfVer = Number(cloudSelf && cloudSelf.version) || 0;
+      const localVer = Number(state.version) || 1;
+      const hasAcceptedTradeForMe =
+        Array.isArray(fresh.incomingTrades) &&
+        fresh.incomingTrades.some(
+          t => t && t.fromPlayerId === state.playerId && t.status === 'accepted' && !t.senderNotified
+        );
 
-  if (Array.isArray(fresh.incomingTrades)) {
-    const tradeMap = new Map();
-    (Array.isArray(state.incomingTrades) ? state.incomingTrades : []).forEach(t => {
-      if (t && t.id) tradeMap.set(t.id, t);
-    });
-    fresh.incomingTrades.forEach(t => {
-      if (!t || !t.id) return;
-      const prev = tradeMap.get(t.id);
-      if (!prev || (Number(t.resolvedAt || t.createdAt || 0) >= Number(prev.resolvedAt || prev.createdAt || 0))) {
-        tradeMap.set(t.id, { ...(prev || {}), ...t });
+      if (cloudSelf && cloudSelfCards.length > 0 && ((!isLocalFresh && cloudSelfVer > localVer) || hasAcceptedTradeForMe)) {
+        state.inventory = mergeInventoriesByUid(state.inventory, cloudSelfCards);
+        state.version = Math.max(localVer, cloudSelfVer);
+        state.updatedAt = Math.max(Number(state.updatedAt) || 0, Number(cloudSelf.updatedAt) || 0) || Date.now();
       }
-    });
-    state.incomingTrades = Array.from(tradeMap.values());
-  }
 
-  syncDynamicRarityStyles();
-  saveState();
-  return fresh;
+      const prevOtherMap = new Map();
+      (Array.isArray(state.players) ? state.players : []).forEach(p => {
+        if (p && p.id && p.id !== state.playerId) prevOtherMap.set(p.id, p);
+      });
+
+      const nextOtherMap = new Map();
+      fresh.players.forEach(p => {
+        if (!p || !p.id || p.id === state.playerId) return;
+        const normalizedInv = getPlayerCardsArray(p);
+        const normalizedPlayer = {
+          ...p,
+          inventory: normalizedInv,
+          inventoryValue: getInventoryTotalValue(normalizedInv),
+          cardsCount: normalizedInv.length
+        };
+        const prevPlayer = prevOtherMap.get(p.id);
+        nextOtherMap.set(p.id, pickBetterPlayerRecord(prevPlayer, normalizedPlayer));
+      });
+
+      state.players = Array.from(nextOtherMap.values());
+    }
+    upsertCurrentPlayerInRegistry();
+
+    if (Array.isArray(fresh.incomingTrades)) {
+      const tradeMap = new Map();
+      (Array.isArray(state.incomingTrades) ? state.incomingTrades : []).forEach(t => {
+        if (t && t.id) tradeMap.set(t.id, t);
+      });
+      fresh.incomingTrades.forEach(t => {
+        if (!t || !t.id) return;
+        const prev = tradeMap.get(t.id);
+        if (!prev || (Number(t.resolvedAt || t.createdAt || 0) >= Number(prev.resolvedAt || prev.createdAt || 0))) {
+          tradeMap.set(t.id, { ...(prev || {}), ...t });
+        }
+      });
+      state.incomingTrades = Array.from(tradeMap.values());
+    }
+
+    syncDynamicRarityStyles();
+    saveState();
+    return fresh;
+  } finally {
+    isPollingCloud = false;
+  }
 }
 
 function getPlayerInventoryById(playerId) {
@@ -1352,7 +1500,7 @@ function getPlayerInventoryById(playerId) {
     return Array.isArray(state.inventory) ? state.inventory : [];
   }
   const found = (Array.isArray(state.players) ? state.players : []).find(p => p.id === playerId);
-  return found && Array.isArray(found.inventory) ? found.inventory : [];
+  return getPlayerCardsArray(found);
 }
 
 function setPlayerInventoryById(playerId, nextInventory) {
@@ -1443,9 +1591,7 @@ function renderIncomingTradesPage() {
       state.incomingTrades = state.incomingTrades.filter(item => item.id !== trade.id);
       saveState();
       renderIncomingTradesPage();
-      if (isCloudConfigured()) {
-        await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-      }
+      await queueCloudPush(null, true);
     });
     listEl.appendChild(row);
   });
@@ -1481,15 +1627,13 @@ function renderIncomingTradesPage() {
 
     row.querySelector('.view-trade-btn').addEventListener('click', async () => {
       inspectedIncomingTradeId = trade.id;
-      await syncLatestCloudSnapshot();
+      await syncLatestCloudSnapshot({ forcePlayersSync: true });
       const targetTrade = state.incomingTrades.find(item => item.id === trade.id);
       if (targetTrade && !targetTrade.seen) {
         targetTrade.seen = true;
         saveState();
         updateTradesUnreadBadge();
-        if (isCloudConfigured()) {
-          await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-        }
+        await queueCloudPush(null, true);
       }
       renderIncomingTradesPage();
     });
@@ -1526,7 +1670,7 @@ function renderIncomingTradesPage() {
   acceptBtn.onclick = async () => {
     acceptBtn.disabled = true;
     try {
-      await syncLatestCloudSnapshot();
+      await syncLatestCloudSnapshot({ forcePlayersSync: true });
 
       const freshTrade = state.incomingTrades.find(t => t.id === activeTrade.id && t.status === 'pending');
       if (!freshTrade) {
@@ -1559,9 +1703,7 @@ function renderIncomingTradesPage() {
         saveState();
         updateTradesUnreadBadge();
         renderIncomingTradesPage();
-        if (isCloudConfigured()) {
-          await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-        }
+        await queueCloudPush(null, true);
         return;
       }
 
@@ -1580,6 +1722,7 @@ function renderIncomingTradesPage() {
         ...cardsGoingToSender
       ];
 
+      markLocalMutation(20000);
       setPlayerInventoryById(state.playerId, nextMyInv);
       setPlayerInventoryById(freshTrade.fromPlayerId, nextSenderInv);
 
@@ -1596,10 +1739,7 @@ function renderIncomingTradesPage() {
       renderLeaderboardPage();
       renderIncomingTradesPage();
 
-      if (isCloudConfigured()) {
-        await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-      }
-
+      await queueCloudPush(null, true);
       showToast(`Обмен с ${freshTrade.fromName} успешно завершён!`);
     } finally {
       acceptBtn.disabled = false;
@@ -1609,7 +1749,7 @@ function renderIncomingTradesPage() {
   declineBtn.onclick = async () => {
     declineBtn.disabled = true;
     try {
-      await syncLatestCloudSnapshot();
+      await syncLatestCloudSnapshot({ forcePlayersSync: true });
       state.incomingTrades = state.incomingTrades.map(t =>
         t.id === activeTrade.id
           ? { ...t, status: 'declined', seen: true, resolvedAt: Date.now(), senderNotified: false }
@@ -1620,10 +1760,7 @@ function renderIncomingTradesPage() {
       updateTradesUnreadBadge();
       renderIncomingTradesPage();
 
-      if (isCloudConfigured()) {
-        await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-      }
-
+      await queueCloudPush(null, true);
       showToast('Трейд отклонён');
     } finally {
       declineBtn.disabled = false;
@@ -1647,9 +1784,11 @@ function renderLeaderboardPage() {
   if (!listView || !profileView || !composeView || !rowsEl) return;
 
   const sortedPlayers = [...state.players].sort((a, b) => {
-    const valDiff = (Number(b.inventoryValue) || 0) - (Number(a.inventoryValue) || 0);
+    const aCards = a.id === state.playerId ? state.inventory : getPlayerCardsArray(a);
+    const bCards = b.id === state.playerId ? state.inventory : getPlayerCardsArray(b);
+    const valDiff = getInventoryTotalValue(bCards) - getInventoryTotalValue(aCards);
     if (valDiff !== 0) return valDiff;
-    return (Number(b.cardsCount) || 0) - (Number(a.cardsCount) || 0);
+    return bCards.length - aCards.length;
   });
 
   if (composingTradeTargetId) {
@@ -1667,7 +1806,7 @@ function renderLeaderboardPage() {
       const myValidIds = new Set(state.inventory.map(c => c.uid));
       outgoingOfferUids = outgoingOfferUids.filter(id => myValidIds.has(id));
 
-      const targetInv = Array.isArray(targetPlayer.inventory) ? targetPlayer.inventory : [];
+      const targetInv = getPlayerCardsArray(targetPlayer);
       const targetValidIds = new Set(targetInv.map(c => c.uid));
       targetRequestedUids = targetRequestedUids.filter(id => targetValidIds.has(id));
 
@@ -1707,11 +1846,12 @@ function renderLeaderboardPage() {
       if (state.inventory.length === 0) {
         myInvGrid.innerHTML = '<div class="empty-box" style="grid-column:1/-1;">У тебя нет карт в инвентаре.</div>';
       } else {
+        const frag = document.createDocumentFragment();
         [...state.inventory]
           .sort((a, b) => compareRanks(a.rank, b.rank))
           .forEach(c => {
             const isSel = outgoingOfferUids.includes(c.uid);
-            myInvGrid.appendChild(createCardElement(c, {
+            frag.appendChild(createCardElement(c, {
               selected: isSel,
               onClick: () => {
                 if (isSel) {
@@ -1723,6 +1863,7 @@ function renderLeaderboardPage() {
               }
             }));
           });
+        myInvGrid.appendChild(frag);
       }
 
       const tgtInvGrid = document.getElementById('compose-target-inv-grid');
@@ -1730,11 +1871,12 @@ function renderLeaderboardPage() {
       if (targetInv.length === 0) {
         tgtInvGrid.innerHTML = '<div class="empty-box" style="grid-column:1/-1;">У этого игрока пока нет карт.</div>';
       } else {
+        const frag = document.createDocumentFragment();
         [...targetInv]
           .sort((a, b) => compareRanks(a.rank, b.rank))
           .forEach(c => {
             const isSel = targetRequestedUids.includes(c.uid);
-            tgtInvGrid.appendChild(createCardElement(c, {
+            frag.appendChild(createCardElement(c, {
               selected: isSel,
               onClick: () => {
                 if (isSel) {
@@ -1746,6 +1888,7 @@ function renderLeaderboardPage() {
               }
             }));
           });
+        tgtInvGrid.appendChild(frag);
       }
 
       const sendBtn = document.getElementById('send-player-trade-submit-btn');
@@ -1754,7 +1897,7 @@ function renderLeaderboardPage() {
         if (myPicked.length === 0 && targetPicked.length === 0) return;
         sendBtn.disabled = true;
         try {
-          await syncLatestCloudSnapshot();
+          await syncLatestCloudSnapshot({ forcePlayersSync: true });
 
           const freshTarget = state.players.find(p => p.id === targetPlayer.id && p.id !== state.playerId);
           if (!freshTarget) {
@@ -1763,7 +1906,7 @@ function renderLeaderboardPage() {
           }
 
           const myInvMap = new Map(state.inventory.map(c => [c.uid, c]));
-          const tgtInv = Array.isArray(freshTarget.inventory) ? freshTarget.inventory : [];
+          const tgtInv = getPlayerCardsArray(freshTarget);
           const tgtInvMap = new Map(tgtInv.map(c => [c.uid, c]));
 
           const verifiedMyCards = outgoingOfferUids.map(uid => myInvMap.get(uid)).filter(Boolean);
@@ -1807,10 +1950,7 @@ function renderLeaderboardPage() {
           renderLeaderboardPage();
           renderIncomingTradesPage();
 
-          if (isCloudConfigured()) {
-            await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-          }
-
+          await queueCloudPush(null, true);
           showToast(`Трейд отправлен игроку ${freshTarget.name}!`);
         } finally {
           sendBtn.disabled = false;
@@ -1838,7 +1978,7 @@ function renderLeaderboardPage() {
       document.getElementById('inspected-player-name').textContent =
         playerObj.id === state.playerId ? `${playerObj.name} (Вы)` : playerObj.name;
 
-      const pCards = Array.isArray(playerObj.inventory) ? playerObj.inventory : [];
+      const pCards = playerObj.id === state.playerId ? state.inventory : getPlayerCardsArray(playerObj);
       const pValue = getInventoryTotalValue(pCards);
       document.getElementById('inspected-player-stats').textContent =
         `Стоимость инвентаря: ${pValue} ₽ · Карт: ${pCards.length}`;
@@ -1848,7 +1988,8 @@ function renderLeaderboardPage() {
         tradeBtn.classList.add('hidden');
       } else {
         tradeBtn.classList.remove('hidden');
-        tradeBtn.onclick = () => {
+        tradeBtn.onclick = async () => {
+          await syncLatestCloudSnapshot({ forcePlayersSync: true });
           composingTradeTargetId = playerObj.id;
           outgoingOfferUids = [];
           targetRequestedUids = [];
@@ -1861,9 +2002,11 @@ function renderLeaderboardPage() {
       if (pCards.length === 0) {
         pCardsGrid.innerHTML = '<div class="empty-box" style="grid-column:1/-1;">У этого игрока пока нет карт.</div>';
       } else {
+        const frag = document.createDocumentFragment();
         [...pCards]
           .sort((a, b) => compareRanks(a.rank, b.rank))
-          .forEach(c => pCardsGrid.appendChild(createCardElement(c)));
+          .forEach(c => frag.appendChild(createCardElement(c)));
+        pCardsGrid.appendChild(frag);
       }
       return;
     }
@@ -1879,11 +2022,12 @@ function renderLeaderboardPage() {
     return;
   }
 
+  const listFrag = document.createDocumentFragment();
   sortedPlayers.forEach((p, idx) => {
     const row = document.createElement('div');
     row.className = 'leaderboard-row';
     const fallback = `https://placehold.co/120x120/1d243b/ffffff?text=${encodeURIComponent(p.name || 'GD')}`;
-    const pCards = p.id === state.playerId ? state.inventory : (Array.isArray(p.inventory) ? p.inventory : []);
+    const pCards = p.id === state.playerId ? state.inventory : getPlayerCardsArray(p);
     const pValue = getInventoryTotalValue(pCards);
 
     row.innerHTML = `
@@ -1898,14 +2042,16 @@ function renderLeaderboardPage() {
       <div style="font-weight:800; font-size:16px;">${pValue} ₽</div>
     `;
 
-    row.addEventListener('click', () => {
+    row.addEventListener('click', async () => {
       inspectedPlayerId = p.id;
       composingTradeTargetId = null;
+      await syncLatestCloudSnapshot({ forcePlayersSync: true });
       renderLeaderboardPage();
     });
 
-    rowsEl.appendChild(row);
+    listFrag.appendChild(row);
   });
+  rowsEl.appendChild(listFrag);
 }
 
 function getCardPowerScore(card) {
@@ -2556,20 +2702,18 @@ function renderAdminEffectsCustomizer() {
           : item
       );
 
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, nextEffects, state.players, state.incomingTrades);
-      if (ok) {
-        state.effects = nextEffects;
-        syncDynamicRarityStyles();
-        saveState();
-        renderAdminRaritiesManager();
-        renderAdminEffectsCustomizer();
-        renderCollection();
-        renderCasesPage();
-        renderCraftsPage();
-        renderLeaderboardPage();
-        renderIncomingTradesPage();
-        showToast(`Эффект "${nextName}" сохранён!`);
-      }
+      state.effects = nextEffects;
+      syncDynamicRarityStyles();
+      saveState();
+      renderAdminRaritiesManager();
+      renderAdminEffectsCustomizer();
+      renderCollection();
+      renderCasesPage();
+      renderCraftsPage();
+      renderLeaderboardPage();
+      renderIncomingTradesPage();
+      await queueCloudPush(null, true);
+      showToast(`Эффект "${nextName}" сохранён!`);
     });
 
     const delBtn = card.querySelector('.fx-del-btn');
@@ -2580,21 +2724,19 @@ function renderAdminEffectsCustomizer() {
           normalizeEffectId(r.effectId) === eff.id ? { ...r, effectId: 'none' } : r
         );
 
-        const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, nextEffects, state.players, state.incomingTrades);
-        if (ok) {
-          state.effects = nextEffects;
-          state.rarities = nextRarities;
-          syncDynamicRarityStyles();
-          saveState();
-          renderAdminRaritiesManager();
-          renderAdminEffectsCustomizer();
-          renderCollection();
-          renderCasesPage();
-          renderCraftsPage();
-          renderLeaderboardPage();
-          renderIncomingTradesPage();
-          showToast(`Эффект "${eff.name}" удалён`);
-        }
+        state.effects = nextEffects;
+        state.rarities = nextRarities;
+        syncDynamicRarityStyles();
+        saveState();
+        renderAdminRaritiesManager();
+        renderAdminEffectsCustomizer();
+        renderCollection();
+        renderCasesPage();
+        renderCraftsPage();
+        renderLeaderboardPage();
+        renderIncomingTradesPage();
+        await queueCloudPush(null, true);
+        showToast(`Эффект "${eff.name}" удалён`);
       });
     }
 
@@ -2656,19 +2798,17 @@ function renderAdminRaritiesManager() {
         caseChance: Number(normCase[idx].toFixed(6))
       }));
 
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, state.effects, state.players, state.incomingTrades);
-      if (ok) {
-        state.rarities = nextRarities;
-        syncDynamicRarityStyles();
-        syncRaritySelects();
-        saveState();
-        renderAdminRaritiesManager();
-        renderCollection();
-        renderCasesPage();
-        renderCraftsPage();
-        renderLiveDropsFeed();
-        showToast(`Редкость "${updatedLabel}" сохранена!`);
-      }
+      state.rarities = nextRarities;
+      syncDynamicRarityStyles();
+      syncRaritySelects();
+      saveState();
+      renderAdminRaritiesManager();
+      renderCollection();
+      renderCasesPage();
+      renderCraftsPage();
+      renderLiveDropsFeed();
+      await queueCloudPush(null, true);
+      showToast(`Редкость "${updatedLabel}" сохранена!`);
     });
 
     const delBtn = tr.querySelector('.rarity-row-del-btn');
@@ -2691,20 +2831,18 @@ function renderAdminRaritiesManager() {
           caseChance: Number(normCase[idx].toFixed(6))
         }));
 
-        const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, nextRarities, state.effects, state.players, state.incomingTrades);
-        if (ok) {
-          state.pool = nextPool;
-          state.rarities = nextRarities;
-          syncDynamicRarityStyles();
-          syncRaritySelects();
-          saveState();
-          renderAdminPool();
-          renderAdminRaritiesManager();
-          renderCollection();
-          renderCasesPage();
-          renderCraftsPage();
-          showToast(`Редкость "${r.label}" удалена`);
-        }
+        state.pool = nextPool;
+        state.rarities = nextRarities;
+        syncDynamicRarityStyles();
+        syncRaritySelects();
+        saveState();
+        renderAdminPool();
+        renderAdminRaritiesManager();
+        renderCollection();
+        renderCasesPage();
+        renderCraftsPage();
+        await queueCloudPush(null, true);
+        showToast(`Редкость "${r.label}" удалена`);
       });
     }
 
@@ -2844,7 +2982,7 @@ function sellCollectionByRarity() {
     updateHeader();
     renderCollection();
     renderLeaderboardPage();
-    queueCloudPush();
+    queueCloudPush(null, true);
   });
 }
 
@@ -2865,7 +3003,7 @@ function ensureAdminSyncButton() {
       showToast('Пул пуст — нечего отправлять');
       return;
     }
-    const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+    const ok = await queueCloudPush(null, true);
     if (ok) {
       showToast(`Сохранено в облако: ${state.pool.length} карт, ${state.cases.length} кейсов, ${state.rarities.length} редкостей`);
     }
@@ -2875,7 +3013,7 @@ function ensureAdminSyncButton() {
   status.id = 'cloud-sync-status';
   status.className = 'hint';
   status.textContent = isCloudConfigured()
-    ? 'Облако подключено: изменения пула, кейсов, редкостей, эффектов и дропов видят все игроки'
+    ? 'Облако подключено: профили, трейды, пул, кейсы, редкости и эффекты обновляются в лайве'
     : 'Облако НЕ настроено: заполни JSONBIN_BIN_ID и JSONBIN_MASTER_KEY в app.js';
 
   bar.appendChild(btn);
@@ -2961,13 +3099,23 @@ async function init() {
 
     if (Array.isArray(cloudResult.players)) {
       const cloudSelf = cloudResult.players.find(p => p && p.id === state.playerId);
-      if (cloudSelf && Array.isArray(cloudSelf.inventory)) {
-        state.inventory = mergeInventoriesByUid(state.inventory, cloudSelf.inventory);
+      const cloudSelfCards = getPlayerCardsArray(cloudSelf);
+      if (cloudSelf && cloudSelfCards.length > 0) {
+        state.inventory = mergeInventoriesByUid(state.inventory, cloudSelfCards);
+        state.version = Math.max(Number(state.version) || 1, Number(cloudSelf.version) || 1);
+        state.updatedAt = Math.max(Number(state.updatedAt) || 0, Number(cloudSelf.updatedAt) || 0);
       }
 
       const mergedPlayersMap = new Map();
       cloudResult.players.forEach(p => {
-        if (p && p.id && p.id !== state.playerId) mergedPlayersMap.set(p.id, p);
+        if (!p || !p.id || p.id === state.playerId) return;
+        const inv = getPlayerCardsArray(p);
+        mergedPlayersMap.set(p.id, {
+          ...p,
+          inventory: inv,
+          inventoryValue: getInventoryTotalValue(inv),
+          cardsCount: inv.length
+        });
       });
       state.players = Array.from(mergedPlayersMap.values());
     }
@@ -3030,129 +3178,56 @@ async function init() {
   if (!state.registered) {
     openProfileModal();
   } else if (isCloudConfigured()) {
-    await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+    await queueCloudPush(null, true);
   }
 
   if (isCloudConfigured()) {
     setInterval(async () => {
-      if (isSpinning || isOpeningPack || isOpeningCase || Date.now() < localDirtyUntil) {
-        return;
-      }
-      const fresh = await fetchSharedData();
-      if (!fresh.ok || isSpinning || isOpeningPack || isOpeningCase || Date.now() < localDirtyUntil) {
+      if (isSpinning || isOpeningPack || isOpeningCase) {
         return;
       }
 
-      let updated = false;
-      if (Array.isArray(fresh.pool) && fresh.pool.length > 0) {
-        if (JSON.stringify(fresh.pool) !== JSON.stringify(state.pool)) {
-          state.pool = fresh.pool;
-          updated = true;
-        }
-      }
-      if (Array.isArray(fresh.cases) && fresh.cases.length > 0) {
-        if (JSON.stringify(fresh.cases) !== JSON.stringify(state.cases)) {
-          state.cases = fresh.cases;
-          if (openedCaseId && !state.cases.some(c => c.id === openedCaseId)) {
-            openedCaseId = null;
-          }
-          updated = true;
-        }
-      }
-      if (Array.isArray(fresh.effects) && fresh.effects.length > 0) {
-        const nextEffs = normalizeEffectsList(fresh.effects);
-        if (JSON.stringify(nextEffs) !== JSON.stringify(state.effects)) {
-          state.effects = nextEffs;
-          updated = true;
-        }
-      }
-      if (Array.isArray(fresh.rarities) && fresh.rarities.length > 0) {
-        const nextRars = normalizeRaritiesList(fresh.rarities);
-        if (JSON.stringify(nextRars) !== JSON.stringify(state.rarities)) {
-          state.rarities = nextRars;
-          syncRaritySelects();
-          updated = true;
-        }
-      }
-      if (updated) {
-        syncDynamicRarityStyles();
-      }
-      if (Array.isArray(fresh.recentDrops)) {
-        const mergedMap = new Map();
-        [...state.recentDrops, ...fresh.recentDrops].forEach(d => {
-          if (d && d.uid) mergedMap.set(d.uid, d);
-        });
-        const mergedDrops = Array.from(mergedMap.values())
-          .sort((a, b) => (b.ts || 0) - (a.ts || 0))
-          .slice(0, 35);
-        if (JSON.stringify(mergedDrops) !== JSON.stringify(state.recentDrops)) {
-          state.recentDrops = mergedDrops;
-          renderLiveDropsFeed();
-          updated = true;
-        }
-      }
-      if (Array.isArray(fresh.players)) {
-        const prevPlayersStr = JSON.stringify(state.players);
-        const cloudSelf = fresh.players.find(p => p && p.id === state.playerId);
-        const hasAcceptedTradeForMe =
-          Array.isArray(fresh.incomingTrades) &&
-          fresh.incomingTrades.some(
-            t => t && t.fromPlayerId === state.playerId && t.status === 'accepted' && !t.senderNotified
-          );
+      const prevPlayersSnapshot = JSON.stringify(state.players);
+      const prevTradesSnapshot = JSON.stringify(state.incomingTrades);
+      const prevDropsSnapshot = JSON.stringify(state.recentDrops);
 
-        if (cloudSelf && Array.isArray(cloudSelf.inventory) && hasAcceptedTradeForMe) {
-          state.inventory = mergeInventoriesByUid(cloudSelf.inventory, state.inventory);
-          state.version = Math.max(Number(state.version) || 1, Number(cloudSelf.version) || 1) + 1;
-          state.updatedAt = Date.now();
-          renderCollection();
-        }
+      await syncLatestCloudSnapshot();
 
-        const map = new Map();
-        fresh.players.forEach(p => {
-          if (p && p.id && p.id !== state.playerId) {
-            map.set(p.id, p);
-          }
-        });
-        state.players = Array.from(map.values());
-        upsertCurrentPlayerInRegistry();
-        if (JSON.stringify(state.players) !== prevPlayersStr) {
-          renderLeaderboardPage();
-          updated = true;
-        }
-      }
-      if (Array.isArray(fresh.incomingTrades)) {
-        const tradeMap = new Map();
-        (Array.isArray(state.incomingTrades) ? state.incomingTrades : []).forEach(t => {
-          if (t && t.id) tradeMap.set(t.id, t);
-        });
-        fresh.incomingTrades.forEach(t => {
-          if (!t || !t.id) return;
-          const prev = tradeMap.get(t.id);
-          if (!prev || (Number(t.resolvedAt || t.createdAt || 0) >= Number(prev.resolvedAt || prev.createdAt || 0))) {
-            tradeMap.set(t.id, { ...(prev || {}), ...t });
-          }
-        });
-        const nextTrades = Array.from(tradeMap.values());
-        if (JSON.stringify(nextTrades) !== JSON.stringify(state.incomingTrades)) {
-          state.incomingTrades = nextTrades;
-          updateTradesUnreadBadge();
-          renderIncomingTradesPage();
-          updated = true;
-        }
+      if (JSON.stringify(state.recentDrops) !== prevDropsSnapshot) {
+        renderLiveDropsFeed();
       }
 
-      if (updated) {
-        saveState();
-        renderAdminPool();
-        renderAdminCasePoolCheckboxes();
-        renderAdminCasesList();
-        renderAdminRaritiesManager();
-        renderCasesPage();
-        if (document.getElementById('tab-upgrade').classList.contains('active') && !isSpinning) {
-          renderUpgradePage();
-        }
+      const playersChanged = JSON.stringify(state.players) !== prevPlayersSnapshot;
+      const tradesChanged = JSON.stringify(state.incomingTrades) !== prevTradesSnapshot;
+
+      if (tradesChanged) {
+        updateTradesUnreadBadge();
       }
-    }, 8000);
+
+      const lbTabActive = document.getElementById('tab-leaderboard')?.classList.contains('active');
+      const tradesTabActive = document.getElementById('tab-trades')?.classList.contains('active');
+
+      if (lbTabActive && (playersChanged || inspectedPlayerId || composingTradeTargetId)) {
+        renderLeaderboardPage();
+      }
+
+      if (tradesTabActive && (tradesChanged || playersChanged)) {
+        renderIncomingTradesPage();
+      }
+
+      if (Date.now() < localDirtyUntil) {
+        return;
+      }
+
+      renderAdminPool();
+      renderAdminCasePoolCheckboxes();
+      renderAdminCasesList();
+      renderAdminRaritiesManager();
+      renderCasesPage();
+      if (document.getElementById('tab-upgrade')?.classList.contains('active') && !isSpinning) {
+        renderUpgradePage();
+      }
+    }, LIVE_POLL_INTERVAL_MS);
   }
 }
 
@@ -3193,7 +3268,7 @@ function showToast(msg) {
 
 function setupNavigation() {
   document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
       btn.classList.add('active');
@@ -3202,10 +3277,21 @@ function setupNavigation() {
       if (targetSec) targetSec.classList.add('active');
 
       if (tab === 'cases') renderCasesPage();
-      if (tab === 'leaderboard') renderLeaderboardPage();
-      if (tab === 'trades') renderIncomingTradesPage();
+      if (tab === 'leaderboard') {
+        renderLeaderboardPage();
+        await syncLatestCloudSnapshot({ forcePlayersSync: true });
+        renderLeaderboardPage();
+      }
+      if (tab === 'trades') {
+        renderIncomingTradesPage();
+        await syncLatestCloudSnapshot({ forcePlayersSync: true });
+        renderIncomingTradesPage();
+      }
       if (tab === 'crafts') renderCraftsPage();
-      if (tab === 'collection') renderCollection();
+      if (tab === 'collection') {
+        renderCollection();
+        await queueCloudPush(null, true);
+      }
       if (tab === 'upgrade') {
         localDirtyUntil = Math.max(localDirtyUntil, Date.now() + 20000);
         renderUpgradePage();
@@ -3372,6 +3458,7 @@ function createCardElement(card, options = {}) {
       card.favorite = !card.favorite;
       saveState();
       renderCollection();
+      queueCloudPush();
     });
   }
 
@@ -3987,10 +4074,11 @@ function renderCraftsPage() {
     return;
   }
 
+  const frag = document.createDocumentFragment();
   const sortedAvailable = [...matchingInventory].sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
   sortedAvailable.forEach(card => {
     const isPicked = selectedCraftCardUids.includes(card.uid);
-    availGrid.appendChild(createCardElement(card, {
+    frag.appendChild(createCardElement(card, {
       selected: isPicked,
       onClick: () => {
         if (isPicked) {
@@ -4006,6 +4094,7 @@ function renderCraftsPage() {
       }
     }));
   });
+  availGrid.appendChild(frag);
 }
 
 function executeCraft() {
@@ -4040,7 +4129,7 @@ function executeCraft() {
   renderCollection();
   renderLeaderboardPage();
   recordDropToFeed(crafted, 'Крафт');
-  queueCloudPush();
+  queueCloudPush(null, true);
   showToast(`Скрафчено: ${crafted.name} (${getRarityLabel(crafted.rarity)})!`);
 }
 
@@ -4107,10 +4196,11 @@ function renderUpgradePage() {
   if (state.inventory.length === 0) {
     userGrid.innerHTML = '<div class="empty-box" style="grid-column: 1/-1;">У тебя пока нет карт в инвентаре.</div>';
   } else {
+    const frag = document.createDocumentFragment();
     [...state.inventory]
       .sort((a, b) => compareRanks(a.rank, b.rank))
       .forEach(c => {
-        userGrid.appendChild(createCardElement(c, {
+        frag.appendChild(createCardElement(c, {
           selected: c.uid === selectedUpgradeSourceId,
           onClick: () => {
             if (isSpinning) return;
@@ -4120,6 +4210,7 @@ function renderUpgradePage() {
           }
         }));
       });
+    userGrid.appendChild(frag);
   }
 
   const query = (document.getElementById('upg-search-input').value || '').trim().toLowerCase();
@@ -4147,8 +4238,9 @@ function renderUpgradePage() {
     return;
   }
 
+  const catFrag = document.createDocumentFragment();
   filteredCatalog.forEach(c => {
-    targetGrid.appendChild(createCardElement(c, {
+    catFrag.appendChild(createCardElement(c, {
       selected: c.catalogKey === selectedUpgradeTargetKey,
       onClick: () => {
         if (isSpinning) return;
@@ -4158,6 +4250,7 @@ function renderUpgradePage() {
       }
     }));
   });
+  targetGrid.appendChild(catFrag);
 }
 
 function runUpgrade() {
@@ -4214,7 +4307,7 @@ function runUpgrade() {
       if (wonCardRef) {
         recordDropToFeed(wonCardRef, 'Апгрейд');
       }
-      queueCloudPush();
+      queueCloudPush(null, true);
     });
 
     setTimeout(() => {
@@ -4270,8 +4363,9 @@ function renderCollection() {
     return;
   }
 
+  const frag = document.createDocumentFragment();
   filtered.forEach(card => {
-    grid.appendChild(createCardElement(card, {
+    frag.appendChild(createCardElement(card, {
       showFav: true,
       actionLabel: `Продать (${card.price} ₽)`,
       onAction: (c) => {
@@ -4285,11 +4379,12 @@ function renderCollection() {
           updateHeader();
           renderCollection();
           renderLeaderboardPage();
-          queueCloudPush();
+          queueCloudPush(null, true);
         });
       }
     }));
   });
+  grid.appendChild(frag);
 }
 
 function getCurrentAdminImage() {
@@ -4419,17 +4514,15 @@ function renderAdminCasesList() {
       actionLabel: 'Удалить',
       onAction: async (c) => {
         const nextCases = state.cases.filter(x => x.id !== c.id);
-        const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-        if (ok) {
-          state.cases = nextCases;
-          if (openedCaseId === c.id) {
-            openedCaseId = null;
-          }
-          saveState();
-          renderAdminCasesList();
-          renderCasesPage();
-          showToast(`Кейс "${c.name}" удалён`);
+        state.cases = nextCases;
+        if (openedCaseId === c.id) {
+          openedCaseId = null;
         }
+        saveState();
+        renderAdminCasesList();
+        renderCasesPage();
+        await queueCloudPush(null, true);
+        showToast(`Кейс "${c.name}" удалён`);
       }
     }));
   });
@@ -4499,7 +4592,7 @@ async function moveAdminPoolCard(draggedId, targetId, placeAfter = false) {
   renderCasesPage();
 
   if (isCloudConfigured()) {
-    await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
+    await queueCloudPush(null, true);
   }
 }
 
@@ -4520,15 +4613,13 @@ function renderAdminPool() {
           return;
         }
         const nextPool = state.pool.filter(x => x.id !== c.id);
-        const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-        if (ok) {
-          state.pool = nextPool;
-          saveState();
-          renderAdminPool();
-          renderAdminCasePoolCheckboxes();
-          renderCasesPage();
-          showToast('Карта удалена у всех игроков');
-        }
+        state.pool = nextPool;
+        saveState();
+        renderAdminPool();
+        renderAdminCasePoolCheckboxes();
+        renderCasesPage();
+        await queueCloudPush(null, true);
+        showToast('Карта удалена у всех игроков');
       }
     });
 
@@ -4653,35 +4744,54 @@ function bindEvents() {
       state.playerName = nick || 'nar1';
       state.playerAvatar = nextAvatar;
       state.registered = true;
+      markLocalMutation(20000);
       upsertCurrentPlayerInRegistry();
       saveState();
       syncProfileBannerUI();
       renderLeaderboardPage();
       closeProfileModal();
 
-      if (isCloudConfigured()) {
-        await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-      }
+      await queueCloudPush(null, true);
       showToast(`Профиль сохранён: ${state.playerName}`);
     });
   }
 
-  // Навигация внутри Лидерборда / профиля игрока / отправки трейда
+  // Навигация и лайв-обновление внутри Лидерборда / профиля игрока / отправки трейда
+  const refreshLbBtn = document.getElementById('refresh-leaderboard-btn');
+  if (refreshLbBtn) {
+    refreshLbBtn.addEventListener('click', async () => {
+      await syncLatestCloudSnapshot({ forcePlayersSync: true });
+      renderLeaderboardPage();
+      showToast('Профили игроков обновлены');
+    });
+  }
+
+  const refreshInspectedBtn = document.getElementById('refresh-inspected-profile-btn');
+  if (refreshInspectedBtn) {
+    refreshInspectedBtn.addEventListener('click', async () => {
+      await syncLatestCloudSnapshot({ forcePlayersSync: true });
+      renderLeaderboardPage();
+      showToast('Профиль обновлён');
+    });
+  }
+
   const backToLbBtn = document.getElementById('back-to-leaderboard-btn');
   if (backToLbBtn) {
-    backToLbBtn.addEventListener('click', () => {
+    backToLbBtn.addEventListener('click', async () => {
       inspectedPlayerId = null;
       composingTradeTargetId = null;
+      await syncLatestCloudSnapshot({ forcePlayersSync: true });
       renderLeaderboardPage();
     });
   }
 
   const backToPlayerProfileBtn = document.getElementById('back-to-player-profile-btn');
   if (backToPlayerProfileBtn) {
-    backToPlayerProfileBtn.addEventListener('click', () => {
+    backToPlayerProfileBtn.addEventListener('click', async () => {
       composingTradeTargetId = null;
       outgoingOfferUids = [];
       targetRequestedUids = [];
+      await syncLatestCloudSnapshot({ forcePlayersSync: true });
       renderLeaderboardPage();
     });
   }
@@ -4720,7 +4830,7 @@ function bindEvents() {
       updateHeader();
       renderCollection();
       renderLeaderboardPage();
-      await queueCloudPush();
+      await queueCloudPush(null, true);
       showToast(`Карта "${cardToKeep.name}" добавлена в коллекцию!`);
     });
   }
@@ -4750,7 +4860,7 @@ function bindEvents() {
     renderDroppedCards(false);
     renderCollection();
     renderLeaderboardPage();
-    await queueCloudPush();
+    await queueCloudPush(null, true);
     showToast('Все карточки добавлены в коллекцию!');
   });
 
@@ -4869,19 +4979,17 @@ function bindEvents() {
         };
       });
 
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, state.effects, state.players, state.incomingTrades);
-      if (ok) {
-        state.rarities = nextRarities;
-        syncDynamicRarityStyles();
-        syncRaritySelects();
-        saveState();
-        renderAdminRaritiesManager();
-        renderCollection();
-        renderCasesPage();
-        renderCraftsPage();
-        renderLiveDropsFeed();
-        showToast('Редкости, эффекты и шансы обновлены!');
-      }
+      state.rarities = nextRarities;
+      syncDynamicRarityStyles();
+      syncRaritySelects();
+      saveState();
+      renderAdminRaritiesManager();
+      renderCollection();
+      renderCasesPage();
+      renderCraftsPage();
+      renderLiveDropsFeed();
+      await queueCloudPush(null, true);
+      showToast('Редкости, эффекты и шансы обновлены!');
     });
   }
 
@@ -4890,19 +4998,17 @@ function bindEvents() {
     resetRaritiesBtn.addEventListener('click', async () => {
       const nextRarities = normalizeRaritiesList(DEFAULT_RARITIES);
       const nextEffects = normalizeEffectsList(DEFAULT_EFFECTS);
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, nextEffects, state.players, state.incomingTrades);
-      if (ok) {
-        state.rarities = nextRarities;
-        state.effects = nextEffects;
-        syncDynamicRarityStyles();
-        syncRaritySelects();
-        saveState();
-        renderAdminRaritiesManager();
-        renderCollection();
-        renderCasesPage();
-        renderCraftsPage();
-        showToast('Редкости и эффекты сброшены к значениям по умолчанию');
-      }
+      state.rarities = nextRarities;
+      state.effects = nextEffects;
+      syncDynamicRarityStyles();
+      syncRaritySelects();
+      saveState();
+      renderAdminRaritiesManager();
+      renderCollection();
+      renderCasesPage();
+      renderCraftsPage();
+      await queueCloudPush(null, true);
+      showToast('Редкости и эффекты сброшены к значениям по умолчанию');
     });
   }
 
@@ -4960,18 +5066,16 @@ function bindEvents() {
         caseChance: Number(normCase[i].toFixed(6))
       }));
 
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, nextRarities, state.effects, state.players, state.incomingTrades);
-      if (ok) {
-        state.rarities = nextRarities;
-        syncDynamicRarityStyles();
-        syncRaritySelects();
-        saveState();
-        renderAdminRaritiesManager();
-        renderCraftsPage();
-        addRarityForm.reset();
-        fillEffectSelect(document.getElementById('new-rarity-effect'), 'none');
-        showToast(`Редкость "${label}" добавлена!`);
-      }
+      state.rarities = nextRarities;
+      syncDynamicRarityStyles();
+      syncRaritySelects();
+      saveState();
+      renderAdminRaritiesManager();
+      renderCraftsPage();
+      addRarityForm.reset();
+      fillEffectSelect(document.getElementById('new-rarity-effect'), 'none');
+      await queueCloudPush(null, true);
+      showToast(`Редкость "${label}" добавлена!`);
     });
   }
 
@@ -5004,16 +5108,14 @@ function bindEvents() {
         }
       ];
 
-      const ok = await pushSharedData(state.pool, state.cases, state.recentDrops, state.rarities, nextEffects, state.players, state.incomingTrades);
-      if (ok) {
-        state.effects = nextEffects;
-        syncDynamicRarityStyles();
-        saveState();
-        renderAdminRaritiesManager();
-        addEffectForm.reset();
-        document.getElementById('new-effect-use-rarity-color').checked = true;
-        showToast(`Эффект "${name}" создан!`);
-      }
+      state.effects = nextEffects;
+      syncDynamicRarityStyles();
+      saveState();
+      renderAdminRaritiesManager();
+      addEffectForm.reset();
+      document.getElementById('new-effect-use-rarity-color').checked = true;
+      await queueCloudPush(null, true);
+      showToast(`Эффект "${name}" создан!`);
     });
   }
 
@@ -5072,9 +5174,6 @@ function bindEvents() {
     };
 
     const nextPool = [newLevel, ...state.pool];
-    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-    if (!ok) return;
-
     state.pool = nextPool;
     saveState();
     renderAdminPool();
@@ -5085,6 +5184,7 @@ function bindEvents() {
     fileInput.value = '';
     uploadedAdminImageDataUrl = '';
     renderAdminPreview();
+    await queueCloudPush(null, true);
     showToast(`Уровень "${newLevel.name}" добавлен всем игрокам!`);
   });
 
@@ -5169,9 +5269,6 @@ function bindEvents() {
       };
 
       const nextCases = [newCase, ...state.cases];
-      const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-      if (!ok) return;
-
       state.cases = nextCases;
       saveState();
       renderAdminCasesList();
@@ -5181,6 +5278,7 @@ function bindEvents() {
       if (caseFileInput) caseFileInput.value = '';
       uploadedCaseImageDataUrl = '';
       renderCaseBuilderPreview();
+      await queueCloudPush(null, true);
       showToast(`Кейс "${newCase.name}" создан!`);
     });
   }
@@ -5247,14 +5345,12 @@ function bindEvents() {
         itemIds: checkedIds.length > 0 ? checkedIds : state.pool.map(lvl => lvl.id)
       };
 
-      const ok = await pushSharedData(state.pool, nextCases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-      if (!ok) return;
-
       state.cases = nextCases;
       saveState();
       renderAdminCasesList();
       renderCasesPage();
       closeEditCaseModal();
+      await queueCloudPush(null, true);
       showToast(`Кейс "${nextCases[idx].name}" обновлён!`);
     });
   }
@@ -5301,9 +5397,6 @@ function bindEvents() {
       image: nextImage
     };
 
-    const ok = await pushSharedData(nextPool, state.cases, state.recentDrops, state.rarities, state.effects, state.players, state.incomingTrades);
-    if (!ok) return;
-
     state.pool = nextPool;
     saveState();
     renderAdminPool();
@@ -5311,8 +5404,10 @@ function bindEvents() {
     renderCasesPage();
     renderCraftsPage();
     closeEditModal();
+    await queueCloudPush(null, true);
     showToast(`Карточка "${state.pool[idx].name}" обновлена для всех!`);
   });
 }
 
 init();
+
