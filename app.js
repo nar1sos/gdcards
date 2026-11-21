@@ -16,19 +16,21 @@ const HOLO_CHANCE = 0.12;
 
 let currentCaseId = null;
 let isSpinning = false;
+let isUpgrading = false;
 let lastWonCard = null;
 
 let upgSelectedSourceUid = null;
 let upgSelectedTargetId = null;
 let upgSelectedTargetHolo = false;
 let upgRandomPool = [];
+let currentWheelAngle = 0;
 
 let tradeMyOfferUids = [];
 let tradeBotOffer = [];
 
 let craftSelectedUids = [];
 
-// Состояние 3D-вращения карточки в модалке коллекции
+// Состояние 3D-вращения карточки (только при зажатой кнопке мыши / пальце)
 let rotX = 0;
 let rotY = 0;
 let isDragging3D = false;
@@ -163,7 +165,7 @@ function createCardHTML(card, isHolo = false, extraClass = '', clickAttr = '', a
           <span class="card-rank">${card.top > 0 ? '#' + card.top : '★'}</span>
           <span class="card-rarity-badge">${rar.name}</span>
         </div>
-        <img class="card-thumb" src="${card.img}" alt="${card.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=GD+LEVEL'">
+        <img class="card-thumb" draggable="false" src="${card.img}" alt="${card.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=GD+LEVEL'">
         <div class="card-title">${card.name}</div>
         <div class="card-bottom-area">
           <span class="card-price">${price} ₽</span>
@@ -187,7 +189,7 @@ function giveCardToPlayer(card, isHolo, sourceLabel = 'Кейс') {
   return item;
 }
 
-// === ОБЩАЯ ЛЕНТА ЛАЙВ-ДРОПА (JSONBIN) ===
+// === ОБЩАЯ ЛЕНТА ЛАЙВ-ДРОПА (СПРАВА В СТИЛЕ CASE-BATTLE) ===
 async function pushLiveDrop(card, isHolo, source) {
   const rar = getRarityObj(card.rarity);
   const dropEntry = {
@@ -247,10 +249,8 @@ function renderLiveFeed() {
   feed.innerHTML = state.liveDrops.map(d => `
     <div class="live-item" style="--rar-color: ${d.rarColor}">
       <img src="${d.img}" alt="">
-      <div class="live-item-info">
-        <b>${d.isHolo ? '✦ HOLO ' : ''}${d.cardName}</b>
-        <span>${d.user} • ${d.rarName}</span>
-      </div>
+      <div class="live-item-title">${d.isHolo ? '✦ HOLO ' : ''}${d.cardName}</div>
+      <div class="live-item-sub">${d.rarName} • ${d.user}</div>
     </div>
   `).join('');
 }
@@ -345,8 +345,8 @@ function spinCurrentCase(fast = false) {
   document.getElementById('spin-case-btn').disabled = true;
 
   const track = document.getElementById('roulette-track');
-  const cardWidth = 217; // 205px + 12px gap
-  const offset = 38 * cardWidth + (Math.random() * 60 - 30) + 102;
+  const cardWidth = 207;
+  const offset = 38 * cardWidth + (Math.random() * 60 - 30) + 97;
 
   setTimeout(() => {
     track.style.transition = fast ? 'transform 0.8s cubic-bezier(0.15, 0.85, 0.25, 1)' : 'transform 4.2s cubic-bezier(0.12, 0.88, 0.22, 1)';
@@ -379,8 +379,9 @@ function buyPack() {
   saveState();
 }
 
-// === 3) АПГРЕЙДЫ ===
+// === 3) АПГРЕЙДЫ (НАСТОЯЩАЯ РУЛЕТКА + ВЫБОР СКОРОСТИ) ===
 function rerollUpgradeTargets() {
+  if (isUpgrading) return;
   upgRandomPool = [];
   for (let i = 0; i < 15; i++) {
     const rndCard = state.cards[Math.floor(Math.random() * state.cards.length)];
@@ -418,12 +419,14 @@ function renderUpgradeTargets() {
 }
 
 function selectUpgradeSource(uid) {
+  if (isUpgrading) return;
   upgSelectedSourceUid = uid;
   updateUpgradeSlotsAndChance();
   renderUpgradeUI();
 }
 
 function selectUpgradeTarget(cardId, isHolo) {
+  if (isUpgrading) return;
   upgSelectedTargetId = cardId;
   upgSelectedTargetHolo = isHolo;
   updateUpgradeSlotsAndChance();
@@ -452,8 +455,8 @@ function updateUpgradeSlotsAndChance() {
 
     chanceText.textContent = chance.toFixed(2) + '%';
     const deg = (chance / 100) * 360;
-    circle.style.background = `conic-gradient(var(--accent-gold) ${deg}deg, #262934 ${deg}deg)`;
-    btn.disabled = false;
+    circle.style.background = `conic-gradient(var(--accent-gold) 0deg ${deg}deg, #262934 ${deg}deg 360deg)`;
+    btn.disabled = isUpgrading;
   } else {
     chanceText.textContent = '0.00%';
     circle.style.background = `conic-gradient(var(--accent-gold) 0deg, #262934 0deg)`;
@@ -462,25 +465,40 @@ function updateUpgradeSlotsAndChance() {
 }
 
 function executeUpgrade() {
+  if (isUpgrading) return;
   const srcIdx = state.inventory.findIndex(x => x.uid === upgSelectedSourceUid);
   if (srcIdx === -1) return;
 
   const srcItem = state.inventory[srcIdx];
   const srcCard = state.cards.find(c => c.id === srcItem.cardId);
   const tgtCard = state.cards.find(c => c.id === upgSelectedTargetId);
+  if (!srcCard || !tgtCard) return;
 
   const srcPrice = getCardPrice(srcCard, srcItem.isHolo);
   const tgtPrice = getCardPrice(tgtCard, upgSelectedTargetHolo);
   const chance = Math.max(1, Math.min(85, (srcPrice / tgtPrice) * 85));
 
-  const roll = Math.random() * 100;
-  const arrow = document.getElementById('upgrade-arrow');
-  arrow.style.transition = 'transform 1.2s cubic-bezier(0.2, 0.9, 0.3, 1)';
-  arrow.style.transform = `rotate(${360 * 3 + (roll / 100) * 360}deg)`;
+  const speedMode = document.getElementById('upgrade-speed-select')?.value || 'normal';
+  const durationMs = speedMode === 'slow' ? 4500 : speedMode === 'fast' ? 800 : 2500;
+  const extraSpins = speedMode === 'slow' ? 8 : speedMode === 'fast' ? 3 : 6;
 
+  // Рулетка крутится полным кругом (0..360 градусов). Если попадает в [0 .. chance*3.6] — победа!
+  const roll = Math.random() * 100;
+  const targetDeg = (roll / 100) * 360;
+  const baseNormalized = ((currentWheelAngle % 360) + 360) % 360;
+  const deltaToTarget = (targetDeg - baseNormalized + 360) % 360;
+  currentWheelAngle += extraSpins * 360 + deltaToTarget;
+
+  const rotor = document.getElementById('upgrade-arrow-rotor');
+  rotor.style.transition = `transform ${durationMs}ms cubic-bezier(0.12, 0.88, 0.22, 1)`;
+  rotor.style.transform = `rotate(${currentWheelAngle}deg)`;
+
+  isUpgrading = true;
   document.getElementById('do-upgrade-btn').disabled = true;
+  document.getElementById('upgrade-result-msg').innerHTML = '<span style="color:var(--text-muted);">Крутим...</span>';
 
   setTimeout(() => {
+    isUpgrading = false;
     state.inventory.splice(srcIdx, 1);
     upgSelectedSourceUid = null;
 
@@ -494,7 +512,7 @@ function executeUpgrade() {
     }
     saveState();
     renderUpgradeUI();
-  }, 1250);
+  }, durationMs + 80);
 }
 
 // === 2) ТРЕЙД С БОТОМ ===
@@ -672,7 +690,7 @@ function executeCraft() {
   renderCraftUI();
 }
 
-// === 4) КОЛЛЕКЦИЯ, СТАТИСТИКА И 3D-ПРОСМОТР КАРТЫ ===
+// === 4) КОЛЛЕКЦИЯ, СТАТИСТИКА И 3D-ПРОСМОТР КАРТЫ (ТОЛЬКО ПРИ ЗАЖАТИИ) ===
 function renderCollection() {
   const sortMode = document.getElementById('col-sort').value;
   const mapped = state.inventory.map(item => ({
@@ -689,7 +707,7 @@ function renderCollection() {
   const sorted = sortItems(mapped, sortMode);
   document.getElementById('collection-grid').innerHTML = sorted.map(item => {
     const price = getCardPrice(item.card, item.isHolo);
-    const sellBtn = `<button class="secondary-btn" style="width:100%; margin-top:8px; font-size:12px;" onclick="event.stopPropagation(); sellInventoryCard('${item.uid}')">Продать за ${price} ₽</button>`;
+    const sellBtn = `<button class="secondary-btn" style="width:100%; margin-top:6px; padding:6px 8px; font-size:11px;" onclick="event.stopPropagation(); sellInventoryCard('${item.uid}')">Продать за ${price} ₽</button>`;
     return createCardHTML(item.card, item.isHolo, '', `onclick="openCard3DModal('${item.card.id}', ${item.isHolo})"`, sellBtn);
   }).join('');
 }
@@ -713,6 +731,7 @@ function openCard3DModal(cardId, isHolo) {
   if (!card) return;
   const rar = getRarityObj(card.rarity);
 
+  isDragging3D = false;
   document.getElementById('card-3d-front').innerHTML = createCardHTML(card, isHolo);
   document.getElementById('card-3d-info').innerHTML = `
     <div><span>Название:</span><b>${card.name}</b></div>
@@ -729,6 +748,7 @@ function openCard3DModal(cardId, isHolo) {
 
 function closeCard3DModal(e) {
   if (e && e.target !== document.getElementById('card-3d-modal')) return;
+  isDragging3D = false;
   document.getElementById('card-3d-modal').classList.add('hidden');
 }
 
@@ -750,25 +770,32 @@ function apply3DRotation() {
   if (!stage) return;
 
   stage.addEventListener('pointerdown', (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
     isDragging3D = true;
     dragStartX = e.clientX;
     dragStartY = e.clientY;
+    try { stage.setPointerCapture(e.pointerId); } catch (_) {}
   });
 
-  window.addEventListener('pointermove', (e) => {
+  stage.addEventListener('pointermove', (e) => {
     if (!isDragging3D) return;
     const dx = e.clientX - dragStartX;
     const dy = e.clientY - dragStartY;
-    rotY += dx * 0.65;
-    rotX = Math.max(-55, Math.min(55, rotX - dy * 0.55));
+    rotY += dx * 0.7;
+    rotX = Math.max(-55, Math.min(55, rotX - dy * 0.6));
     dragStartX = e.clientX;
     dragStartY = e.clientY;
     apply3DRotation();
   });
 
-  window.addEventListener('pointerup', () => {
+  const stopDragging = (e) => {
+    if (!isDragging3D) return;
     isDragging3D = false;
-  });
+    try { stage.releasePointerCapture(e.pointerId); } catch (_) {}
+  };
+
+  stage.addEventListener('pointerup', stopDragging);
+  stage.addEventListener('pointercancel', stopDragging);
 })();
 
 function sellInventoryCard(uid) {
@@ -826,13 +853,21 @@ function renderAdminUI() {
   document.getElementById('cfg-bin-id').value = state.cloud.binId || '';
   document.getElementById('cfg-api-key').value = state.cloud.apiKey || '';
 
+  // Редкости: градиент из 2 цветов, шанс и эффект
   document.getElementById('admin-rarities-list').innerHTML = state.rarities.map(r => {
     const pctText = formatChancePercent(r.weight);
     return `
-      <div class="rar-manage-card" style="--rar-color:${r.color};">
+      <div class="rar-manage-card" style="--rar-color:${r.color}; --rar-bg:${r.bg};">
         <div class="rar-manage-top">
           <span style="color:${r.color};">${r.name} (${pctText})</span>
           <button onclick="adminDeleteRarity('${r.id}')" style="background:none;border:none;color:#f87171;cursor:pointer;font-weight:900;">✕</button>
+        </div>
+        <div class="rar-chance-row">
+          <span>Градиент (2 цвета):</span>
+          <div style="display:flex;gap:6px;">
+            <input type="color" value="${r.color}" title="Цвет 1 (рамка и верх градиента)" onchange="updateRarityColors('${r.id}', this.value, null)">
+            <input type="color" value="${r.bg}" title="Цвет 2 (низ градиента)" onchange="updateRarityColors('${r.id}', null, this.value)">
+          </div>
         </div>
         <div class="rar-chance-row">
           <span>Шанс:</span>
@@ -870,10 +905,20 @@ function renderAdminUI() {
 
   document.getElementById('admin-cards-count').textContent = state.cards.length;
   document.getElementById('admin-all-cards').innerHTML = state.cards.map(c => {
-    const delBtn = `<button class="secondary-btn" style="width:100%;margin-top:8px;color:#f87171;" onclick="adminDeleteCard('${c.id}')">Удалить</button>`;
+    const delBtn = `<button class="secondary-btn" style="width:100%;margin-top:6px;padding:6px 8px;font-size:11px;color:#f87171;" onclick="adminDeleteCard('${c.id}')">Удалить</button>`;
     return createCardHTML(c, false, '', '', delBtn);
   }).join('');
 
+  updateCardPreview();
+}
+
+function updateRarityColors(id, newColor1, newColor2) {
+  const rar = state.rarities.find(r => r.id === id);
+  if (!rar) return;
+  if (newColor1) rar.color = newColor1;
+  if (newColor2) rar.bg = newColor2;
+  saveState();
+  renderAdminUI();
   updateCardPreview();
 }
 
