@@ -18,6 +18,7 @@ let currentCaseId = null;
 let isSpinning = false;
 let isUpgrading = false;
 let lastWonCard = null;
+let editingCardId = null;
 
 let upgSelectedSourceUid = null;
 let upgSelectedTargetId = null;
@@ -189,6 +190,104 @@ function giveCardToPlayer(card, isHolo, sourceLabel = 'Кейс') {
   return item;
 }
 
+// === ОБЛАКО ДЛЯ ВСЕХ ИГРОКОВ (КАТАЛОГ КАРТ + ЛАЙВ-ДРОП) ===
+async function readCloudRecord() {
+  if (!state.cloud.binId || !state.cloud.apiKey) return null;
+  const res = await fetch(`https://api.jsonbin.io/v3/b/${state.cloud.binId}/latest`, {
+    headers: { 'X-Master-Key': state.cloud.apiKey }
+  });
+  const json = await res.json();
+  return json.record && typeof json.record === 'object' ? json.record : {};
+}
+
+async function writeCloudRecord(recordObj) {
+  if (!state.cloud.binId || !state.cloud.apiKey) return;
+  await fetch(`https://api.jsonbin.io/v3/b/${state.cloud.binId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Master-Key': state.cloud.apiKey
+    },
+    body: JSON.stringify(recordObj)
+  });
+}
+
+async function pushCatalogToCloud() {
+  if (!state.cloud.binId || !state.cloud.apiKey) {
+    return alert('Сначала укажи JSONBin ID и X-Master-Key в блоке «Облако для всех игроков»!');
+  }
+  const btn = document.getElementById('push-cloud-catalog-btn');
+  if (btn) btn.disabled = true;
+
+  try {
+    normalizeRaritiesWeights();
+    const currentRecord = await readCloudRecord() || {};
+    currentRecord.catalog = {
+      cards: state.cards,
+      rarities: state.rarities,
+      cases: state.cases,
+      updatedAt: Date.now()
+    };
+    if (!Array.isArray(currentRecord.drops)) {
+      currentRecord.drops = state.liveDrops.slice(0, 30);
+    }
+    await writeCloudRecord(currentRecord);
+    alert('Карточки, редкости и кейсы залиты в облако! Теперь они появятся у всех игроков.');
+  } catch (e) {
+    console.warn('Ошибка загрузки каталога в облако:', e);
+    alert('Не удалось залить в облако. Проверь Bin ID и X-Master-Key.');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function syncCatalogFromCloud(showToast = false) {
+  if (!state.cloud.binId || !state.cloud.apiKey) {
+    if (showToast) alert('Сначала укажи JSONBin ID и X-Master-Key.');
+    return;
+  }
+  try {
+    const record = await readCloudRecord();
+    if (!record) return;
+
+    let changed = false;
+    if (record.catalog && Array.isArray(record.catalog.cards) && record.catalog.cards.length > 0) {
+      state.cards = record.catalog.cards;
+      changed = true;
+    }
+    if (record.catalog && Array.isArray(record.catalog.rarities) && record.catalog.rarities.length > 0) {
+      state.rarities = record.catalog.rarities;
+      normalizeRaritiesWeights();
+      changed = true;
+    }
+    if (record.catalog && Array.isArray(record.catalog.cases) && record.catalog.cases.length > 0) {
+      state.cases = record.catalog.cases;
+      changed = true;
+    }
+    if (Array.isArray(record.drops)) {
+      state.liveDrops = record.drops;
+      renderLiveFeed();
+    }
+
+    if (changed) {
+      localStorage.setItem('gd_cards', JSON.stringify(state.cards));
+      localStorage.setItem('gd_rarities', JSON.stringify(state.rarities));
+      localStorage.setItem('gd_cases', JSON.stringify(state.cases));
+      renderCasesList();
+      if (document.getElementById('tab-collection').classList.contains('active')) renderCollection();
+      if (document.getElementById('tab-admin').classList.contains('active')) renderAdminUI();
+      if (document.getElementById('tab-upgrade').classList.contains('active')) renderUpgradeUI();
+      if (document.getElementById('tab-craft').classList.contains('active')) renderCraftUI();
+    }
+
+    if (showToast) {
+      alert('Каталог и дропы синхронизированы с облаком!');
+    }
+  } catch (e) {
+    if (showToast) alert('Ошибка синхронизации с облаком.');
+  }
+}
+
 // === ОБЩАЯ ЛЕНТА ЛАЙВ-ДРОПА (СПРАВА В СТИЛЕ CASE-BATTLE) ===
 async function pushLiveDrop(card, isHolo, source) {
   const rar = getRarityObj(card.rarity);
@@ -210,38 +309,15 @@ async function pushLiveDrop(card, isHolo, source) {
 
   if (state.cloud.binId && state.cloud.apiKey) {
     try {
-      const res = await fetch(`https://api.jsonbin.io/v3/b/${state.cloud.binId}/latest`, {
-        headers: { 'X-Master-Key': state.cloud.apiKey }
-      });
-      const json = await res.json();
-      const cloudDrops = Array.isArray(json.record?.drops) ? json.record.drops : [];
+      const record = await readCloudRecord() || {};
+      const cloudDrops = Array.isArray(record.drops) ? record.drops : [];
       cloudDrops.unshift(dropEntry);
-      await fetch(`https://api.jsonbin.io/v3/b/${state.cloud.binId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Master-Key': state.cloud.apiKey
-        },
-        body: JSON.stringify({ drops: cloudDrops.slice(0, 30) })
-      });
+      record.drops = cloudDrops.slice(0, 30);
+      await writeCloudRecord(record);
     } catch (e) {
       console.warn('Ошибка отправки в общую ленту:', e);
     }
   }
-}
-
-async function fetchCloudLiveDrops() {
-  if (!state.cloud.binId || !state.cloud.apiKey) return;
-  try {
-    const res = await fetch(`https://api.jsonbin.io/v3/b/${state.cloud.binId}/latest`, {
-      headers: { 'X-Master-Key': state.cloud.apiKey }
-    });
-    const json = await res.json();
-    if (Array.isArray(json.record?.drops)) {
-      state.liveDrops = json.record.drops;
-      renderLiveFeed();
-    }
-  } catch (e) {}
 }
 
 function renderLiveFeed() {
@@ -482,7 +558,6 @@ function executeUpgrade() {
   const durationMs = speedMode === 'slow' ? 4500 : speedMode === 'fast' ? 800 : 2500;
   const extraSpins = speedMode === 'slow' ? 8 : speedMode === 'fast' ? 3 : 6;
 
-  // Рулетка крутится полным кругом (0..360 градусов). Если попадает в [0 .. chance*3.6] — победа!
   const roll = Math.random() * 100;
   const targetDeg = (roll / 100) * 360;
   const baseNormalized = ((currentWheelAngle % 360) + 360) % 360;
@@ -844,8 +919,8 @@ function saveCloudConfig() {
   state.cloud.binId = document.getElementById('cfg-bin-id').value.trim();
   state.cloud.apiKey = document.getElementById('cfg-api-key').value.trim();
   localStorage.setItem('gd_cloud', JSON.stringify(state.cloud));
-  alert('Ключи общей ленты сохранены!');
-  fetchCloudLiveDrops();
+  alert('Ключи облака сохранены!');
+  syncCatalogFromCloud(false);
 }
 
 function renderAdminUI() {
@@ -888,13 +963,22 @@ function renderAdminUI() {
     `;
   }).join('');
 
-  const rarSelect = document.getElementById('new-card-rarity');
-  const prevSelected = rarSelect.value;
-  rarSelect.innerHTML = state.rarities.map(r =>
+  const rarOptionsHTML = state.rarities.map(r =>
     `<option value="${r.id}">${r.name}</option>`
   ).join('');
+
+  const rarSelect = document.getElementById('new-card-rarity');
+  const prevSelected = rarSelect.value;
+  rarSelect.innerHTML = rarOptionsHTML;
   if (prevSelected && state.rarities.some(r => r.id === prevSelected)) {
     rarSelect.value = prevSelected;
+  }
+
+  const editRarSelect = document.getElementById('edit-card-rarity');
+  const prevEditRar = editRarSelect.value;
+  editRarSelect.innerHTML = rarOptionsHTML;
+  if (prevEditRar && state.rarities.some(r => r.id === prevEditRar)) {
+    editRarSelect.value = prevEditRar;
   }
 
   document.getElementById('admin-case-cards-selector').innerHTML = state.cards.map(c => `
@@ -905,11 +989,92 @@ function renderAdminUI() {
 
   document.getElementById('admin-cards-count').textContent = state.cards.length;
   document.getElementById('admin-all-cards').innerHTML = state.cards.map(c => {
-    const delBtn = `<button class="secondary-btn" style="width:100%;margin-top:6px;padding:6px 8px;font-size:11px;color:#f87171;" onclick="adminDeleteCard('${c.id}')">Удалить</button>`;
-    return createCardHTML(c, false, '', '', delBtn);
+    const isEditing = c.id === editingCardId ? 'editing-target' : '';
+    const delBtn = `<button class="secondary-btn" style="width:100%;margin-top:6px;padding:6px 8px;font-size:11px;color:#f87171;" onclick="event.stopPropagation(); adminDeleteCard('${c.id}')">Удалить</button>`;
+    return createCardHTML(c, false, isEditing, `onclick="openEditCardPanel('${c.id}')"`, delBtn);
   }).join('');
 
+  if (editingCardId && state.cards.some(c => c.id === editingCardId)) {
+    updateEditCardPreview();
+  } else {
+    editingCardId = null;
+    document.getElementById('admin-edit-card-panel').classList.add('hidden');
+  }
+
   updateCardPreview();
+}
+
+function openEditCardPanel(cardId) {
+  const card = state.cards.find(c => c.id === cardId);
+  if (!card) return;
+
+  editingCardId = card.id;
+  document.getElementById('admin-edit-card-panel').classList.remove('hidden');
+  document.getElementById('edit-card-heading').textContent = card.name;
+  document.getElementById('edit-card-top').value = card.top ?? '';
+  document.getElementById('edit-card-name').value = card.name ?? '';
+  document.getElementById('edit-card-rarity').value = card.rarity;
+  document.getElementById('edit-card-price').value = card.price ?? 500;
+  document.getElementById('edit-card-img').value = card.img ?? '';
+
+  renderAdminUI();
+  updateEditCardPreview();
+  document.getElementById('admin-edit-card-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function cancelEditCard() {
+  editingCardId = null;
+  document.getElementById('admin-edit-card-panel').classList.add('hidden');
+  renderAdminUI();
+}
+
+function updateEditCardPreview() {
+  const previewBox = document.getElementById('edit-card-preview');
+  if (!previewBox || !editingCardId) return;
+
+  const top = Number(document.getElementById('edit-card-top').value) || 0;
+  const name = document.getElementById('edit-card-name').value.trim() || 'Без названия';
+  const rarity = document.getElementById('edit-card-rarity').value || state.rarities[0].id;
+  const price = Number(document.getElementById('edit-card-price').value) || 500;
+  const img = document.getElementById('edit-card-img').value.trim() || 'https://placehold.co/320x180/181a20/ffffff?text=GD';
+  const isHolo = Boolean(document.getElementById('edit-preview-holo-toggle')?.checked);
+
+  previewBox.innerHTML = createCardHTML({ id: editingCardId, top, name, rarity, price, img }, isHolo);
+}
+
+function saveEditedCard() {
+  if (!editingCardId) return;
+  const idx = state.cards.findIndex(c => c.id === editingCardId);
+  if (idx === -1) return;
+
+  const top = Number(document.getElementById('edit-card-top').value) || 0;
+  const name = document.getElementById('edit-card-name').value.trim();
+  const rarity = document.getElementById('edit-card-rarity').value;
+  const price = Number(document.getElementById('edit-card-price').value) || 500;
+  const img = document.getElementById('edit-card-img').value.trim() || 'https://placehold.co/320x180/181a20/ffffff?text=GD';
+
+  if (!name) return alert('Введи название уровня!');
+
+  state.cards[idx] = {
+    ...state.cards[idx],
+    top,
+    name,
+    rarity,
+    price,
+    img
+  };
+
+  saveState();
+  document.getElementById('edit-card-heading').textContent = name;
+  renderAdminUI();
+  alert('Карточка изменена! Не забудь нажать «Залить карточки в облако», чтобы изменения увидели все игроки.');
+}
+
+function deleteEditingCard() {
+  if (!editingCardId) return;
+  const idToDelete = editingCardId;
+  editingCardId = null;
+  adminDeleteCard(idToDelete);
 }
 
 function updateRarityColors(id, newColor1, newColor2) {
@@ -991,7 +1156,7 @@ function adminAddCard() {
   state.cards.push({ id: 'c_' + Date.now(), top, name, rarity, price, img });
   saveState();
   renderAdminUI();
-  alert('Карточка добавлена и уже падает в паках!');
+  alert('Карточка добавлена в базу! Нажми «Залить карточки в облако», чтобы она появилась у всех игроков.');
 }
 
 function adminDeleteCard(id) {
@@ -1035,4 +1200,5 @@ function sellWonCard() {
 updateTopBar();
 renderCasesList();
 renderLiveFeed();
-setInterval(fetchCloudLiveDrops, 5000);
+syncCatalogFromCloud(false);
+setInterval(() => syncCatalogFromCloud(false), 6000);
