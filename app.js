@@ -37,6 +37,7 @@ let isSpinning = false;
 let isUpgrading = false;
 let lastWonCard = null;
 let editingCardId = null;
+let editingCaseId = null;
 let hasLocalCatalogEdits = false;
 let cloudSyncInProgress = false;
 
@@ -61,20 +62,38 @@ let isDragging3D = false;
 let dragStartX = 0;
 let dragStartY = 0;
 
-// === ИЕРАРХИЯ РЕДКОСТЕЙ (ВЫШЕ В СПИСКЕ = ВЫШЕ ПО РЕДКОСТИ) ===
+// === ИЕРАРХИЯ РЕДКОСТЕЙ И ОТДЕЛЬНЫЕ ШАНСЫ (КЕЙСЫ / ПАКИ) ===
 function recalculateRarityHierarchy() {
   if (!Array.isArray(state.rarities) || state.rarities.length === 0) {
     state.rarities = [...DEFAULT_RARITIES];
   }
   const total = state.rarities.length;
   state.rarities.forEach((r, idx) => {
-    r.weight = sanitizeChanceInput(r.weight);
+    const caseW = sanitizeChanceInput(r.weight);
+    const packW = r.packWeight !== undefined ? sanitizeChanceInput(r.packWeight) : caseW;
+    r.weight = caseW;
+    r.packWeight = packW;
     r.order = total - idx;
   });
-  const sum = state.rarities.reduce((acc, r) => acc + r.weight, 0);
-  if (sum <= 0 && state.rarities.length > 0) {
+
+  const caseSum = state.rarities.reduce((acc, r) => acc + sanitizeChanceInput(r.weight), 0);
+  if (caseSum <= 0 && state.rarities.length > 0) {
     state.rarities[state.rarities.length - 1].weight = 100;
   }
+
+  const packSum = state.rarities.reduce((acc, r) => acc + sanitizeChanceInput(r.packWeight), 0);
+  if (packSum <= 0 && state.rarities.length > 0) {
+    state.rarities[state.rarities.length - 1].packWeight = 100;
+  }
+}
+
+function getRarityChanceWeight(rarityId, mode = 'case') {
+  const rar = getRarityObj(rarityId);
+  if (!rar) return 0;
+  if (mode === 'pack') {
+    return sanitizeChanceInput(rar.packWeight !== undefined ? rar.packWeight : rar.weight);
+  }
+  return sanitizeChanceInput(rar.weight);
 }
 
 function isUpcomingCard(card) {
@@ -128,8 +147,13 @@ function normalizeRaritiesWeights() {
   recalculateRarityHierarchy();
 }
 
-function formatChancePercent(weight) {
-  const total = state.rarities.reduce((acc, r) => acc + sanitizeChanceInput(r.weight), 0) || 1;
+function formatChancePercent(weight, mode = 'case') {
+  const total = state.rarities.reduce((acc, r) => {
+    const w = mode === 'pack'
+      ? sanitizeChanceInput(r.packWeight !== undefined ? r.packWeight : r.weight)
+      : sanitizeChanceInput(r.weight);
+    return acc + w;
+  }, 0) || 1;
   const pct = (sanitizeChanceInput(weight) / total) * 100;
   if (pct === 0) return '0%';
   if (pct < 0.0001) return pct.toFixed(10).replace(/0+$/, '').replace(/\.$/, '') + '%';
@@ -502,10 +526,10 @@ function renderCaseContents() {
   document.getElementById('case-contents-grid').innerHTML = sorted.map(card => createCardHTML(card, false)).join('');
 }
 
-function rollWeightedCard(poolCards) {
+function rollWeightedCard(poolCards, mode = 'case') {
   let totalWeight = 0;
   const weighted = poolCards.map(card => {
-    const w = sanitizeChanceInput(getRarityObj(card.rarity).weight);
+    const w = getRarityChanceWeight(card.rarity, mode);
     totalWeight += w;
     return { card, w };
   });
@@ -546,7 +570,7 @@ function spinCurrentCase(fast = false) {
   saveState(false);
 
   const pool = c.cardIds.map(id => state.cards.find(card => card.id === id)).filter(Boolean);
-  const wonCard = rollWeightedCard(pool);
+  const wonCard = rollWeightedCard(pool, 'case');
   const wonHolo = Math.random() < state.holoChance;
 
   prepareRouletteTape(c, wonCard, wonHolo);
@@ -580,7 +604,7 @@ function buyPack() {
   revealArea.innerHTML = '';
 
   for (let i = 0; i < 5; i++) {
-    const card = rollWeightedCard(state.cards);
+    const card = rollWeightedCard(state.cards, 'pack');
     const isHolo = Math.random() < state.holoChance;
     giveCardToPlayer(card, isHolo, 'Пак 500₽');
     revealArea.innerHTML += createCardHTML(card, isHolo);
@@ -960,10 +984,9 @@ function renderCollection() {
 }
 
 function getCardDropChancePercentText(card, isHolo) {
-  const rar = getRarityObj(card.rarity);
   const sameRarityCount = Math.max(1, state.cards.filter(c => c.rarity === card.rarity).length);
-  const totalW = state.rarities.reduce((sum, r) => sum + sanitizeChanceInput(r.weight), 0) || 1;
-  const rarShare = sanitizeChanceInput(rar.weight) / totalW;
+  const totalW = state.rarities.reduce((sum, r) => sum + getRarityChanceWeight(r.id, 'case'), 0) || 1;
+  const rarShare = getRarityChanceWeight(card.rarity, 'case') / totalW;
   const holoShare = isHolo ? state.holoChance : (1 - state.holoChance);
   const exactPct = (rarShare / sameRarityCount) * holoShare * 100;
 
@@ -1160,6 +1183,91 @@ function updateCasePreview() {
   `;
 }
 
+function openEditCasePanel(caseId) {
+  const caseObj = state.cases.find(c => c.id === caseId);
+  if (!caseObj) return;
+
+  editingCaseId = caseObj.id;
+  document.getElementById('admin-edit-case-panel').classList.remove('hidden');
+  document.getElementById('edit-case-heading').textContent = caseObj.name;
+  document.getElementById('edit-case-name').value = caseObj.name ?? '';
+  document.getElementById('edit-case-price').value = caseObj.price ?? 500;
+  document.getElementById('edit-case-img').value = caseObj.img ?? '';
+
+  const currentSet = new Set(Array.isArray(caseObj.cardIds) ? caseObj.cardIds : []);
+  document.getElementById('admin-edit-case-cards-selector').innerHTML = state.cards.map(c => `
+    <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
+      <input type="checkbox" class="edit-case-card-cb" value="${c.id}" ${currentSet.has(c.id) ? 'checked' : ''}> ${isUpcomingCard(c) ? '[UPCOMING]' : '#' + c.top} ${c.name}
+    </label>
+  `).join('');
+
+  renderAdminCasesList();
+  updateEditCasePreview();
+  document.getElementById('admin-edit-case-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function cancelEditCase() {
+  editingCaseId = null;
+  document.getElementById('admin-edit-case-panel').classList.add('hidden');
+  renderAdminCasesList();
+}
+
+function updateEditCasePreview() {
+  const previewBox = document.getElementById('edit-case-preview');
+  if (!previewBox || !editingCaseId) return;
+
+  const name = document.getElementById('edit-case-name')?.value.trim() || 'Кейс';
+  const price = Math.max(0, Number(document.getElementById('edit-case-price')?.value) || 500);
+  const img = document.getElementById('edit-case-img')?.value.trim() || 'https://placehold.co/320x180/181a20/ffffff?text=CASE';
+  const selectedCount = document.querySelectorAll('.edit-case-card-cb:checked').length;
+
+  previewBox.innerHTML = `
+    <div class="case-item" style="width:100%;cursor:default;transform:none;">
+      <img src="${img}" alt="${name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=CASE'">
+      <h3>${name}</h3>
+      <div class="admin-case-meta">Карточек в пуле: ${selectedCount}</div>
+      <div class="case-price-tag">${price} ₽</div>
+    </div>
+  `;
+}
+
+function saveEditedCase() {
+  if (!editingCaseId) return;
+  const idx = state.cases.findIndex(c => c.id === editingCaseId);
+  if (idx === -1) return;
+
+  const name = document.getElementById('edit-case-name').value.trim();
+  const price = Math.max(0, Number(document.getElementById('edit-case-price').value) || 500);
+  const img = document.getElementById('edit-case-img').value.trim() || 'https://placehold.co/320x180/181a20/ffffff?text=CASE';
+  const selectedIds = Array.from(document.querySelectorAll('.edit-case-card-cb:checked')).map(cb => cb.value);
+
+  if (!name || selectedIds.length === 0) return;
+
+  state.cases[idx] = {
+    ...state.cases[idx],
+    name,
+    price,
+    img,
+    cardIds: selectedIds
+  };
+
+  saveState(true);
+  document.getElementById('edit-case-heading').textContent = name;
+  renderAdminCasesList();
+  renderCasesList();
+  if (currentCaseId === editingCaseId) {
+    openCaseView(editingCaseId);
+  }
+}
+
+function deleteEditingCase() {
+  if (!editingCaseId) return;
+  const idToDelete = editingCaseId;
+  editingCaseId = null;
+  document.getElementById('admin-edit-case-panel').classList.add('hidden');
+  adminDeleteCase(idToDelete);
+}
+
 function renderAdminCasesList() {
   const listEl = document.getElementById('admin-cases-list');
   const countEl = document.getElementById('admin-cases-count');
@@ -1171,18 +1279,28 @@ function renderAdminCasesList() {
     return;
   }
 
-  listEl.innerHTML = state.cases.map(c => `
-    <div class="admin-case-card">
-      <img src="${c.img}" alt="${c.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=CASE'">
-      <b>${c.name}</b>
-      <div class="admin-case-meta">${c.price} ₽ • ${Array.isArray(c.cardIds) ? c.cardIds.length : 0} карт</div>
-      <button class="secondary-btn" style="color:#f87171;padding:6px 10px;font-size:12px;" onclick="adminDeleteCase('${c.id}')">Удалить</button>
-    </div>
-  `).join('');
+  listEl.innerHTML = state.cases.map(c => {
+    const isEditing = c.id === editingCaseId ? 'editing-target' : '';
+    return `
+      <div class="admin-case-card ${isEditing}">
+        <img src="${c.img}" alt="${c.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=CASE'">
+        <b>${c.name}</b>
+        <div class="admin-case-meta">${c.price} ₽ • ${Array.isArray(c.cardIds) ? c.cardIds.length : 0} карт</div>
+        <div class="admin-case-btns">
+          <button class="secondary-btn" style="padding:6px 10px;font-size:12px;" onclick="openEditCasePanel('${c.id}')">Изменить</button>
+          <button class="secondary-btn" style="color:#f87171;padding:6px 10px;font-size:12px;" onclick="adminDeleteCase('${c.id}')">Удалить</button>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 function adminDeleteCase(caseId) {
   state.cases = state.cases.filter(c => c.id !== caseId);
+  if (editingCaseId === caseId) {
+    editingCaseId = null;
+    document.getElementById('admin-edit-case-panel').classList.add('hidden');
+  }
   if (currentCaseId === caseId) {
     isSpinning = false;
     closeCaseView();
@@ -1201,7 +1319,8 @@ function renderAdminUI() {
 
   const totalRars = state.rarities.length;
   document.getElementById('admin-rarities-list').innerHTML = state.rarities.map((r, idx) => {
-    const pctText = formatChancePercent(r.weight);
+    const casePctText = formatChancePercent(r.weight, 'case');
+    const packPctText = formatChancePercent(r.packWeight ?? r.weight, 'pack');
     const tierLabel = idx === 0 ? 'МАКС' : (idx === totalRars - 1 ? 'НИЗ' : `#${idx + 1}`);
     return `
       <div class="rar-manage-card"
@@ -1215,9 +1334,17 @@ function renderAdminUI() {
         <div class="rar-manage-top">
           <div>
             <span class="rar-rank-pill">${tierLabel}</span>
-            <span style="color:${r.color};">${r.name} (${pctText})</span>
+            <span style="color:${r.color};">${r.name}</span>
           </div>
           <button onclick="adminDeleteRarity('${r.id}')" style="background:none;border:none;color:#f87171;cursor:pointer;font-weight:900;">✕</button>
+        </div>
+        <div class="rar-chance-row">
+          <span>Кейсы (${casePctText}):</span>
+          <input type="text" value="${r.weight ?? 10}" onchange="updateRarityWeight('${r.id}', this.value, 'case')">
+        </div>
+        <div class="rar-chance-row">
+          <span>Паки (${packPctText}):</span>
+          <input type="text" value="${r.packWeight ?? r.weight ?? 10}" onchange="updateRarityWeight('${r.id}', this.value, 'pack')">
         </div>
         <div class="rar-chance-row">
           <span>Градиент (2 цвета):</span>
@@ -1225,10 +1352,6 @@ function renderAdminUI() {
             <input type="color" value="${r.color}" title="Цвет 1 (рамка и верх градиента)" onchange="updateRarityColors('${r.id}', this.value, null)">
             <input type="color" value="${r.bg}" title="Цвет 2 (низ градиента)" onchange="updateRarityColors('${r.id}', null, this.value)">
           </div>
-        </div>
-        <div class="rar-chance-row">
-          <span>Шанс:</span>
-          <input type="text" value="${r.weight ?? 10}" onchange="updateRarityWeight('${r.id}', this.value)">
         </div>
         <div class="rar-chance-row">
           <span>Эффект:</span>
@@ -1271,6 +1394,20 @@ function renderAdminUI() {
 
   renderAdminCasesList();
   updateCasePreview();
+
+  if (editingCaseId && state.cases.some(c => c.id === editingCaseId)) {
+    const activeCase = state.cases.find(c => c.id === editingCaseId);
+    const activeSet = new Set(activeCase.cardIds || []);
+    document.getElementById('admin-edit-case-cards-selector').innerHTML = state.cards.map(c => `
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
+        <input type="checkbox" class="edit-case-card-cb" value="${c.id}" ${activeSet.has(c.id) ? 'checked' : ''}> ${isUpcomingCard(c) ? '[UPCOMING]' : '#' + c.top} ${c.name}
+      </label>
+    `).join('');
+    updateEditCasePreview();
+  } else {
+    editingCaseId = null;
+    document.getElementById('admin-edit-case-panel').classList.add('hidden');
+  }
 
   document.getElementById('admin-cards-count').textContent = state.cards.length;
   document.getElementById('admin-all-cards').innerHTML = state.cards.map(c => {
@@ -1393,10 +1530,15 @@ function updateRarityColors(id, newColor1, newColor2) {
   updateCardPreview();
 }
 
-function updateRarityWeight(id, rawVal) {
+function updateRarityWeight(id, rawVal, mode = 'case') {
   const rar = state.rarities.find(r => r.id === id);
   if (!rar) return;
-  rar.weight = sanitizeChanceInput(rawVal);
+  const sanitized = sanitizeChanceInput(rawVal);
+  if (mode === 'pack') {
+    rar.packWeight = sanitized;
+  } else {
+    rar.weight = sanitized;
+  }
   saveState(true);
   renderAdminUI();
   updateCardPreview();
@@ -1430,15 +1572,16 @@ function adminAddRarity() {
   const color = document.getElementById('new-rar-color').value;
   const bg = document.getElementById('new-rar-bg').value;
   const weight = sanitizeChanceInput(document.getElementById('new-rar-weight').value);
+  const packWeight = sanitizeChanceInput(document.getElementById('new-rar-pack-weight').value);
   const effect = document.getElementById('new-rar-effect').value;
   if (!name) return;
 
   const id = name.toLowerCase().replace(/\s+/g, '_');
   const existing = state.rarities.find(r => r.id === id);
   if (existing) {
-    Object.assign(existing, { name, color, bg, weight, effect });
+    Object.assign(existing, { name, color, bg, weight, packWeight, effect });
   } else {
-    state.rarities.push({ id, name, color, bg, order: 1, weight, effect });
+    state.rarities.push({ id, name, color, bg, order: 1, weight, packWeight, effect });
   }
   saveState(true);
   renderAdminUI();
