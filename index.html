@@ -270,15 +270,16 @@
             </div>
           </div>
 
-          <!-- Редактор редкостей с Drag-and-Drop (выше в списке = выше по редкости) -->
+          <!-- Редактор редкостей с Drag-and-Drop и отдельными шансами на кейсы и паки -->
           <div class="admin-block">
-            <h3>Редкости (Drag-and-Drop: выше = реже/круче)</h3>
-            <p class="hint-text">Перетаскивай редкости мышкой вверх/вниз — позиция в списке задаёт иерархию редкости для сортировок и крафта (UPCOMING можно поставить на самый верх).</p>
+            <h3>Редкости и отдельные шансы: Кейсы / Паки</h3>
+            <p class="hint-text">Перетаскивай редкости мышкой вверх/вниз (выше = круче по редкости) и задавай отдельные шансы отдельно для <b>кейсов</b> и отдельно для <b>паков</b>.</p>
             <div class="form-row">
               <input type="text" id="new-rar-name" placeholder="Название редкости (напр. UPCOMING)">
               <label class="color-pick-label">Рамка/Цвет 1: <input type="color" id="new-rar-color" value="#ff2a85"></label>
               <label class="color-pick-label">Градиент Цвет 2: <input type="color" id="new-rar-bg" value="#160812"></label>
-              <input type="text" id="new-rar-weight" placeholder="Шанс (0..100)" value="25">
+              <input type="text" id="new-rar-weight" placeholder="Шанс кейсы (0..100)" value="25">
+              <input type="text" id="new-rar-pack-weight" placeholder="Шанс паки (0..100)" value="25">
               <select id="new-rar-effect" title="Эффект карточки">
                 <option value="none">Без эффекта</option>
                 <option value="aura">Левитирующая аура (Aura Levitate)</option>
@@ -346,11 +347,38 @@
             </div>
           </div>
 
-          <!-- Список существующих кейсов с возможностью удаления -->
+          <!-- Редактор выбранного кейса из базы -->
+          <div id="admin-edit-case-panel" class="admin-block hidden">
+            <div class="section-header">
+              <h3>Изменить кейс: <span id="edit-case-heading"></span></h3>
+              <button class="secondary-btn" onclick="cancelEditCase()">Отмена</button>
+            </div>
+            <div class="card-creator-layout">
+              <div class="creator-form">
+                <div class="form-row">
+                  <input type="text" id="edit-case-name" placeholder="Название кейса" oninput="updateEditCasePreview()">
+                  <input type="number" id="edit-case-price" placeholder="Цена открытия (₽)" oninput="updateEditCasePreview()">
+                  <input type="text" id="edit-case-img" placeholder="URL обложки кейса" style="flex:1;" oninput="updateEditCasePreview()">
+                </div>
+                <div id="admin-edit-case-cards-selector" class="checkbox-grid" onchange="updateEditCasePreview()"></div>
+                <div class="form-row" style="margin-top: 14px;">
+                  <button class="primary-btn" onclick="saveEditedCase()">Сохранить кейс</button>
+                  <button class="secondary-btn" style="color:#f87171;" onclick="deleteEditingCase()">Удалить кейс</button>
+                </div>
+              </div>
+
+              <div class="creator-preview-box">
+                <div class="slot-label">Предпросмотр кейса</div>
+                <div id="edit-case-preview" style="width:100%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Список существующих кейсов с возможностью редактирования и удаления -->
           <div class="admin-block">
             <div class="section-header">
               <h3>Кейсы в базе (<span id="admin-cases-count">0</span>)</h3>
-              <span class="hint-text">Нажми «Удалить», чтобы убрать кейс из каталога</span>
+              <span class="hint-text">Нажми «Изменить», чтобы отредактировать кейс, или «Удалить»</span>
             </div>
             <div id="admin-cases-list" class="admin-cases-manage-grid"></div>
           </div>
