@@ -87,24 +87,13 @@ body {
 .balance-box {
   background: var(--bg-card);
   border: 1px solid var(--accent-gold);
-  padding: 6px 12px;
+  padding: 7px 14px;
   border-radius: 8px;
   font-weight: 800;
   color: var(--accent-gold);
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.free-rub-btn {
-  background: var(--accent-gold);
-  color: #000;
-  border: none;
-  border-radius: 5px;
-  padding: 3px 7px;
-  font-weight: 800;
-  cursor: pointer;
-  font-size: 12px;
+  gap: 6px;
 }
 
 /* ЖЁСТКИЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ: КОНТЕНТ СЛЕВА + ЛАЙВ-ДРОП СПРАВА */
@@ -305,6 +294,12 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   width: 100%;
 }
 
+.card-wrap.drag-over {
+  outline: 2px dashed var(--accent-gold);
+  border-radius: 15px;
+  transform: scale(1.02);
+}
+
 .gd-card {
   position: relative;
   width: 100%;
@@ -335,16 +330,28 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 6px;
   margin-bottom: 8px;
   position: relative;
   z-index: 3;
 }
 
 .card-rank {
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 900;
   color: #ffffff;
   letter-spacing: -0.5px;
+  white-space: nowrap;
+}
+
+.card-rank.is-upcoming {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.4px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  padding: 2px 6px;
+  border-radius: 6px;
 }
 
 .card-rarity-badge {
@@ -356,6 +363,10 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   border-radius: 6px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 96px;
 }
 
 .card-thumb {
@@ -579,7 +590,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   gap: 8px;
 }
 
-/* АПГРЕЙД (КОЛЕСО РУЛЕТКИ) */
+/* АПГРЕЙД (КОЛЕСО РУЛЕТКИ + ПОИСК ПО ВСЕМ КАРТАМ) */
 .upgrade-arena {
   display: grid;
   grid-template-columns: 1fr 270px 1fr;
@@ -664,7 +675,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 
 .upgrade-inventories {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1.25fr;
   gap: 20px;
 }
 .inv-column {
@@ -672,6 +683,23 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   padding: 16px;
   border-radius: 14px;
   border: 1px solid var(--border);
+}
+
+.upgrade-target-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.upg-search-input {
+  min-width: 195px;
+}
+
+.upgrade-all-targets-scroll {
+  max-height: 620px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 /* ТРЕЙДЫ И КРАФТЫ */
@@ -793,6 +821,13 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  cursor: grab;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.rar-manage-card:active { cursor: grabbing; }
+.rar-manage-card.drag-over {
+  outline: 2px dashed var(--accent-gold);
+  transform: scale(1.02);
 }
 .rar-manage-top {
   display: flex;
@@ -800,6 +835,14 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   align-items: center;
   font-weight: 800;
   font-size: 12px;
+}
+.rar-rank-pill {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #e5e7eb;
+  margin-right: 6px;
 }
 .rar-chance-row {
   display: flex;
