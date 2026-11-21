@@ -67,7 +67,6 @@ function recalculateRarityHierarchy() {
     state.rarities = [...DEFAULT_RARITIES];
   }
   const total = state.rarities.length;
-  // Индекс 0 (самый верх списка) получает наибольший order (напр. total), нижний получает 1
   state.rarities.forEach((r, idx) => {
     r.weight = sanitizeChanceInput(r.weight);
     r.order = total - idx;
@@ -379,7 +378,7 @@ async function syncCatalogFromCloud(forceOverwriteLocal = false) {
         recalculateRarityHierarchy();
         changed = true;
       }
-      if (Array.isArray(cat.cases) && cat.cases.length > 0) {
+      if (Array.isArray(cat.cases)) {
         state.cases = cat.cases;
         changed = true;
       }
@@ -465,7 +464,7 @@ function renderCasesList() {
   const sorted = [...state.cases].sort((a, b) => sortMode === 'price-asc' ? a.price - b.price : b.price - a.price);
   document.getElementById('cases-list').innerHTML = sorted.map(c => `
     <div class="case-item" onclick="openCaseView('${c.id}')">
-      <img src="${c.img}" alt="${c.name}">
+      <img src="${c.img}" alt="${c.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=CASE'">
       <h3>${c.name}</h3>
       <div class="case-price-tag">${c.price} ₽</div>
     </div>
@@ -475,6 +474,10 @@ function renderCasesList() {
 function openCaseView(caseId) {
   currentCaseId = caseId;
   const c = state.cases.find(x => x.id === caseId);
+  if (!c) {
+    closeCaseView();
+    return;
+  }
   document.getElementById('cases-grid-view').classList.add('hidden');
   document.getElementById('case-open-view').classList.remove('hidden');
   document.getElementById('active-case-title').textContent = c.name;
@@ -485,12 +488,14 @@ function openCaseView(caseId) {
 
 function closeCaseView() {
   if (isSpinning) return;
+  currentCaseId = null;
   document.getElementById('case-open-view').classList.add('hidden');
   document.getElementById('cases-grid-view').classList.remove('hidden');
 }
 
 function renderCaseContents() {
   const c = state.cases.find(x => x.id === currentCaseId);
+  if (!c) return;
   const sortMode = document.getElementById('case-contents-sort').value;
   const caseCards = c.cardIds.map(id => state.cards.find(card => card.id === id)).filter(Boolean);
   const sorted = sortItems(caseCards, sortMode);
@@ -534,7 +539,7 @@ function prepareRouletteTape(caseObj, winCard = null, winHolo = false) {
 function spinCurrentCase(fast = false) {
   if (isSpinning) return;
   const c = state.cases.find(x => x.id === currentCaseId);
-  if (state.balance < c.price) return;
+  if (!c || state.balance < c.price) return;
 
   state.balance -= c.price;
   state.stats.opened += 1;
@@ -1069,7 +1074,7 @@ function sellAllDuplicates() {
   renderCollection();
 }
 
-// === 5) АДМИН-ПАНЕЛЬ (ПАРОЛЬ 12356790) + DRAG-AND-DROP ===
+// === 5) АДМИН-ПАНЕЛЬ (ПАРОЛЬ 12356790) + DRAG-AND-DROP + КЕЙСЫ ===
 function checkAdminPass() {
   const pass = document.getElementById('admin-pass-input').value;
   if (pass === '12356790') {
@@ -1110,20 +1115,17 @@ function handleCardDragDrop(targetCardId) {
   const targetCard = state.cards[toIdx];
 
   if (isUpcomingCard(movedCard)) {
-    // UPCOMING-карточка перетаскивается среди UPCOMING без смены топа
     const [removed] = state.cards.splice(fromIdx, 1);
     removed.top = 0;
     const newToIdx = state.cards.findIndex(c => c.id === targetCardId);
     state.cards.splice(newToIdx >= 0 ? newToIdx : 0, 0, removed);
   } else {
-    // Карта основного топа: если бросили на другой элемент основного топа — ставим на его место в топе
     const [removed] = state.cards.splice(fromIdx, 1);
     if (!isUpcomingCard(targetCard)) {
       const insertAt = state.cards.findIndex(c => c.id === targetCardId);
       removed.top = Number(targetCard.top) || 1;
       state.cards.splice(insertAt >= 0 ? insertAt : state.cards.length, 0, removed);
     } else {
-      // Если бросили на UPCOMING — ставим в начало основного топа (#1)
       const firstRankedIdx = state.cards.findIndex(c => !isUpcomingCard(c));
       removed.top = 1;
       if (firstRankedIdx >= 0) {
@@ -1137,6 +1139,57 @@ function handleCardDragDrop(targetCardId) {
   draggedCardId = null;
   saveState(true);
   renderAdminUI();
+}
+
+function updateCasePreview() {
+  const previewBox = document.getElementById('case-creator-preview');
+  if (!previewBox) return;
+
+  const name = document.getElementById('new-case-name')?.value.trim() || 'Новый кейс';
+  const price = Math.max(0, Number(document.getElementById('new-case-price')?.value) || 500);
+  const img = document.getElementById('new-case-img')?.value.trim() || 'https://placehold.co/320x180/181a20/ffffff?text=CASE';
+  const selectedCount = document.querySelectorAll('.case-card-cb:checked').length;
+
+  previewBox.innerHTML = `
+    <div class="case-item" style="width:100%;cursor:default;transform:none;">
+      <img src="${img}" alt="${name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=CASE'">
+      <h3>${name}</h3>
+      <div class="admin-case-meta">Карточек в пуле: ${selectedCount}</div>
+      <div class="case-price-tag">${price} ₽</div>
+    </div>
+  `;
+}
+
+function renderAdminCasesList() {
+  const listEl = document.getElementById('admin-cases-list');
+  const countEl = document.getElementById('admin-cases-count');
+  if (!listEl) return;
+  if (countEl) countEl.textContent = state.cases.length;
+
+  if (state.cases.length === 0) {
+    listEl.innerHTML = '<div class="hint-text">Кейсов пока нет</div>';
+    return;
+  }
+
+  listEl.innerHTML = state.cases.map(c => `
+    <div class="admin-case-card">
+      <img src="${c.img}" alt="${c.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=CASE'">
+      <b>${c.name}</b>
+      <div class="admin-case-meta">${c.price} ₽ • ${Array.isArray(c.cardIds) ? c.cardIds.length : 0} карт</div>
+      <button class="secondary-btn" style="color:#f87171;padding:6px 10px;font-size:12px;" onclick="adminDeleteCase('${c.id}')">Удалить</button>
+    </div>
+  `).join('');
+}
+
+function adminDeleteCase(caseId) {
+  state.cases = state.cases.filter(c => c.id !== caseId);
+  if (currentCaseId === caseId) {
+    isSpinning = false;
+    closeCaseView();
+  }
+  saveState(true);
+  renderCasesList();
+  renderAdminCasesList();
 }
 
 function renderAdminUI() {
@@ -1215,6 +1268,9 @@ function renderAdminUI() {
       <input type="checkbox" class="case-card-cb" value="${c.id}"> ${isUpcomingCard(c) ? '[UPCOMING]' : '#' + c.top} ${c.name}
     </label>
   `).join('');
+
+  renderAdminCasesList();
+  updateCasePreview();
 
   document.getElementById('admin-cards-count').textContent = state.cards.length;
   document.getElementById('admin-all-cards').innerHTML = state.cards.map(c => {
@@ -1447,6 +1503,7 @@ function adminAddCase() {
   state.cases.push({ id: 'case_' + Date.now(), name, price, img, cardIds: selectedIds });
   saveState(true);
   renderAdminUI();
+  renderCasesList();
 }
 
 // === МОДАЛЬНОЕ ОКНО ВЫИГРЫША ===
