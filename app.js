@@ -4,7 +4,6 @@ const SHARED_CLOUD_CONFIG = {
   binId: '6b01dba4ac6210605a9a4b56',
   apiKey: '$2a$10$uRETf0psynxbv1ND6K6TkOEOldfaLwR07Hx7U7imDwBJpF6fJKFRe'
 };
-
 // === СОСТОЯНИЕ И СОХРАНЕНИЕ ===
 const savedCloud = JSON.parse(localStorage.getItem('gd_cloud') || 'null');
 const initialCloud = {
@@ -14,7 +13,7 @@ const initialCloud = {
 
 let state = {
   nickname: localStorage.getItem('gd_nick') || 'Player_' + Math.floor(100 + Math.random() * 900),
-  balance: Number(localStorage.getItem('gd_balance') ?? 2500),
+  balance: Number(localStorage.getItem('gd_balance') ?? 700),
   inventory: JSON.parse(localStorage.getItem('gd_inventory') || '[]'),
   stats: JSON.parse(localStorage.getItem('gd_stats') || '{"opened":0,"upgrades":0}'),
   rarities: JSON.parse(localStorage.getItem('gd_rarities') || JSON.stringify(DEFAULT_RARITIES)),
@@ -25,6 +24,8 @@ let state = {
   holoMultiplier: Number(localStorage.getItem('gd_holo_mult') ?? 2.5),
   holoChance: Number(localStorage.getItem('gd_holo_chance') ?? 0.12)
 };
+
+if (!Number.isFinite(state.balance) || state.balance < 0) state.balance = 700;
 
 // Нормализуем инвентарь при старте
 if (!Array.isArray(state.inventory)) state.inventory = [];
@@ -37,6 +38,9 @@ let lastWonCard = null;
 let editingCardId = null;
 let hasLocalCatalogEdits = false;
 let cloudSyncInProgress = false;
+
+let draggedRarityId = null;
+let draggedCardId = null;
 
 let upgSelectedSourceUid = null;
 let upgSelectedTargetId = null;
@@ -56,6 +60,61 @@ let isDragging3D = false;
 let dragStartX = 0;
 let dragStartY = 0;
 
+// === ИЕРАРХИЯ РЕДКОСТЕЙ (ВЫШЕ В СПИСКЕ = ВЫШЕ ПО РЕДКОСТИ) ===
+function recalculateRarityHierarchy() {
+  if (!Array.isArray(state.rarities) || state.rarities.length === 0) {
+    state.rarities = [...DEFAULT_RARITIES];
+  }
+  const total = state.rarities.length;
+  // Индекс 0 (самый верх списка) получает наибольший order (напр. total), нижний получает 1
+  state.rarities.forEach((r, idx) => {
+    r.weight = sanitizeChanceInput(r.weight);
+    r.order = total - idx;
+  });
+  const sum = state.rarities.reduce((acc, r) => acc + r.weight, 0);
+  if (sum <= 0 && state.rarities.length > 0) {
+    state.rarities[state.rarities.length - 1].weight = 100;
+  }
+}
+
+function isUpcomingCard(card) {
+  if (!card) return false;
+  const rar = getRarityObj(card.rarity);
+  const rarId = String(card.rarity || '').toLowerCase();
+  const rarName = String(rar?.name || '').toLowerCase();
+  return Number(card.top || 0) <= 0 || rarId === 'upcoming' || rarName === 'upcoming';
+}
+
+// === ЛОГИКА ТОПОВ И UPCOMING-КАРТОЧЕК ===
+function normalizeCardsAndRanks() {
+  if (!Array.isArray(state.cards)) state.cards = [];
+
+  const upcoming = [];
+  const ranked = [];
+
+  state.cards.forEach(c => {
+    if (isUpcomingCard(c)) {
+      c.top = 0;
+      upcoming.push(c);
+    } else {
+      ranked.push(c);
+    }
+  });
+
+  ranked.sort((a, b) => {
+    const topA = Number(a.top) > 0 ? Number(a.top) : 999999;
+    const topB = Number(b.top) > 0 ? Number(b.top) : 999999;
+    if (topA !== topB) return topA - topB;
+    return 0;
+  });
+
+  ranked.forEach((c, idx) => {
+    c.top = idx + 1;
+  });
+
+  state.cards = [...upcoming, ...ranked];
+}
+
 // === АВТОНОРМАЛИЗАЦИЯ ШАНСОВ (ОТ 0.0000000001 ДО 100) ===
 function sanitizeChanceInput(rawVal) {
   const cleaned = String(rawVal ?? '').replace(',', '.').trim();
@@ -66,16 +125,7 @@ function sanitizeChanceInput(rawVal) {
 }
 
 function normalizeRaritiesWeights() {
-  if (!Array.isArray(state.rarities) || state.rarities.length === 0) {
-    state.rarities = [...DEFAULT_RARITIES];
-  }
-  state.rarities.forEach(r => {
-    r.weight = sanitizeChanceInput(r.weight);
-  });
-  const sum = state.rarities.reduce((acc, r) => acc + r.weight, 0);
-  if (sum <= 0 && state.rarities.length > 0) {
-    state.rarities[0].weight = 100;
-  }
+  recalculateRarityHierarchy();
 }
 
 function formatChancePercent(weight) {
@@ -87,15 +137,17 @@ function formatChancePercent(weight) {
   return pct.toFixed(2).replace(/\.00$/, '') + '%';
 }
 
-normalizeRaritiesWeights();
+recalculateRarityHierarchy();
+normalizeCardsAndRanks();
 
 function saveState(markCatalogDirty = false) {
-  normalizeRaritiesWeights();
+  recalculateRarityHierarchy();
+  normalizeCardsAndRanks();
   if (markCatalogDirty) {
     hasLocalCatalogEdits = true;
   }
   localStorage.setItem('gd_nick', state.nickname);
-  localStorage.setItem('gd_balance', state.balance);
+  localStorage.setItem('gd_balance', String(state.balance));
   localStorage.setItem('gd_inventory', JSON.stringify(state.inventory));
   localStorage.setItem('gd_stats', JSON.stringify(state.stats));
   localStorage.setItem('gd_rarities', JSON.stringify(state.rarities));
@@ -123,13 +175,8 @@ function saveNickname() {
   const val = document.getElementById('nickname-input').value.trim();
   if (val) {
     state.nickname = val;
-    saveState();
+    saveState(false);
   }
-}
-
-function addFreeMoney() {
-  state.balance += 1000;
-  saveState();
 }
 
 // === НАВИГАЦИЯ ПО ВКЛАДКАМ ===
@@ -158,7 +205,7 @@ function switchTab(tabName) {
 
 // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ КАРТОЧЕК И СОРТИРОВКИ ===
 function getRarityObj(rarityId) {
-  return state.rarities.find(r => r.id === rarityId) || state.rarities[0];
+  return state.rarities.find(r => r.id === rarityId) || state.rarities[state.rarities.length - 1] || state.rarities[0];
 }
 
 function getCardPrice(card, isHolo) {
@@ -173,22 +220,32 @@ function sortItems(items, sortMode) {
     const cardB = b.card || b;
     const priceA = getCardPrice(cardA, a.isHolo || false);
     const priceB = getCardPrice(cardB, b.isHolo || false);
-    const rarA = getRarityObj(cardA.rarity).order;
-    const rarB = getRarityObj(cardB.rarity).order;
+    const rarA = Number(getRarityObj(cardA.rarity)?.order || 0);
+    const rarB = Number(getRarityObj(cardB.rarity)?.order || 0);
 
     if (sortMode === 'price-desc') return priceB - priceA;
     if (sortMode === 'price-asc') return priceA - priceB;
     if (sortMode === 'rarity-desc') return rarB - rarA || priceB - priceA;
     if (sortMode === 'rarity-asc') return rarA - rarB || priceA - priceB;
+    if (sortMode === 'top-asc') {
+      const upA = isUpcomingCard(cardA);
+      const upB = isUpcomingCard(cardB);
+      if (upA !== upB) return upA ? -1 : 1;
+      return (Number(cardA.top) || 999999) - (Number(cardB.top) || 999999);
+    }
     return 0;
   });
 }
 
-function createCardHTML(card, isHolo = false, extraClass = '', clickAttr = '', actionBtnHTML = '') {
+function createCardHTML(card, isHolo = false, extraClass = '', clickAttr = '', actionBtnHTML = '', wrapAttr = '') {
   const rar = getRarityObj(card.rarity);
   const price = getCardPrice(card, isHolo);
   const effectClass = rar.effect && rar.effect !== 'none' ? `effect-${rar.effect}` : '';
   const holoClass = isHolo ? 'is-holo' : '';
+  const upcoming = isUpcomingCard(card);
+  const rankHTML = upcoming
+    ? '<span class="card-rank is-upcoming">UPCOMING</span>'
+    : `<span class="card-rank">#${Number(card.top)}</span>`;
 
   const sweepLayer = rar.effect === 'shine-sweep' ? '<div class="shine-sweep-layer"></div>' : '';
   const sparkleLayer = rar.effect === 'sparkle'
@@ -197,7 +254,7 @@ function createCardHTML(card, isHolo = false, extraClass = '', clickAttr = '', a
   const holoLayer = isHolo ? '<div class="holo-full-overlay"></div>' : '';
 
   return `
-    <div class="card-wrap">
+    <div class="card-wrap" ${wrapAttr}>
       <div class="gd-card ${holoClass} ${effectClass} ${extraClass}"
            style="--rar-color: ${rar.color}; --rar-bg: ${rar.bg};"
            ${clickAttr}>
@@ -205,7 +262,7 @@ function createCardHTML(card, isHolo = false, extraClass = '', clickAttr = '', a
         ${sweepLayer}
         ${sparkleLayer}
         <div class="card-top-row">
-          <span class="card-rank">${card.top > 0 ? '#' + card.top : '★'}</span>
+          ${rankHTML}
           <span class="card-rarity-badge">${rar.name}</span>
         </div>
         <img class="card-thumb" draggable="false" src="${card.img}" alt="${card.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=GD+LEVEL'">
@@ -268,7 +325,8 @@ async function pushCatalogToCloud() {
   cloudSyncInProgress = true;
 
   try {
-    normalizeRaritiesWeights();
+    recalculateRarityHierarchy();
+    normalizeCardsAndRanks();
     let currentRecord = {};
     try {
       currentRecord = (await readCloudRecord()) || {};
@@ -317,7 +375,7 @@ async function syncCatalogFromCloud(forceOverwriteLocal = false) {
       }
       if (Array.isArray(cat.rarities) && cat.rarities.length > 0) {
         state.rarities = cat.rarities;
-        normalizeRaritiesWeights();
+        recalculateRarityHierarchy();
         changed = true;
       }
       if (Array.isArray(cat.cases) && cat.cases.length > 0) {
@@ -524,17 +582,9 @@ function buyPack() {
   saveState(false);
 }
 
-// === 3) АПГРЕЙДЫ (НАСТОЯЩАЯ РУЛЕТКА + ВЫБОР СКОРОСТИ) ===
+// === 3) АПГРЕЙДЫ (ВСЕ КАРТЫ + ПОИСК + РУЛЕТКА) ===
 function rerollUpgradeTargets() {
-  if (isUpgrading) return;
-  upgRandomPool = [];
-  for (let i = 0; i < 15; i++) {
-    const rndCard = state.cards[Math.floor(Math.random() * state.cards.length)];
-    const isHolo = Math.random() < 0.25;
-    upgRandomPool.push({ card: rndCard, isHolo });
-  }
-  upgSelectedTargetId = null;
-  renderUpgradeUI();
+  renderUpgradeTargets();
 }
 
 function renderUpgradeUI() {
@@ -555,12 +605,44 @@ function renderUpgradeUI() {
 }
 
 function renderUpgradeTargets() {
-  const tSort = document.getElementById('upg-target-sort').value;
-  const sortedTargets = sortItems(upgRandomPool, tSort);
-  document.getElementById('upgrade-target-cards').innerHTML = sortedTargets.map(t => {
-    const sel = (t.card.id === upgSelectedTargetId && t.isHolo === upgSelectedTargetHolo) ? 'selected' : '';
-    return createCardHTML(t.card, t.isHolo, sel, `onclick="selectUpgradeTarget('${t.card.id}', ${t.isHolo})"`);
-  }).join('');
+  const tSort = document.getElementById('upg-target-sort')?.value || 'price-asc';
+  const searchQ = (document.getElementById('upg-target-search')?.value || '').trim().toLowerCase();
+  const holoMode = document.getElementById('upg-target-holo-filter')?.value || 'all';
+
+  let allTargets = [];
+  state.cards.forEach(card => {
+    if (holoMode === 'all' || holoMode === 'normal') {
+      allTargets.push({ card, isHolo: false });
+    }
+    if (holoMode === 'all' || holoMode === 'holo') {
+      allTargets.push({ card, isHolo: true });
+    }
+  });
+
+  if (searchQ) {
+    const cleanNum = searchQ.replace(/^#/, '');
+    allTargets = allTargets.filter(t => {
+      const nameMatch = String(t.card.name || '').toLowerCase().includes(searchQ);
+      const rarMatch = String(getRarityObj(t.card.rarity)?.name || '').toLowerCase().includes(searchQ);
+      const upcomingMatch = isUpcomingCard(t.card) && 'upcoming'.includes(searchQ);
+      const topMatch = !isUpcomingCard(t.card) && cleanNum && String(t.card.top) === cleanNum;
+      return nameMatch || rarMatch || upcomingMatch || topMatch;
+    });
+  }
+
+  const sortedTargets = sortItems(allTargets, tSort);
+  const countEl = document.getElementById('upg-targets-count');
+  if (countEl) countEl.textContent = sortedTargets.length;
+
+  const gridEl = document.getElementById('upgrade-target-cards');
+  if (sortedTargets.length === 0) {
+    gridEl.innerHTML = '<div class="hint-text">Карточки по запросу не найдены</div>';
+  } else {
+    gridEl.innerHTML = sortedTargets.map(t => {
+      const sel = (t.card.id === upgSelectedTargetId && t.isHolo === upgSelectedTargetHolo) ? 'selected' : '';
+      return createCardHTML(t.card, t.isHolo, sel, `onclick="selectUpgradeTarget('${t.card.id}', ${t.isHolo})"`);
+    }).join('');
+  }
 }
 
 function selectUpgradeSource(uid) {
@@ -849,7 +931,7 @@ function executeCraft() {
   renderCraftUI();
 }
 
-// === 4) КОЛЛЕКЦИЯ, СТАТИСТИКА И 3D-ПРОСМОТР КАРТЫ (ТОЛЬКО ПРИ ЗАЖАТИИ) ===
+// === 4) КОЛЛЕКЦИЯ, СТАТИСТИКА И 3D-ПРОСМОТР КАРТЫ ===
 function renderCollection() {
   const sortMode = document.getElementById('col-sort').value;
   const mapped = state.inventory.map(item => ({
@@ -894,7 +976,7 @@ function openCard3DModal(cardId, isHolo) {
   document.getElementById('card-3d-front').innerHTML = createCardHTML(card, isHolo);
   document.getElementById('card-3d-info').innerHTML = `
     <div><span>Название:</span><b>${card.name}</b></div>
-    <div><span>Позиция в топе:</span><b>${card.top > 0 ? '#' + card.top : 'Без топа (★)'}</b></div>
+    <div><span>Позиция в топе:</span><b>${isUpcomingCard(card) ? 'UPCOMING' : '#' + card.top}</b></div>
     <div><span>Редкость:</span><b style="color:${rar.color}">${rar.name}</b></div>
     <div><span>Тип:</span><b>${isHolo ? '✦ HOLO' : 'Обычная'}</b></div>
     <div><span>Шанс выпадения:</span><b>${getCardDropChancePercentText(card, isHolo)}</b></div>
@@ -986,7 +1068,7 @@ function sellAllDuplicates() {
   renderCollection();
 }
 
-// === 5) АДМИН-ПАНЕЛЬ (ПАРОЛЬ 12356790) ===
+// === 5) АДМИН-ПАНЕЛЬ (ПАРОЛЬ 12356790) + DRAG-AND-DROP ===
 function checkAdminPass() {
   const pass = document.getElementById('admin-pass-input').value;
   if (pass === '12356790') {
@@ -1003,18 +1085,84 @@ function saveCloudConfig() {
   syncCatalogFromCloud(false);
 }
 
+function handleRarityDrop(targetId) {
+  if (!draggedRarityId || draggedRarityId === targetId) return;
+  const fromIdx = state.rarities.findIndex(r => r.id === draggedRarityId);
+  const toIdx = state.rarities.findIndex(r => r.id === targetId);
+  if (fromIdx === -1 || toIdx === -1) return;
+
+  const [moved] = state.rarities.splice(fromIdx, 1);
+  state.rarities.splice(toIdx, 0, moved);
+  draggedRarityId = null;
+
+  saveState(true);
+  renderAdminUI();
+}
+
+function handleCardDragDrop(targetCardId) {
+  if (!draggedCardId || draggedCardId === targetCardId) return;
+  const fromIdx = state.cards.findIndex(c => c.id === draggedCardId);
+  const toIdx = state.cards.findIndex(c => c.id === targetCardId);
+  if (fromIdx === -1 || toIdx === -1) return;
+
+  const movedCard = state.cards[fromIdx];
+  const targetCard = state.cards[toIdx];
+
+  if (isUpcomingCard(movedCard)) {
+    // UPCOMING-карточка перетаскивается среди UPCOMING без смены топа
+    const [removed] = state.cards.splice(fromIdx, 1);
+    removed.top = 0;
+    const newToIdx = state.cards.findIndex(c => c.id === targetCardId);
+    state.cards.splice(newToIdx >= 0 ? newToIdx : 0, 0, removed);
+  } else {
+    // Карта основного топа: если бросили на другой элемент основного топа — ставим на его место в топе
+    const [removed] = state.cards.splice(fromIdx, 1);
+    if (!isUpcomingCard(targetCard)) {
+      const insertAt = state.cards.findIndex(c => c.id === targetCardId);
+      removed.top = Number(targetCard.top) || 1;
+      state.cards.splice(insertAt >= 0 ? insertAt : state.cards.length, 0, removed);
+    } else {
+      // Если бросили на UPCOMING — ставим в начало основного топа (#1)
+      const firstRankedIdx = state.cards.findIndex(c => !isUpcomingCard(c));
+      removed.top = 1;
+      if (firstRankedIdx >= 0) {
+        state.cards.splice(firstRankedIdx, 0, removed);
+      } else {
+        state.cards.push(removed);
+      }
+    }
+  }
+
+  draggedCardId = null;
+  saveState(true);
+  renderAdminUI();
+}
+
 function renderAdminUI() {
-  normalizeRaritiesWeights();
+  recalculateRarityHierarchy();
+  normalizeCardsAndRanks();
   updateCloudSyncBadge();
   document.getElementById('cfg-bin-id').value = state.cloud.binId || '';
   document.getElementById('cfg-api-key').value = state.cloud.apiKey || '';
 
-  document.getElementById('admin-rarities-list').innerHTML = state.rarities.map(r => {
+  const totalRars = state.rarities.length;
+  document.getElementById('admin-rarities-list').innerHTML = state.rarities.map((r, idx) => {
     const pctText = formatChancePercent(r.weight);
+    const tierLabel = idx === 0 ? 'МАКС' : (idx === totalRars - 1 ? 'НИЗ' : `#${idx + 1}`);
     return `
-      <div class="rar-manage-card" style="--rar-color:${r.color}; --rar-bg:${r.bg};">
+      <div class="rar-manage-card"
+           draggable="true"
+           ondragstart="draggedRarityId='${r.id}'; this.style.opacity='0.5';"
+           ondragend="this.style.opacity='1'; draggedRarityId=null; document.querySelectorAll('.rar-manage-card').forEach(el=>el.classList.remove('drag-over'));"
+           ondragover="event.preventDefault(); this.classList.add('drag-over');"
+           ondragleave="this.classList.remove('drag-over');"
+           ondrop="event.preventDefault(); this.classList.remove('drag-over'); handleRarityDrop('${r.id}');"
+           style="--rar-color:${r.color}; --rar-bg:${r.bg};">
         <div class="rar-manage-top">
-          <span style="color:${r.color};">${r.name} (${pctText})</span>
+          <div>
+            <span class="rar-rank-pill">${tierLabel}</span>
+            <span style="color:${r.color};">${r.name} (${pctText})</span>
+          </div>
           <button onclick="adminDeleteRarity('${r.id}')" style="background:none;border:none;color:#f87171;cursor:pointer;font-weight:900;">✕</button>
         </div>
         <div class="rar-chance-row">
@@ -1063,7 +1211,7 @@ function renderAdminUI() {
 
   document.getElementById('admin-case-cards-selector').innerHTML = state.cards.map(c => `
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
-      <input type="checkbox" class="case-card-cb" value="${c.id}"> #${c.top} ${c.name}
+      <input type="checkbox" class="case-card-cb" value="${c.id}"> ${isUpcomingCard(c) ? '[UPCOMING]' : '#' + c.top} ${c.name}
     </label>
   `).join('');
 
@@ -1071,7 +1219,13 @@ function renderAdminUI() {
   document.getElementById('admin-all-cards').innerHTML = state.cards.map(c => {
     const isEditing = c.id === editingCardId ? 'editing-target' : '';
     const delBtn = `<button class="secondary-btn" style="width:100%;margin-top:6px;padding:6px 8px;font-size:11px;color:#f87171;" onclick="event.stopPropagation(); adminDeleteCard('${c.id}')">Удалить</button>`;
-    return createCardHTML(c, false, isEditing, `onclick="openEditCardPanel('${c.id}')"`, delBtn);
+    const dndAttrs = `draggable="true" ` +
+      `ondragstart="draggedCardId='${c.id}'; this.style.opacity='0.5';" ` +
+      `ondragend="this.style.opacity='1'; draggedCardId=null; document.querySelectorAll('#admin-all-cards .card-wrap').forEach(el=>el.classList.remove('drag-over'));" ` +
+      `ondragover="event.preventDefault(); this.classList.add('drag-over');" ` +
+      `ondragleave="this.classList.remove('drag-over');" ` +
+      `ondrop="event.preventDefault(); this.classList.remove('drag-over'); handleCardDragDrop('${c.id}');"`;
+    return createCardHTML(c, false, isEditing, `onclick="openEditCardPanel('${c.id}')"`, delBtn, dndAttrs);
   }).join('');
 
   if (editingCardId && state.cards.some(c => c.id === editingCardId)) {
@@ -1091,7 +1245,7 @@ function openEditCardPanel(cardId) {
   editingCardId = card.id;
   document.getElementById('admin-edit-card-panel').classList.remove('hidden');
   document.getElementById('edit-card-heading').textContent = card.name;
-  document.getElementById('edit-card-top').value = card.top ?? '';
+  document.getElementById('edit-card-top').value = isUpcomingCard(card) ? 0 : (card.top ?? 0);
   document.getElementById('edit-card-name').value = card.name ?? '';
   document.getElementById('edit-card-rarity').value = card.rarity;
   document.getElementById('edit-card-price').value = card.price ?? 500;
@@ -1127,7 +1281,7 @@ function saveEditedCard() {
   const idx = state.cards.findIndex(c => c.id === editingCardId);
   if (idx === -1) return;
 
-  const top = Number(document.getElementById('edit-card-top').value) || 0;
+  const rawTop = Number(document.getElementById('edit-card-top').value) || 0;
   const name = document.getElementById('edit-card-name').value.trim();
   const rarity = document.getElementById('edit-card-rarity').value;
   const price = Number(document.getElementById('edit-card-price').value) || 500;
@@ -1135,14 +1289,30 @@ function saveEditedCard() {
 
   if (!name) return;
 
-  state.cards[idx] = {
+  const updated = {
     ...state.cards[idx],
-    top,
+    top: rawTop > 0 ? rawTop : 0,
     name,
     rarity,
     price,
     img
   };
+
+  state.cards.splice(idx, 1);
+
+  if (!isUpcomingCard(updated) && rawTop > 0) {
+    const ranked = state.cards.filter(c => !isUpcomingCard(c));
+    const clampedPos = Math.min(ranked.length, Math.max(0, rawTop - 1));
+    const targetRankedCard = ranked[clampedPos];
+    if (targetRankedCard) {
+      const insertIdx = state.cards.findIndex(c => c.id === targetRankedCard.id);
+      state.cards.splice(insertIdx, 0, updated);
+    } else {
+      state.cards.push(updated);
+    }
+  } else {
+    state.cards.push(updated);
+  }
 
   saveState(true);
   document.getElementById('edit-card-heading').textContent = name;
@@ -1188,7 +1358,7 @@ function updateCardPreview() {
   const previewBox = document.getElementById('card-creator-preview');
   if (!previewBox) return;
 
-  const top = Number(document.getElementById('new-card-top').value) || 1;
+  const top = Number(document.getElementById('new-card-top').value) || 0;
   const name = document.getElementById('new-card-name').value.trim() || 'Tidal Wave';
   const rarity = document.getElementById('new-card-rarity').value || state.rarities[0].id;
   const price = Number(document.getElementById('new-card-price').value) || 22000;
@@ -1211,7 +1381,7 @@ function adminAddRarity() {
   if (existing) {
     Object.assign(existing, { name, color, bg, weight, effect });
   } else {
-    state.rarities.push({ id, name, color, bg, order: state.rarities.length + 1, weight, effect });
+    state.rarities.push({ id, name, color, bg, order: 1, weight, effect });
   }
   saveState(true);
   renderAdminUI();
@@ -1225,14 +1395,37 @@ function adminDeleteRarity(id) {
 }
 
 function adminAddCard() {
-  const top = Number(document.getElementById('new-card-top').value) || 0;
+  const rawTop = Number(document.getElementById('new-card-top').value) || 0;
   const name = document.getElementById('new-card-name').value.trim();
   const rarity = document.getElementById('new-card-rarity').value;
   const price = Number(document.getElementById('new-card-price').value) || 500;
   const img = document.getElementById('new-card-img').value.trim() || 'https://placehold.co/320x180/181a20/ffffff?text=GD';
 
   if (!name) return;
-  state.cards.push({ id: 'c_' + Date.now(), top, name, rarity, price, img });
+
+  const newCard = {
+    id: 'c_' + Date.now(),
+    top: rawTop > 0 ? rawTop : 0,
+    name,
+    rarity,
+    price,
+    img
+  };
+
+  if (!isUpcomingCard(newCard) && rawTop > 0) {
+    const ranked = state.cards.filter(c => !isUpcomingCard(c));
+    const clampedPos = Math.min(ranked.length, Math.max(0, rawTop - 1));
+    const targetRankedCard = ranked[clampedPos];
+    if (targetRankedCard) {
+      const insertIdx = state.cards.findIndex(c => c.id === targetRankedCard.id);
+      state.cards.splice(insertIdx, 0, newCard);
+    } else {
+      state.cards.push(newCard);
+    }
+  } else {
+    state.cards.push(newCard);
+  }
+
   saveState(true);
   renderAdminUI();
 }
