@@ -176,11 +176,11 @@
           <div class="trade-side">
             <h3>Твое предложение (<span id="my-trade-sum">0</span> ₽)</h3>
             <div id="my-trade-offer" class="cards-grid small-grid trade-box"></div>
-            <h4>Твои карточки:</h4>
+            <h4>Твои карточки (<span id="trade-inv-count">0</span>):</h4>
             <div id="trade-my-inv" class="cards-grid small-grid"></div>
           </div>
           <div class="trade-center">
-            <div class="trade-status" id="trade-status-text">Выбери свои карты для обмена</div>
+            <div class="trade-status" id="trade-status-text">Нажми на свои карты внизу, чтобы добавить в трейд</div>
             <button id="confirm-trade-btn" class="primary-btn big-btn" onclick="confirmTrade()" disabled>Обменять</button>
           </div>
           <div class="trade-side">
@@ -249,7 +249,7 @@
           <div class="section-header">
             <h2>Панель управления GD LUDKA</h2>
             <div class="admin-cloud-actions">
-              <button id="push-cloud-catalog-btn" class="primary-btn" onclick="pushCatalogToCloud()">☁ Залить карточки в облако</button>
+              <button id="push-cloud-catalog-btn" class="primary-btn" onclick="pushCatalogToCloud()">☁ Залить всё в облако</button>
               <button class="secondary-btn" onclick="syncCatalogFromCloud(true)">↓ Загрузить из облака</button>
             </div>
           </div>
@@ -257,7 +257,7 @@
           <!-- Настройка общей лайв-ленты и облачного каталога -->
           <div class="admin-block">
             <h3>Облако для всех игроков (JSONBin.io)</h3>
-            <p class="hint-text">Укажи Bin ID и X-Master-Key — через этот же Bin работает и общая лента дропа, и кнопка «Залить карточки в облако» для всех игроков:</p>
+            <p class="hint-text">Укажи Bin ID и X-Master-Key — через этот же Bin работает и общая лента дропа, и кнопка «Залить всё в облако» (карты, редкости, кейсы и Holo) для всех игроков:</p>
             <div class="form-row">
               <input type="text" id="cfg-bin-id" placeholder="JSONBin ID">
               <input type="text" id="cfg-api-key" placeholder="X-Master-Key">
