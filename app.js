@@ -18,7 +18,6 @@ let currentCaseId = null;
 let isSpinning = false;
 let lastWonCard = null;
 
-// Переменные для апгрейда, трейда и крафта
 let upgSelectedSourceUid = null;
 let upgSelectedTargetId = null;
 let upgSelectedTargetHolo = false;
@@ -109,16 +108,17 @@ function createCardHTML(card, isHolo = false, extraClass = '', clickAttr = '') {
   const holoClass = isHolo ? 'is-holo' : '';
 
   return `
-    <div class="gd-card ${holoClass} ${effectClass} ${extraClass}" 
+    <div class="gd-card ${holoClass} ${effectClass} ${extraClass}"
          style="--rar-color: ${rar.color}; --rar-bg: ${rar.bg};"
          ${clickAttr}>
+      <div class="card-surface-fx"></div>
       <div class="card-top-row">
         <span class="card-rank">${card.top > 0 ? '#' + card.top : '★'}</span>
         <span class="card-rarity-badge">${rar.name}</span>
       </div>
       <img class="card-thumb" src="${card.img}" alt="${card.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=GD+LEVEL'">
       <div class="card-title">${card.name}</div>
-      <div class="card-footer">
+      <div class="card-bottom-area">
         <span class="card-price">${price} ₽</span>
         ${isHolo ? '<span class="holo-pill">✦ HOLO</span>' : ''}
       </div>
@@ -138,7 +138,7 @@ function giveCardToPlayer(card, isHolo, sourceLabel = 'Кейс') {
   return item;
 }
 
-// === ОБЩАЯ ЛЕНТА ЛАЙВ-ДРОПА (ДЛЯ ВСЕХ ИГРОКОВ) ===
+// === ОБЩАЯ ЛЕНТА ЛАЙВ-ДРОПА (JSONBIN) ===
 async function pushLiveDrop(card, isHolo, source) {
   const rar = getRarityObj(card.rarity);
   const dropEntry = {
@@ -157,7 +157,6 @@ async function pushLiveDrop(card, isHolo, source) {
   saveState();
   renderLiveFeed();
 
-  // Синхронизация в облако JSONBin, чтобы видели другие игроки
   if (state.cloud.binId && state.cloud.apiKey) {
     try {
       const res = await fetch(`https://api.jsonbin.io/v3/b/${state.cloud.binId}/latest`, {
@@ -211,8 +210,7 @@ function renderLiveFeed() {
 function renderCasesList() {
   const sortMode = document.getElementById('cases-sort').value;
   const sorted = [...state.cases].sort((a, b) => sortMode === 'price-asc' ? a.price - b.price : b.price - a.price);
-  const grid = document.getElementById('cases-list');
-  grid.innerHTML = sorted.map(c => `
+  document.getElementById('cases-list').innerHTML = sorted.map(c => `
     <div class="case-item" onclick="openCaseView('${c.id}')">
       <img src="${c.img}" alt="${c.name}">
       <h3>${c.name}</h3>
@@ -249,7 +247,7 @@ function renderCaseContents() {
 function rollWeightedCard(poolCards) {
   let totalWeight = 0;
   const weighted = poolCards.map(card => {
-    const w = getRarityObj(card.rarity).weight || 10;
+    const w = Math.max(0.01, Number(getRarityObj(card.rarity).weight) || 1);
     totalWeight += w;
     return { card, w };
   });
@@ -297,8 +295,8 @@ function spinCurrentCase(fast = false) {
   document.getElementById('spin-case-btn').disabled = true;
 
   const track = document.getElementById('roulette-track');
-  const cardWidth = 170; // 160px + 10px gap
-  const offset = 38 * cardWidth + (Math.random() * 60 - 30) + 80;
+  const cardWidth = 207;
+  const offset = 38 * cardWidth + (Math.random() * 60 - 30) + 95;
 
   setTimeout(() => {
     track.style.transition = fast ? 'transform 0.8s cubic-bezier(0.15, 0.85, 0.25, 1)' : 'transform 4.2s cubic-bezier(0.12, 0.88, 0.22, 1)';
@@ -331,7 +329,7 @@ function buyPack() {
   saveState();
 }
 
-// === 3) АПГРЕЙДЫ (ВЫБОР ИЗ 15 СЛУЧАЙНЫХ КАРТ) ===
+// === 3) АПГРЕЙДЫ ===
 function rerollUpgradeTargets() {
   upgRandomPool = [];
   for (let i = 0; i < 15; i++) {
@@ -344,7 +342,6 @@ function rerollUpgradeTargets() {
 }
 
 function renderUpgradeUI() {
-  // Твой инвентарь
   const invSort = document.getElementById('upg-inv-sort').value;
   const myMapped = state.inventory.map(item => ({
     ...item,
@@ -364,7 +361,7 @@ function renderUpgradeUI() {
 function renderUpgradeTargets() {
   const tSort = document.getElementById('upg-target-sort').value;
   const sortedTargets = sortItems(upgRandomPool, tSort);
-  document.getElementById('upgrade-target-cards').innerHTML = sortedTargets.map((t, idx) => {
+  document.getElementById('upgrade-target-cards').innerHTML = sortedTargets.map(t => {
     const sel = (t.card.id === upgSelectedTargetId && t.isHolo === upgSelectedTargetHolo) ? 'selected' : '';
     return createCardHTML(t.card, t.isHolo, sel, `onclick="selectUpgradeTarget('${t.card.id}', ${t.isHolo})"`);
   }).join('');
@@ -405,11 +402,11 @@ function updateUpgradeSlotsAndChance() {
 
     chanceText.textContent = chance.toFixed(2) + '%';
     const deg = (chance / 100) * 360;
-    circle.style.background = `conic-gradient(var(--accent) ${deg}deg, #262934 ${deg}deg)`;
+    circle.style.background = `conic-gradient(var(--accent-gold) ${deg}deg, #262934 ${deg}deg)`;
     btn.disabled = false;
   } else {
     chanceText.textContent = '0.00%';
-    circle.style.background = `conic-gradient(var(--accent) 0deg, #262934 0deg)`;
+    circle.style.background = `conic-gradient(var(--accent-gold) 0deg, #262934 0deg)`;
     btn.disabled = true;
   }
 }
@@ -434,7 +431,6 @@ function executeUpgrade() {
   document.getElementById('do-upgrade-btn').disabled = true;
 
   setTimeout(() => {
-    // Удаляем исходную карту
     state.inventory.splice(srcIdx, 1);
     upgSelectedSourceUid = null;
 
@@ -478,7 +474,6 @@ function recalculateBotOffer() {
     }
   });
 
-  // Бот дает ровно столько же или на 2-10% меньше
   let targetBotBudget = Math.floor(mySum * (0.90 + Math.random() * 0.10));
   tradeBotOffer = [];
 
@@ -534,7 +529,7 @@ function confirmTrade() {
   alert('Трейд успешно завершен!');
 }
 
-// === 7) КРАФТЫ (10 КАРТ ОДНОЙ РЕДКОСТИ -> 1 СЛЕДУЮЩЕЙ) ===
+// === 7) КРАФТЫ (10 -> 1) ===
 function renderCraftUI() {
   const sortMode = document.getElementById('craft-sort').value;
   const mapped = state.inventory.map(item => ({
@@ -548,7 +543,6 @@ function renderCraftUI() {
     return createCardHTML(item.card, item.isHolo, isSel ? 'selected' : '', `onclick="toggleCraftCard('${item.uid}')"`);
   }).join('');
 
-  // Отрисовка 10 слотов
   const slotsEl = document.getElementById('craft-selected-slots');
   let slotsHtml = '';
   let sumPrice = 0;
@@ -611,7 +605,6 @@ function executeCraft() {
   const candidates = state.cards.filter(c => c.rarity === nextRar.id);
   const pool = candidates.length > 0 ? candidates : state.cards;
 
-  // Чем выше средняя цена 10 вложенных карт, тем более дорогую карту следующей редкости выдаем
   const sortedPool = [...pool].sort((a, b) => a.price - b.price);
   const minInput = Math.min(...state.cards.filter(c => c.rarity === baseRarityId).map(c => c.price));
   const maxInput = Math.max(...state.cards.filter(c => c.rarity === baseRarityId).map(c => c.price * HOLO_MULTIPLIER));
@@ -649,7 +642,7 @@ function renderCollection() {
     return `
       <div>
         ${createCardHTML(item.card, item.isHolo)}
-        <button class="secondary-btn" style="width:100%; margin-top:6px; font-size:12px;" onclick="sellInventoryCard('${item.uid}')">
+        <button class="secondary-btn" style="width:100%; margin-top:8px; font-size:12px;" onclick="sellInventoryCard('${item.uid}')">
           Продать за ${price} ₽
         </button>
       </div>
@@ -707,22 +700,53 @@ function saveCloudConfig() {
   fetchCloudLiveDrops();
 }
 
+function getTotalRarityWeight() {
+  return state.rarities.reduce((sum, r) => sum + Math.max(0, Number(r.weight) || 0), 0) || 1;
+}
+
 function renderAdminUI() {
   document.getElementById('cfg-bin-id').value = state.cloud.binId || '';
   document.getElementById('cfg-api-key').value = state.cloud.apiKey || '';
 
-  // Редкости
-  document.getElementById('admin-rarities-list').innerHTML = state.rarities.map(r => `
-    <div class="rar-tag" style="background:${r.bg}; border: 1px solid ${r.color}; color:#fff;">
-      ${r.name} (вес: ${r.weight}, эффект: ${r.effect})
-      <button onclick="adminDeleteRarity('${r.id}')" style="background:none;border:none;color:#f87171;cursor:pointer;">✕</button>
-    </div>
-  `).join('');
+  const totalW = getTotalRarityWeight();
+
+  // Редкости + прямое редактирование шанса/веса и эффекта
+  document.getElementById('admin-rarities-list').innerHTML = state.rarities.map(r => {
+    const pct = (((Number(r.weight) || 0) / totalW) * 100).toFixed(1);
+    return `
+      <div class="rar-manage-card" style="--rar-color:${r.color};">
+        <div class="rar-manage-top">
+          <span style="color:${r.color};">${r.name} (~${pct}%)</span>
+          <button onclick="adminDeleteRarity('${r.id}')" style="background:none;border:none;color:#f87171;cursor:pointer;font-weight:900;">✕</button>
+        </div>
+        <div class="rar-chance-row">
+          <span>Шанс (вес):</span>
+          <input type="number" min="0" value="${r.weight ?? 10}" onchange="updateRarityWeight('${r.id}', this.value)">
+        </div>
+        <div class="rar-chance-row">
+          <span>Эффект:</span>
+          <select onchange="updateRarityEffect('${r.id}', this.value)">
+            <option value="none" ${r.effect === 'none' ? 'selected' : ''}>Нет</option>
+            <option value="shine-sweep" ${r.effect === 'shine-sweep' ? 'selected' : ''}>Блик сверху вниз</option>
+            <option value="aura" ${r.effect === 'aura' ? 'selected' : ''}>Аура</option>
+            <option value="glow" ${r.effect === 'glow' ? 'selected' : ''}>Свечение (Glow)</option>
+            <option value="rainbow-shift" ${r.effect === 'rainbow-shift' ? 'selected' : ''}>Перелив карточки</option>
+            <option value="sparkle" ${r.effect === 'sparkle' ? 'selected' : ''}>Искры</option>
+          </select>
+        </div>
+      </div>
+    `;
+  }).join('');
 
   // Селект редкостей для новой карты
-  document.getElementById('new-card-rarity').innerHTML = state.rarities.map(r =>
+  const rarSelect = document.getElementById('new-card-rarity');
+  const prevSelected = rarSelect.value;
+  rarSelect.innerHTML = state.rarities.map(r =>
     `<option value="${r.id}">${r.name}</option>`
   ).join('');
+  if (prevSelected && state.rarities.some(r => r.id === prevSelected)) {
+    rarSelect.value = prevSelected;
+  }
 
   // Чекбоксы карт для нового кейса
   document.getElementById('admin-case-cards-selector').innerHTML = state.cards.map(c => `
@@ -736,16 +760,48 @@ function renderAdminUI() {
   document.getElementById('admin-all-cards').innerHTML = state.cards.map(c => `
     <div>
       ${createCardHTML(c, false)}
-      <button class="secondary-btn" style="width:100%;margin-top:4px;color:#f87171;" onclick="adminDeleteCard('${c.id}')">Удалить</button>
+      <button class="secondary-btn" style="width:100%;margin-top:8px;color:#f87171;" onclick="adminDeleteCard('${c.id}')">Удалить</button>
     </div>
   `).join('');
+
+  updateCardPreview();
+}
+
+function updateRarityWeight(id, newVal) {
+  const rar = state.rarities.find(r => r.id === id);
+  if (!rar) return;
+  rar.weight = Math.max(0, Number(newVal) || 0);
+  saveState();
+  renderAdminUI();
+}
+
+function updateRarityEffect(id, newEffect) {
+  const rar = state.rarities.find(r => r.id === id);
+  if (!rar) return;
+  rar.effect = newEffect;
+  saveState();
+  renderAdminUI();
+}
+
+function updateCardPreview() {
+  const previewBox = document.getElementById('card-creator-preview');
+  if (!previewBox) return;
+
+  const top = Number(document.getElementById('new-card-top').value) || 1;
+  const name = document.getElementById('new-card-name').value.trim() || 'Tidal Wave';
+  const rarity = document.getElementById('new-card-rarity').value || state.rarities[0].id;
+  const price = Number(document.getElementById('new-card-price').value) || 22000;
+  const img = document.getElementById('new-card-img').value.trim() || 'https://i.ytimg.com/vi/9fsZ014qB3s/mqdefault.jpg';
+  const isHolo = Boolean(document.getElementById('preview-holo-toggle')?.checked);
+
+  previewBox.innerHTML = createCardHTML({ id: 'preview', top, name, rarity, price, img }, isHolo);
 }
 
 function adminAddRarity() {
   const name = document.getElementById('new-rar-name').value.trim();
   const color = document.getElementById('new-rar-color').value;
   const bg = document.getElementById('new-rar-bg').value;
-  const weight = Number(document.getElementById('new-rar-weight').value) || 50;
+  const weight = Math.max(0, Number(document.getElementById('new-rar-weight').value) || 10);
   const effect = document.getElementById('new-rar-effect').value;
   if (!name) return;
 
