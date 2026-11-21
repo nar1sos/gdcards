@@ -107,41 +107,57 @@ body {
   font-size: 12px;
 }
 
-/* ОСНОВНОЙ МАКЕТ: КОНТЕНТ + ПРАВАЯ ЛАЙВ-ЛЕНТА */
+/* ЖЁСТКИЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ: КОНТЕНТ СЛЕВА + ЛАЙВ-ДРОП СПРАВА */
 .workspace-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
   min-height: calc(100vh - 60px);
 }
 
 .container {
-  max-width: 1320px;
-  width: 100%;
-  margin: 0 auto;
+  flex: 1;
+  min-width: 0;
   padding: 24px;
 }
 
 .live-sidebar-right {
-  background: #121318;
+  width: 225px;
+  min-width: 225px;
+  flex-shrink: 0;
+  background: #111319;
   border-left: 1px solid var(--border);
-  padding: 14px 12px;
   position: sticky;
   top: 60px;
   height: calc(100vh - 60px);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .live-sidebar-header {
-  font-size: 12px;
+  padding: 12px 10px 10px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  background: #151821;
+}
+
+.live-brand-title {
+  font-size: 14px;
   font-weight: 900;
-  color: #4ade80;
+  color: #ffffff;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding-bottom: 10px;
-  margin-bottom: 10px;
-  border-bottom: 1px solid var(--border);
+  justify-content: center;
+  gap: 6px;
+}
+
+.live-brand-sub {
+  font-size: 10px;
+  font-weight: 800;
+  color: #8b92a5;
+  margin-top: 2px;
+  letter-spacing: 0.6px;
 }
 
 .pulse-dot {
@@ -155,44 +171,50 @@ body {
 .live-drop-feed {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   overflow-y: auto;
-  padding-right: 2px;
+  scrollbar-width: thin;
 }
 
+/* ВЕРТИКАЛЬНЫЕ ПЛИТКИ ДРОПА В СТИЛЕ СКРИНШОТА CASE-BATTLE */
 .live-item {
+  position: relative;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 9px;
-  background: var(--bg-card);
-  border-left: 3px solid var(--rar-color, #3b82f6);
-  padding: 8px 10px;
-  border-radius: 8px;
-  flex-shrink: 0;
+  text-align: center;
+  padding: 12px 10px;
+  border-left: 4px solid var(--rar-color, #3b82f6);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--rar-color, #3b82f6) 24%, #141720) 0%, #141720 100%);
   animation: slideIn 0.25s ease;
 }
+
 .live-item img {
-  width: 48px;
-  height: 30px;
+  width: 112px;
+  height: 63px;
   object-fit: cover;
-  border-radius: 5px;
-  flex-shrink: 0;
+  border-radius: 6px;
+  margin-bottom: 7px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.45);
 }
-.live-item-info {
-  font-size: 11px;
-  line-height: 1.3;
-  overflow: hidden;
-}
-.live-item-info b {
-  display: block;
-  color: #fff;
+
+.live-item-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.25;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.live-item-info span {
-  color: var(--text-muted);
-  display: block;
+
+.live-item-sub {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+  margin-top: 2px;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -252,16 +274,23 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 }
 .secondary-btn:hover { border-color: var(--accent-gold); }
 
-/* ВЫТЯНУТАЯ КАРТОЧКА УРОВНЯ — НИКОГДА НЕ СЖИМАЕТСЯ В КВАДРАТ */
+/* КАРТОЧКИ УРОВНЕЙ С ДВУХЦВЕТНЫМ ГРАДИЕНТОМ РЕДКОСТИ */
 .cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+  gap: 16px;
   align-items: start;
 }
+
+/* Более компактные карточки для коллекции и админки */
+.collection-compact-grid {
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  gap: 13px;
+}
+
 .small-grid {
-  grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 12px;
   align-items: start;
 }
 
@@ -274,12 +303,11 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 .gd-card {
   position: relative;
   width: 100%;
-  aspect-ratio: 3 / 4.35;
-  min-height: 290px;
-  background: var(--rar-bg, #1b1318);
+  aspect-ratio: 3 / 4.25;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--rar-color) 32%, var(--rar-bg)) 0%, var(--rar-bg, #14161c) 100%);
   border: 3px solid var(--rar-color, #e14b5a);
-  border-radius: 16px;
-  padding: 14px;
+  border-radius: 15px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -302,13 +330,13 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   position: relative;
   z-index: 3;
 }
 
 .card-rank {
-  font-size: 21px;
+  font-size: 19px;
   font-weight: 900;
   color: #ffffff;
   letter-spacing: -0.5px;
@@ -317,10 +345,10 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 .card-rarity-badge {
   background: var(--rar-color, #e14b5a);
   color: #111318;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 900;
-  padding: 4px 10px;
-  border-radius: 7px;
+  padding: 3px 8px;
+  border-radius: 6px;
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
@@ -328,19 +356,20 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 .card-thumb {
   width: 100%;
   aspect-ratio: 16 / 9;
-  border-radius: 10px;
+  border-radius: 9px;
   object-fit: cover;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   position: relative;
   z-index: 3;
+  -webkit-user-drag: none;
 }
 
 .card-title {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 800;
   color: #ffffff;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -352,18 +381,18 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   position: relative;
   z-index: 3;
 }
 
 .card-price {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 900;
   color: var(--accent-green);
 }
 
-/* HOLO ПЕРЕЛИВ: ТОЛЬКО НА HOLO-КАРТАХ, И НА САМОЙ КАРТЕ, И НА ОБЛОЖКЕ */
+/* HOLO ПЕРЕЛИВ: ТОЛЬКО НА HOLO-КАРТАХ (И КАРТА, И ОБЛОЖКА) */
 .gd-card.is-holo .holo-full-overlay {
   position: absolute;
   inset: 0;
@@ -390,34 +419,31 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   align-self: flex-start;
   background: linear-gradient(90deg, #fbcfe8, #bae6fd, #fef08a);
   color: #111827;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 900;
-  padding: 3px 9px;
-  border-radius: 7px;
+  padding: 2px 8px;
+  border-radius: 6px;
   letter-spacing: 0.4px;
   position: relative;
   z-index: 6;
 }
 
-/* ЭФФЕКТ РЕДКОСТИ: ПЕРЕЛИВ ЦВЕТА РЕДКОСТИ (НЕ HOLO) */
+/* ЭФФЕКТЫ РЕДКОСТИ */
 .gd-card.effect-rainbow-shift {
   animation: rarityColorCycle 4s linear infinite;
 }
 
-/* ЭФФЕКТ РЕДКОСТИ: ЛЕВИТИРУЮЩАЯ АУРА */
 .gd-card.effect-aura {
   box-shadow:
-    0 0 24px color-mix(in srgb, var(--rar-color) 65%, transparent),
-    inset 0 0 20px color-mix(in srgb, var(--rar-color) 30%, transparent);
+    0 0 22px color-mix(in srgb, var(--rar-color) 65%, transparent),
+    inset 0 0 18px color-mix(in srgb, var(--rar-color) 30%, transparent);
   animation: auraLevitate 2.8s ease-in-out infinite;
 }
 
-/* ЭФФЕКТ РЕДКОСТИ: НЕОНОВОЕ СВЕЧЕНИЕ */
 .gd-card.effect-glow {
   box-shadow: 0 0 18px color-mix(in srgb, var(--rar-color) 60%, transparent);
 }
 
-/* ЭФФЕКТ РЕДКОСТИ: БЛИК СВЕРХУ ВНИЗ */
 .gd-card.effect-shine-sweep .shine-sweep-layer {
   position: absolute;
   left: -15%;
@@ -435,7 +461,6 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   z-index: 6;
 }
 
-/* ЭФФЕКТ РЕДКОСТИ: РАБОЧИЕ МЕРЦАЮЩИЕ ИСКРЫ */
 .gd-card.effect-sparkle .sparkle-layer {
   position: absolute;
   inset: 0;
@@ -459,7 +484,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 /* КЕЙСЫ И РУЛЕТКА */
 .cases-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 18px;
 }
 
@@ -487,7 +512,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 .roulette-wrapper {
   position: relative;
   width: 100%;
-  height: 335px;
+  height: 315px;
   background: var(--bg-panel);
   border: 2px solid var(--border);
   border-radius: 14px;
@@ -512,11 +537,9 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   padding-left: 50%;
   will-change: transform;
 }
-.roulette-track .gd-card {
-  width: 205px;
-  min-width: 205px;
-  height: 295px;
-  aspect-ratio: auto;
+.roulette-track .card-wrap {
+  width: 195px;
+  min-width: 195px;
   flex-shrink: 0;
 }
 .roulette-controls {
@@ -551,10 +574,10 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   gap: 8px;
 }
 
-/* АПГРЕЙД */
+/* АПГРЕЙД (КОЛЕСО РУЛЕТКИ) */
 .upgrade-arena {
   display: grid;
-  grid-template-columns: 1fr 280px 1fr;
+  grid-template-columns: 1fr 270px 1fr;
   gap: 20px;
   background: var(--bg-panel);
   padding: 24px;
@@ -568,50 +591,73 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   border: 1px dashed var(--border);
   border-radius: 14px;
   padding: 16px;
-  min-height: 335px;
+  min-height: 315px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
 }
 .upgrade-slot-box .card-wrap {
-  max-width: 210px;
+  max-width: 190px;
 }
 .slot-label { color: var(--text-muted); font-size: 13px; margin-bottom: 10px; font-weight: 700; }
 .upgrade-wheel-box {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 .chance-circle {
   position: relative;
-  width: 190px;
-  height: 190px;
+  width: 196px;
+  height: 196px;
   border-radius: 50%;
   background: conic-gradient(var(--accent-gold) 0deg, #262934 0deg);
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: inset 0 0 18px rgba(0,0,0,0.6);
 }
 .chance-inner {
-  width: 150px;
-  height: 150px;
+  width: 148px;
+  height: 148px;
   border-radius: 50%;
   background: var(--bg-panel);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  z-index: 2;
 }
 .chance-inner span { font-size: 26px; font-weight: 900; color: var(--accent-gold); }
+
+/* Ротор стрелки по кругу колеса */
+.upgrade-arrow-rotor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  transform: rotate(0deg);
+}
 .upgrade-arrow {
   position: absolute;
-  top: -12px;
-  font-size: 18px;
-  color: #fff;
-  transform-origin: 50% 107px;
+  top: -11px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 20px;
+  color: #ffffff;
+  text-shadow: 0 0 8px #000, 0 0 12px var(--accent-gold);
 }
+
+.upgrade-speed-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
 .upgrade-inventories {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -627,7 +673,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 /* ТРЕЙДЫ И КРАФТЫ */
 .trade-arena {
   display: grid;
-  grid-template-columns: 1fr 220px 1fr;
+  grid-template-columns: 1fr 200px 1fr;
   gap: 16px;
 }
 .trade-side, .admin-block {
@@ -687,7 +733,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 /* СТАТИСТИКА И АДМИНКА */
 .stats-bar {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 14px;
   margin-bottom: 24px;
 }
@@ -717,15 +763,26 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   margin: 12px 0;
   align-items: center;
 }
+.color-pick-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--bg-card);
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
 
 .admin-rarities-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(245px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
   gap: 10px;
   margin-top: 12px;
 }
 .rar-manage-card {
-  background: var(--bg-dark);
+  background: linear-gradient(150deg, color-mix(in srgb, var(--rar-color) 20%, var(--rar-bg)) 0%, var(--rar-bg, #111318) 100%);
   border: 2px solid var(--rar-color, #3b82f6);
   border-radius: 10px;
   padding: 10px 12px;
@@ -747,14 +804,14 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   gap: 8px;
   font-size: 12px;
 }
-.rar-chance-row input {
+.rar-chance-row input[type="text"] {
   width: 118px;
   padding: 5px 8px;
 }
 
 .card-creator-layout {
   display: grid;
-  grid-template-columns: 1fr 240px;
+  grid-template-columns: 1fr 220px;
   gap: 24px;
   align-items: start;
   margin-top: 12px;
@@ -809,7 +866,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   align-items: center;
 }
 .modal-content .card-wrap {
-  max-width: 220px;
+  max-width: 210px;
 }
 .modal-actions {
   display: flex;
@@ -846,12 +903,13 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 }
 
 .stage-3d {
-  width: 230px;
-  height: 330px;
-  perspective: 900px;
+  width: 220px;
+  height: 312px;
+  perspective: 950px;
   cursor: grab;
   touch-action: none;
   margin-bottom: 16px;
+  user-select: none;
 }
 .stage-3d:active { cursor: grabbing; }
 
@@ -860,7 +918,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   height: 100%;
   position: relative;
   transform-style: preserve-3d;
-  transition: transform 0.08s ease-out;
+  transition: transform 0.06s linear;
 }
 
 .card-3d-front, .card-3d-back {
@@ -868,10 +926,11 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   inset: 0;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
-  border-radius: 16px;
+  border-radius: 15px;
   overflow: hidden;
 }
 
+.card-3d-front .card-wrap,
 .card-3d-front .gd-card {
   width: 100%;
   height: 100%;
@@ -882,7 +941,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 
 /* ЗАДНЯЯ СТОРОНА КАРТОЧКИ — СТРОГО ЧЁРНАЯ */
 .card-3d-back {
-  background: #050507;
+  background: #040406;
   border: 3px solid #232630;
   transform: rotateY(180deg);
   display: flex;
@@ -899,7 +958,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   color: #ffffff;
   letter-spacing: 1px;
 }
-.back-brand span { color: var(--accent-gold); }
+.back-brand span { color: var(--accent-gold); margin-left: 5px; }
 .card-3d-back small { color: #717687; font-size: 11px; }
 
 .card-3d-info {
@@ -952,22 +1011,6 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 @keyframes slideIn {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-@media (max-width: 1024px) {
-  .workspace-layout {
-    grid-template-columns: 1fr;
-  }
-  .live-sidebar-right {
-    position: static;
-    height: auto;
-    border-left: none;
-    border-top: 1px solid var(--border);
-  }
-  .live-drop-feed {
-    flex-direction: row;
-    overflow-x: auto;
-  }
 }
 
 @media (max-width: 900px) {
