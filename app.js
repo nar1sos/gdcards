@@ -4,6 +4,7 @@ const SHARED_CLOUD_CONFIG = {
   binId: '6b01dba4ac6210605a9a4b56',
   apiKey: '$2a$10$uRETf0psynxbv1ND6K6TkOEOldfaLwR07Hx7U7imDwBJpF6fJKFRe'
 };
+
 // === СОСТОЯНИЕ И СОХРАНЕНИЕ ===
 const savedCloud = JSON.parse(localStorage.getItem('gd_cloud') || 'null');
 const initialCloud = {
