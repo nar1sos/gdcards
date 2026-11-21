@@ -26,8 +26,7 @@
     <div class="user-panel">
       <input type="text" id="nickname-input" class="nick-input" placeholder="Твой ник" maxlength="16" onchange="saveNickname()">
       <div class="balance-box">
-        <span id="user-balance">2500</span> ₽
-        <button class="free-rub-btn" onclick="addFreeMoney()" title="Пополнить баланс">+1000 ₽</button>
+        <span id="user-balance">700</span> ₽
       </div>
     </div>
   </header>
@@ -98,7 +97,7 @@
         <div id="pack-reveal-area" class="cards-grid" style="margin-top: 25px;"></div>
       </section>
 
-      <!-- 3) СТРАНИЦА АПГРЕЙДОВ (РУЛЕТКА С ВЫБОРОМ СКОРОСТИ) -->
+      <!-- 3) СТРАНИЦА АПГРЕЙДОВ (ВСЕ КАРТЫ + ПОИСК) -->
       <section id="tab-upgrade" class="tab-content">
         <div class="upgrade-arena">
           <div class="upgrade-slot-box">
@@ -151,17 +150,23 @@
 
           <div class="inv-column">
             <div class="section-header">
-              <h3>15 случайных целей</h3>
-              <div>
-                <button class="secondary-btn" onclick="rerollUpgradeTargets()">Обновить 15 карт</button>
+              <h3>Все цели (<span id="upg-targets-count">0</span>)</h3>
+              <div class="upgrade-target-controls">
+                <input type="text" id="upg-target-search" class="upg-search-input" placeholder="Поиск по названию или #топу..." oninput="renderUpgradeTargets()">
+                <select id="upg-target-holo-filter" onchange="renderUpgradeTargets()">
+                  <option value="all">Все (Обычн. + Holo)</option>
+                  <option value="normal">Только обычные</option>
+                  <option value="holo">Только HOLO</option>
+                </select>
                 <select id="upg-target-sort" onchange="renderUpgradeTargets()">
                   <option value="price-asc">Цена ↑</option>
                   <option value="price-desc">Цена ↓</option>
                   <option value="rarity-desc">Редкость ↓</option>
+                  <option value="top-asc">По топу (#1 →)</option>
                 </select>
               </div>
             </div>
-            <div id="upgrade-target-cards" class="cards-grid small-grid"></div>
+            <div id="upgrade-target-cards" class="cards-grid small-grid upgrade-all-targets-scroll"></div>
           </div>
         </div>
       </section>
@@ -265,12 +270,12 @@
             </div>
           </div>
 
-          <!-- Редактор редкостей, градиента из 2 цветов, шансов и эффектов -->
+          <!-- Редактор редкостей с Drag-and-Drop (выше в списке = выше по редкости) -->
           <div class="admin-block">
-            <h3>Редкости, градиент из 2 цветов, шансы и эффекты</h3>
-            <p class="hint-text">Укажи два цвета градиента карточки (Цвет 1 и Цвет 2), вес шанса от 0 до 100 (можно 0.0000000001) и эффект.</p>
+            <h3>Редкости (Drag-and-Drop: выше = реже/круче)</h3>
+            <p class="hint-text">Перетаскивай редкости мышкой вверх/вниз — позиция в списке задаёт иерархию редкости для сортировок и крафта (UPCOMING можно поставить на самый верх).</p>
             <div class="form-row">
-              <input type="text" id="new-rar-name" placeholder="Название редкости">
+              <input type="text" id="new-rar-name" placeholder="Название редкости (напр. UPCOMING)">
               <label class="color-pick-label">Рамка/Цвет 1: <input type="color" id="new-rar-color" value="#ff2a85"></label>
               <label class="color-pick-label">Градиент Цвет 2: <input type="color" id="new-rar-bg" value="#160812"></label>
               <input type="text" id="new-rar-weight" placeholder="Шанс (0..100)" value="25">
@@ -290,10 +295,11 @@
           <!-- Добавление новой карточки + живой предпросмотр -->
           <div class="admin-block">
             <h3>Добавить новую карточку уровня</h3>
+            <p class="hint-text">Укажи номер в топе (например <b>10</b> — встанет на 10-е место и сдвинет остальные вниз) или <b>0</b> / редкость <b>UPCOMING</b> для невышедших демонов.</p>
             <div class="card-creator-layout">
               <div class="creator-form">
                 <div class="form-row">
-                  <input type="number" id="new-card-top" placeholder="# Топ (напр. 1)" oninput="updateCardPreview()">
+                  <input type="number" id="new-card-top" placeholder="# Топ (0 = UPCOMING)" oninput="updateCardPreview()">
                   <input type="text" id="new-card-name" placeholder="Название уровня" oninput="updateCardPreview()">
                 </div>
                 <div class="form-row">
@@ -338,7 +344,7 @@
             <div class="card-creator-layout">
               <div class="creator-form">
                 <div class="form-row">
-                  <input type="number" id="edit-card-top" placeholder="# Топ" oninput="updateEditCardPreview()">
+                  <input type="number" id="edit-card-top" placeholder="# Топ (0 = UPCOMING)" oninput="updateEditCardPreview()">
                   <input type="text" id="edit-card-name" placeholder="Название уровня" oninput="updateEditCardPreview()">
                 </div>
                 <div class="form-row">
@@ -364,11 +370,11 @@
             </div>
           </div>
 
-          <!-- Список всех карт в игре -->
+          <!-- Список всех карт в игре с Drag-and-Drop пересчётом топа -->
           <div class="admin-block">
             <div class="section-header">
               <h3>Все карточки в базе (<span id="admin-cards-count">0</span>)</h3>
-              <span class="hint-text">Нажми на карту, чтобы изменить её</span>
+              <span class="hint-text">Перетаскивай карточки мышкой для смены места в топе (UPCOMING остаются UPCOMING), клик — редактировать</span>
             </div>
             <div id="admin-all-cards" class="cards-grid collection-compact-grid"></div>
           </div>
