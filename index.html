@@ -323,16 +323,36 @@
             </div>
           </div>
 
-          <!-- Создание кейса -->
+          <!-- Создание кейса + предпросмотр кейса -->
           <div class="admin-block">
             <h3>Создать новый кейс</h3>
-            <div class="form-row">
-              <input type="text" id="new-case-name" placeholder="Название кейса">
-              <input type="number" id="new-case-price" placeholder="Цена открытия (₽)">
-              <input type="text" id="new-case-img" placeholder="URL обложки кейса">
-              <button class="primary-btn" onclick="adminAddCase()">Создать кейс</button>
+            <div class="card-creator-layout">
+              <div class="creator-form">
+                <div class="form-row">
+                  <input type="text" id="new-case-name" placeholder="Название кейса" oninput="updateCasePreview()">
+                  <input type="number" id="new-case-price" placeholder="Цена открытия (₽)" oninput="updateCasePreview()">
+                  <input type="text" id="new-case-img" placeholder="URL обложки кейса" style="flex:1;" oninput="updateCasePreview()">
+                </div>
+                <div id="admin-case-cards-selector" class="checkbox-grid" onchange="updateCasePreview()"></div>
+                <div class="form-row" style="margin-top: 14px;">
+                  <button class="primary-btn" onclick="adminAddCase()">Создать кейс</button>
+                </div>
+              </div>
+
+              <div class="creator-preview-box">
+                <div class="slot-label">Предпросмотр кейса</div>
+                <div id="case-creator-preview" style="width:100%;"></div>
+              </div>
             </div>
-            <div id="admin-case-cards-selector" class="checkbox-grid"></div>
+          </div>
+
+          <!-- Список существующих кейсов с возможностью удаления -->
+          <div class="admin-block">
+            <div class="section-header">
+              <h3>Кейсы в базе (<span id="admin-cases-count">0</span>)</h3>
+              <span class="hint-text">Нажми «Удалить», чтобы убрать кейс из каталога</span>
+            </div>
+            <div id="admin-cases-list" class="admin-cases-manage-grid"></div>
           </div>
 
           <!-- Редактор выбранной карточки из базы -->
