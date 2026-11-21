@@ -37,9 +37,7 @@
     <div class="live-indicator">
       <span class="pulse-dot"></span> LIVE DROP
     </div>
-    <div id="live-drop-feed" class="live-drop-feed">
-      <!-- Сюда подгружаются дропы всех игроков -->
-    </div>
+    <div id="live-drop-feed" class="live-drop-feed"></div>
   </section>
 
   <!-- ОСНОВНОЙ КОНТЕЙНЕР -->
@@ -64,7 +62,7 @@
       <div id="case-open-view" class="hidden">
         <button class="back-btn" onclick="closeCaseView()">← Назад к кейсам</button>
         <h2 id="active-case-title" class="case-open-title">Название кейса</h2>
-        
+
         <div class="roulette-wrapper">
           <div class="roulette-pointer"></div>
           <div id="roulette-track" class="roulette-track"></div>
@@ -107,16 +105,14 @@
       <div id="pack-reveal-area" class="cards-grid" style="margin-top: 25px;"></div>
     </section>
 
-    <!-- 3) СТРАНИЦА АПГРЕЙДОВ (В СТИЛЕ СКРИНШОТА) -->
+    <!-- 3) СТРАНИЦА АПГРЕЙДОВ -->
     <section id="tab-upgrade" class="tab-content">
       <div class="upgrade-arena">
-        <!-- Левый слот: твоя карта -->
         <div class="upgrade-slot-box">
           <div class="slot-label">Твоя карточка</div>
           <div id="upgrade-source-slot" class="slot-placeholder">Выбери карту снизу</div>
         </div>
 
-        <!-- Центр: колесо шанса -->
         <div class="upgrade-wheel-box">
           <div class="chance-circle" id="upgrade-circle">
             <div class="chance-inner">
@@ -129,7 +125,6 @@
           <div id="upgrade-result-msg" class="upgrade-msg"></div>
         </div>
 
-        <!-- Правый слот: желаемая карта -->
         <div class="upgrade-slot-box">
           <div class="slot-label">Желаемая карточка</div>
           <div id="upgrade-target-slot" class="slot-placeholder">Выбери цель справа</div>
@@ -137,7 +132,6 @@
       </div>
 
       <div class="upgrade-inventories">
-        <!-- Твой инвентарь -->
         <div class="inv-column">
           <div class="section-header">
             <h3>Твой инвентарь</h3>
@@ -150,7 +144,6 @@
           <div id="upgrade-my-cards" class="cards-grid small-grid"></div>
         </div>
 
-        <!-- 15 случайных карт для апгрейда -->
         <div class="inv-column">
           <div class="section-header">
             <h3>15 случайных целей</h3>
@@ -248,48 +241,67 @@
 
       <div id="admin-panel-content" class="hidden">
         <h2>Панель управления</h2>
-        
+
         <!-- Настройка общей лайв-ленты -->
         <div class="admin-block">
           <h3>Общая лента лайв-дропа (JSONBin.io)</h3>
-          <p class="hint-text">Чтобы все игроки видели дропы друг друга в реальном времени, вставь бесплатный Bin ID и Master Key с сайта jsonbin.io:</p>
+          <p class="hint-text">Вставь Bin ID и X-Master-Key для общей ленты всех игроков:</p>
           <div class="form-row">
-            <input type="text" id="cfg-bin-id" placeholder="JSONBin ID (например: 673a...)">
-            <input type="text" id="cfg-api-key" placeholder="X-Master-Key ($2a$10$...)">
+            <input type="text" id="cfg-bin-id" placeholder="JSONBin ID">
+            <input type="text" id="cfg-api-key" placeholder="X-Master-Key">
             <button class="primary-btn" onclick="saveCloudConfig()">Сохранить ключи</button>
           </div>
         </div>
 
-        <!-- Редактор редкостей и эффектов -->
+        <!-- Редактор редкостей, шансов и эффектов -->
         <div class="admin-block">
-          <h3>Редкости и эффекты на картах</h3>
+          <h3>Редкости, шансы выпадения и эффекты</h3>
+          <p class="hint-text">Укажи вес (шанс) для каждой редкости — система автоматически покажет реальный % шанс выпадения.</p>
           <div class="form-row">
-            <input type="text" id="new-rar-name" placeholder="Название (напр. GODLIKE)">
-            <input type="color" id="new-rar-color" value="#ff0055" title="Основной цвет">
-            <input type="color" id="new-rar-bg" value="#1a0510" title="Цвет фона">
-            <input type="number" id="new-rar-weight" placeholder="Вес выпадения (1-1000)" value="50">
-            <select id="new-rar-effect">
+            <input type="text" id="new-rar-name" placeholder="Название редкости">
+            <input type="color" id="new-rar-color" value="#ff2a85" title="Цвет рамки и бейджа">
+            <input type="color" id="new-rar-bg" value="#1a0d16" title="Цвет фона карточки">
+            <input type="number" id="new-rar-weight" placeholder="Шанс / вес" value="50" min="1" title="Вес выпадения">
+            <select id="new-rar-effect" title="Эффект карточки">
               <option value="none">Без эффекта</option>
+              <option value="shine-sweep">Блик сверху вниз (Sweep Shine)</option>
+              <option value="aura">Аура вокруг карточки (Aura)</option>
               <option value="glow">Неоновое свечение (Glow)</option>
-              <option value="pulse">Пульсация рамки (Pulse)</option>
-              <option value="rainbow">Радужный перелив (Rainbow)</option>
-              <option value="sparkle">Искры / Частицы (Sparkle)</option>
+              <option value="rainbow-shift">Переливание карточки (Rainbow Shift)</option>
+              <option value="sparkle">Искры (Sparkle)</option>
             </select>
-            <button class="primary-btn" onclick="adminAddRarity()">Добавить / Обновить редкость</button>
+            <button class="primary-btn" onclick="adminAddRarity()">Сохранить редкость</button>
           </div>
-          <div id="admin-rarities-list" class="admin-tags-list"></div>
+          <div id="admin-rarities-list" class="admin-rarities-grid"></div>
         </div>
 
-        <!-- Добавление новой карточки -->
+        <!-- Добавление новой карточки + живой предпросмотр -->
         <div class="admin-block">
           <h3>Добавить новую карточку уровня</h3>
-          <div class="form-row">
-            <input type="number" id="new-card-top" placeholder="# Топ (напр. 1)">
-            <input type="text" id="new-card-name" placeholder="Название уровня (напр. Tidal Wave)">
-            <select id="new-card-rarity"></select>
-            <input type="number" id="new-card-price" placeholder="Цена обычной (₽)">
-            <input type="text" id="new-card-img" placeholder="URL картинки превью">
-            <button class="primary-btn" onclick="adminAddCard()">Добавить карту</button>
+          <div class="card-creator-layout">
+            <div class="creator-form">
+              <div class="form-row">
+                <input type="number" id="new-card-top" placeholder="# Топ (напр. 1)" oninput="updateCardPreview()">
+                <input type="text" id="new-card-name" placeholder="Название уровня" oninput="updateCardPreview()">
+              </div>
+              <div class="form-row">
+                <select id="new-card-rarity" onchange="updateCardPreview()"></select>
+                <input type="number" id="new-card-price" placeholder="Цена обычной (₽)" oninput="updateCardPreview()">
+              </div>
+              <div class="form-row">
+                <input type="text" id="new-card-img" placeholder="URL картинки превью" style="flex:1;" oninput="updateCardPreview()">
+                <label class="holo-check-label">
+                  <input type="checkbox" id="preview-holo-toggle" onchange="updateCardPreview()">
+                  Превью как HOLO
+                </label>
+              </div>
+              <button class="primary-btn" onclick="adminAddCard()">Добавить карту в базу</button>
+            </div>
+
+            <div class="creator-preview-box">
+              <div class="slot-label">Предпросмотр карточки</div>
+              <div id="card-creator-preview"></div>
+            </div>
           </div>
         </div>
 
@@ -300,7 +312,7 @@
             <input type="text" id="new-case-name" placeholder="Название кейса">
             <input type="number" id="new-case-price" placeholder="Цена открытия (₽)">
             <input type="text" id="new-case-img" placeholder="URL обложки кейса">
-            <button class="primary-btn" onclick="adminAddCase()">Создать кейс из выбранных карт</button>
+            <button class="primary-btn" onclick="adminAddCase()">Создать кейс</button>
           </div>
           <div id="admin-case-cards-selector" class="checkbox-grid"></div>
         </div>
@@ -308,7 +320,7 @@
         <!-- Список всех карт в игре -->
         <div class="admin-block">
           <h3>Все карточки в базе (<span id="admin-cards-count">0</span>)</h3>
-          <div id="admin-all-cards" class="cards-grid small-grid"></div>
+          <div id="admin-all-cards" class="cards-grid"></div>
         </div>
       </div>
     </section>
