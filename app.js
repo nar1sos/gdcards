@@ -35,6 +35,8 @@ let isSpinning = false;
 let isUpgrading = false;
 let lastWonCard = null;
 let editingCardId = null;
+let hasLocalCatalogEdits = false;
+let cloudSyncInProgress = false;
 
 let upgSelectedSourceUid = null;
 let upgSelectedTargetId = null;
@@ -87,8 +89,11 @@ function formatChancePercent(weight) {
 
 normalizeRaritiesWeights();
 
-function saveState() {
+function saveState(markCatalogDirty = false) {
   normalizeRaritiesWeights();
+  if (markCatalogDirty) {
+    hasLocalCatalogEdits = true;
+  }
   localStorage.setItem('gd_nick', state.nickname);
   localStorage.setItem('gd_balance', state.balance);
   localStorage.setItem('gd_inventory', JSON.stringify(state.inventory));
@@ -100,6 +105,13 @@ function saveState() {
   localStorage.setItem('gd_holo_mult', String(state.holoMultiplier));
   localStorage.setItem('gd_holo_chance', String(state.holoChance));
   updateTopBar();
+  updateCloudSyncBadge();
+}
+
+function updateCloudSyncBadge() {
+  const pushBtn = document.getElementById('push-cloud-catalog-btn');
+  if (!pushBtn) return;
+  pushBtn.textContent = hasLocalCatalogEdits ? '☁ Залить в облако (*)' : '☁ Залить всё в облако';
 }
 
 function updateTopBar() {
@@ -215,7 +227,7 @@ function giveCardToPlayer(card, isHolo, sourceLabel = 'Кейс') {
     isHolo: Boolean(isHolo)
   };
   state.inventory.push(item);
-  saveState();
+  saveState(false);
   pushLiveDrop(card, isHolo, sourceLabel);
   return item;
 }
@@ -250,11 +262,10 @@ async function writeCloudRecord(recordObj) {
 }
 
 async function pushCatalogToCloud() {
-  if (!state.cloud.binId) {
-    return alert('Сначала укажи JSONBin ID в блоке «Облако для всех игроков»!');
-  }
+  if (!state.cloud.binId) return;
   const btn = document.getElementById('push-cloud-catalog-btn');
   if (btn) btn.disabled = true;
+  cloudSyncInProgress = true;
 
   try {
     normalizeRaritiesWeights();
@@ -278,20 +289,21 @@ async function pushCatalogToCloud() {
     }
 
     await writeCloudRecord(currentRecord);
-    alert('Всё загружено в облако: карты, редкости, кейсы и настройки Holo! Теперь это доступно всем игрокам.');
+    hasLocalCatalogEdits = false;
+    updateCloudSyncBadge();
   } catch (e) {
     console.warn('Ошибка загрузки в облако:', e);
-    alert('Не удалось залить в облако. Проверь Bin ID, X-Master-Key и права доступа Bin.');
   } finally {
+    cloudSyncInProgress = false;
     if (btn) btn.disabled = false;
   }
 }
 
-async function syncCatalogFromCloud(showToast = false) {
-  if (!state.cloud.binId) {
-    if (showToast) alert('Укажи JSONBin ID в облаке.');
-    return;
-  }
+async function syncCatalogFromCloud(forceOverwriteLocal = false) {
+  if (!state.cloud.binId || cloudSyncInProgress) return;
+  if (hasLocalCatalogEdits && !forceOverwriteLocal) return;
+
+  cloudSyncInProgress = true;
   try {
     const record = await readCloudRecord();
     if (!record) return;
@@ -329,7 +341,8 @@ async function syncCatalogFromCloud(showToast = false) {
     }
 
     if (changed) {
-      saveState();
+      if (forceOverwriteLocal) hasLocalCatalogEdits = false;
+      saveState(false);
       renderCasesList();
       if (document.getElementById('tab-collection').classList.contains('active')) renderCollection();
       if (document.getElementById('tab-admin').classList.contains('active')) renderAdminUI();
@@ -337,12 +350,10 @@ async function syncCatalogFromCloud(showToast = false) {
       if (document.getElementById('tab-craft').classList.contains('active')) renderCraftUI();
       if (document.getElementById('tab-trade').classList.contains('active')) renderTradeUI();
     }
-
-    if (showToast) {
-      alert('Данные (карты, редкости, кейсы и дропы) синхронизированы с облаком!');
-    }
   } catch (e) {
-    if (showToast) alert('Ошибка чтения из облака. Проверь Bin ID и ключ.');
+    console.warn('Ошибка чтения из облака:', e);
+  } finally {
+    cloudSyncInProgress = false;
   }
 }
 
@@ -362,7 +373,7 @@ async function pushLiveDrop(card, isHolo, source) {
 
   state.liveDrops.unshift(dropEntry);
   state.liveDrops = state.liveDrops.slice(0, 25);
-  saveState();
+  saveState(false);
   renderLiveFeed();
 
   if (state.cloud.binId) {
@@ -464,11 +475,11 @@ function prepareRouletteTape(caseObj, winCard = null, winHolo = false) {
 function spinCurrentCase(fast = false) {
   if (isSpinning) return;
   const c = state.cases.find(x => x.id === currentCaseId);
-  if (state.balance < c.price) return alert('Недостаточно рублей!');
+  if (state.balance < c.price) return;
 
   state.balance -= c.price;
   state.stats.opened += 1;
-  saveState();
+  saveState(false);
 
   const pool = c.cardIds.map(id => state.cards.find(card => card.id === id)).filter(Boolean);
   const wonCard = rollWeightedCard(pool);
@@ -497,7 +508,7 @@ function spinCurrentCase(fast = false) {
 
 // === 1) ПАКИ ЗА 500 РУБЛЕЙ ===
 function buyPack() {
-  if (state.balance < 500) return alert('Недостаточно рублей для покупки пака (нужно 500 ₽)!');
+  if (state.balance < 500) return;
   state.balance -= 500;
   state.stats.opened += 1;
 
@@ -510,7 +521,7 @@ function buyPack() {
     giveCardToPlayer(card, isHolo, 'Пак 500₽');
     revealArea.innerHTML += createCardHTML(card, isHolo);
   }
-  saveState();
+  saveState(false);
 }
 
 // === 3) АПГРЕЙДЫ (НАСТОЯЩАЯ РУЛЕТКА + ВЫБОР СКОРОСТИ) ===
@@ -643,7 +654,7 @@ function executeUpgrade() {
     } else {
       msg.innerHTML = `<span style="color:#f87171; font-weight:800;">НЕУДАЧА! Карточка сгорела</span>`;
     }
-    saveState();
+    saveState(false);
     renderUpgradeUI();
   }, durationMs + 80);
 }
@@ -743,9 +754,8 @@ function confirmTrade() {
   });
   tradeMyOfferUids = [];
   tradeBotOffer = [];
-  saveState();
+  saveState(false);
   renderTradeUI();
-  alert('Трейд успешно завершен!');
 }
 
 // === 7) КРАФТЫ (10 -> 1) ===
@@ -788,16 +798,14 @@ function toggleCraftCard(uid) {
   if (idx > -1) {
     craftSelectedUids.splice(idx, 1);
   } else {
-    if (craftSelectedUids.length >= 10) return alert('Уже выбрано 10 карт!');
+    if (craftSelectedUids.length >= 10) return;
     const newItem = state.inventory.find(x => x.uid === uid);
     const newCard = state.cards.find(c => c.id === newItem.cardId);
 
     if (craftSelectedUids.length > 0) {
       const firstItem = state.inventory.find(x => x.uid === craftSelectedUids[0]);
       const firstCard = state.cards.find(c => c.id === firstItem.cardId);
-      if (firstCard.rarity !== newCard.rarity) {
-        return alert('Для крафта нужны 10 карт ОДНОЙ редкости!');
-      }
+      if (firstCard.rarity !== newCard.rarity) return;
     }
     craftSelectedUids.push(uid);
   }
@@ -956,7 +964,7 @@ function sellInventoryCard(uid) {
   const card = state.cards.find(c => c.id === item.cardId);
   if (card) state.balance += getCardPrice(card, item.isHolo);
   state.inventory.splice(idx, 1);
-  saveState();
+  saveState(false);
   renderCollection();
 }
 
@@ -974,9 +982,8 @@ function sellAllDuplicates() {
     return true;
   });
   state.balance += earned;
-  saveState();
+  saveState(false);
   renderCollection();
-  alert(`Продано дубликатов на сумму: ${earned} ₽`);
 }
 
 // === 5) АДМИН-ПАНЕЛЬ (ПАРОЛЬ 12356790) ===
@@ -986,8 +993,6 @@ function checkAdminPass() {
     document.getElementById('admin-login-box').classList.add('hidden');
     document.getElementById('admin-panel-content').classList.remove('hidden');
     renderAdminUI();
-  } else {
-    alert('Неверный пароль!');
   }
 }
 
@@ -995,12 +1000,12 @@ function saveCloudConfig() {
   state.cloud.binId = document.getElementById('cfg-bin-id').value.trim();
   state.cloud.apiKey = document.getElementById('cfg-api-key').value.trim();
   localStorage.setItem('gd_cloud', JSON.stringify(state.cloud));
-  alert('Ключи облака сохранены в этом браузере! Чтобы они работали у всех в других браузерах, впиши их в SHARED_CLOUD_CONFIG в начале app.js.');
   syncCatalogFromCloud(false);
 }
 
 function renderAdminUI() {
   normalizeRaritiesWeights();
+  updateCloudSyncBadge();
   document.getElementById('cfg-bin-id').value = state.cloud.binId || '';
   document.getElementById('cfg-api-key').value = state.cloud.apiKey || '';
 
@@ -1128,7 +1133,7 @@ function saveEditedCard() {
   const price = Number(document.getElementById('edit-card-price').value) || 500;
   const img = document.getElementById('edit-card-img').value.trim() || 'https://placehold.co/320x180/181a20/ffffff?text=GD';
 
-  if (!name) return alert('Введи название уровня!');
+  if (!name) return;
 
   state.cards[idx] = {
     ...state.cards[idx],
@@ -1139,10 +1144,9 @@ function saveEditedCard() {
     img
   };
 
-  saveState();
+  saveState(true);
   document.getElementById('edit-card-heading').textContent = name;
   renderAdminUI();
-  alert('Карточка изменена! Нажми «Залить всё в облако», чтобы изменения увидели все игроки.');
 }
 
 function deleteEditingCard() {
@@ -1157,7 +1161,7 @@ function updateRarityColors(id, newColor1, newColor2) {
   if (!rar) return;
   if (newColor1) rar.color = newColor1;
   if (newColor2) rar.bg = newColor2;
-  saveState();
+  saveState(true);
   renderAdminUI();
   updateCardPreview();
 }
@@ -1166,7 +1170,7 @@ function updateRarityWeight(id, rawVal) {
   const rar = state.rarities.find(r => r.id === id);
   if (!rar) return;
   rar.weight = sanitizeChanceInput(rawVal);
-  saveState();
+  saveState(true);
   renderAdminUI();
   updateCardPreview();
 }
@@ -1175,7 +1179,7 @@ function updateRarityEffect(id, newEffect) {
   const rar = state.rarities.find(r => r.id === id);
   if (!rar) return;
   rar.effect = newEffect;
-  saveState();
+  saveState(true);
   renderAdminUI();
   updateCardPreview();
 }
@@ -1209,14 +1213,14 @@ function adminAddRarity() {
   } else {
     state.rarities.push({ id, name, color, bg, order: state.rarities.length + 1, weight, effect });
   }
-  saveState();
+  saveState(true);
   renderAdminUI();
 }
 
 function adminDeleteRarity(id) {
   if (state.rarities.length <= 1) return;
   state.rarities = state.rarities.filter(r => r.id !== id);
-  saveState();
+  saveState(true);
   renderAdminUI();
 }
 
@@ -1227,16 +1231,15 @@ function adminAddCard() {
   const price = Number(document.getElementById('new-card-price').value) || 500;
   const img = document.getElementById('new-card-img').value.trim() || 'https://placehold.co/320x180/181a20/ffffff?text=GD';
 
-  if (!name) return alert('Введи название уровня!');
+  if (!name) return;
   state.cards.push({ id: 'c_' + Date.now(), top, name, rarity, price, img });
-  saveState();
+  saveState(true);
   renderAdminUI();
-  alert('Карточка добавлена в базу! Нажми «Залить всё в облако», чтобы она появилась у всех игроков.');
 }
 
 function adminDeleteCard(id) {
   state.cards = state.cards.filter(c => c.id !== id);
-  saveState();
+  saveState(true);
   renderAdminUI();
 }
 
@@ -1246,10 +1249,10 @@ function adminAddCase() {
   const img = document.getElementById('new-case-img').value.trim() || 'https://placehold.co/320x180/181a20/ffffff?text=CASE';
   const selectedIds = Array.from(document.querySelectorAll('.case-card-cb:checked')).map(cb => cb.value);
 
-  if (!name || selectedIds.length === 0) return alert('Укажи название кейса и выбери хотя бы 1 карту!');
+  if (!name || selectedIds.length === 0) return;
   state.cases.push({ id: 'case_' + Date.now(), name, price, img, cardIds: selectedIds });
-  saveState();
-  alert('Кейс создан! Нажми «Залить всё в облако», чтобы он появился у всех.');
+  saveState(true);
+  renderAdminUI();
 }
 
 // === МОДАЛЬНОЕ ОКНО ВЫИГРЫША ===
@@ -1273,6 +1276,7 @@ function sellWonCard() {
 
 // === ЗАПУСК ===
 updateTopBar();
+updateCloudSyncBadge();
 renderCasesList();
 renderLiveFeed();
 syncCatalogFromCloud(false);
