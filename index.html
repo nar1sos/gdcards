@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GD CASE — Extreme Demon Simulator</title>
+  <title>GD LUDKA — Extreme Demon Simulator</title>
   <link rel="stylesheet" href="style.css">
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -12,7 +12,7 @@
   <!-- ВЕРХНЯЯ ПАНЕЛЬ НАВИГАЦИИ -->
   <header class="topbar">
     <div class="logo" onclick="switchTab('cases')">
-      <span class="logo-accent">GD</span>BATTLE
+      <span class="logo-accent">GD</span> LUDKA
     </div>
     <nav class="nav-links">
       <button class="nav-btn active" data-tab="cases" onclick="switchTab('cases')">Кейсы</button>
@@ -32,7 +32,7 @@
     </div>
   </header>
 
-  <!-- ОСНОВНОЙ РАБОЧИЙ МАКЕТ: КОНТЕНТ СЛЕВА + ЛАЙВ-ЛЕНТА СПРАВА -->
+  <!-- ОСНОВНОЙ МАКЕТ: КОНТЕНТ СЛЕВА + ЛАЙВ-ЛЕНТА СПРАВА -->
   <div class="workspace-layout">
     <main class="container">
 
@@ -84,7 +84,7 @@
           <div class="pack-visual">
             <div class="pack-card-art">
               <span class="pack-badge">EXTREME PACK</span>
-              <h3>GD DEMON PACK</h3>
+              <h3>GD LUDKA PACK</h3>
               <p>5 случайных карточек уровней</p>
               <span class="holo-tag">✦ ШАНС НА HOLO</span>
             </div>
@@ -98,7 +98,7 @@
         <div id="pack-reveal-area" class="cards-grid" style="margin-top: 25px;"></div>
       </section>
 
-      <!-- 3) СТРАНИЦА АПГРЕЙДОВ -->
+      <!-- 3) СТРАНИЦА АПГРЕЙДОВ (РУЛЕТКА С ВЫБОРОМ СКОРОСТИ) -->
       <section id="tab-upgrade" class="tab-content">
         <div class="upgrade-arena">
           <div class="upgrade-slot-box">
@@ -112,8 +112,20 @@
                 <span id="upgrade-chance-text">0.00%</span>
                 <small>ШАНС</small>
               </div>
-              <div id="upgrade-arrow" class="upgrade-arrow">▲</div>
+              <div id="upgrade-arrow-rotor" class="upgrade-arrow-rotor">
+                <div class="upgrade-arrow">▼</div>
+              </div>
             </div>
+
+            <div class="upgrade-speed-row">
+              <label for="upgrade-speed-select">Скорость:</label>
+              <select id="upgrade-speed-select">
+                <option value="slow">Медленно (4.5с)</option>
+                <option value="normal" selected>Обычно (2.5с)</option>
+                <option value="fast">Быстро (0.8с)</option>
+              </select>
+            </div>
+
             <button id="do-upgrade-btn" class="primary-btn big-btn" onclick="executeUpgrade()" disabled>Апгрейд</button>
             <div id="upgrade-result-msg" class="upgrade-msg"></div>
           </div>
@@ -222,7 +234,7 @@
           </div>
         </div>
         <p class="hint-text" style="margin-bottom: 14px;">Нажми на любую карточку в коллекции, чтобы открыть её 3D-просмотр и характеристики.</p>
-        <div id="collection-grid" class="cards-grid"></div>
+        <div id="collection-grid" class="cards-grid collection-compact-grid"></div>
       </section>
 
       <!-- 5) СТРАНИЦА АДМИНА -->
@@ -234,7 +246,7 @@
         </div>
 
         <div id="admin-panel-content" class="hidden">
-          <h2>Панель управления</h2>
+          <h2>Панель управления GD LUDKA</h2>
 
           <!-- Настройка общей лайв-ленты -->
           <div class="admin-block">
@@ -247,15 +259,15 @@
             </div>
           </div>
 
-          <!-- Редактор редкостей, шансов и эффектов -->
+          <!-- Редактор редкостей, градиента из 2 цветов, шансов и эффектов -->
           <div class="admin-block">
-            <h3>Редкости, шансы выпадения и эффекты</h3>
-            <p class="hint-text">Укажи вес шанса от 0 до 100 (поддерживаются значения вроде 0.0000000001). Значения автоматически нормализуются, чтобы ничего не ломалось.</p>
+            <h3>Редкости, градиент из 2 цветов, шансы и эффекты</h3>
+            <p class="hint-text">Укажи два цвета градиента карточки (Цвет 1 и Цвет 2), вес шанса от 0 до 100 (можно 0.0000000001) и эффект.</p>
             <div class="form-row">
               <input type="text" id="new-rar-name" placeholder="Название редкости">
-              <input type="color" id="new-rar-color" value="#ff2a85" title="Цвет рамки и бейджа">
-              <input type="color" id="new-rar-bg" value="#1a0d16" title="Цвет фона карточки">
-              <input type="text" id="new-rar-weight" placeholder="Шанс (напр. 0.0000000001 или 25)" value="25">
+              <label class="color-pick-label">Рамка/Цвет 1: <input type="color" id="new-rar-color" value="#ff2a85"></label>
+              <label class="color-pick-label">Градиент Цвет 2: <input type="color" id="new-rar-bg" value="#160812"></label>
+              <input type="text" id="new-rar-weight" placeholder="Шанс (0..100)" value="25">
               <select id="new-rar-effect" title="Эффект карточки">
                 <option value="none">Без эффекта</option>
                 <option value="aura">Левитирующая аура (Aura Levitate)</option>
@@ -264,7 +276,7 @@
                 <option value="rainbow-shift">Перелив цвета редкости</option>
                 <option value="sparkle">Мерцающие искры (Sparkle)</option>
               </select>
-              <button class="primary-btn" onclick="adminAddRarity()">Сохранить редкость</button>
+              <button class="primary-btn" onclick="adminAddRarity()">Добавить / Сохранить</button>
             </div>
             <div id="admin-rarities-list" class="admin-rarities-grid"></div>
           </div>
@@ -314,17 +326,18 @@
           <!-- Список всех карт в игре -->
           <div class="admin-block">
             <h3>Все карточки в базе (<span id="admin-cards-count">0</span>)</h3>
-            <div id="admin-all-cards" class="cards-grid"></div>
+            <div id="admin-all-cards" class="cards-grid collection-compact-grid"></div>
           </div>
         </div>
-      </div>
+      </section>
 
     </main>
 
-    <!-- ЛЕНТА ЛАЙВ-ДРОПА СПРАВА -->
+    <!-- ЛЕНТА ЛАЙВ-ДРОПА СПРАВА (В СТИЛЕ CASE-BATTLE) -->
     <aside class="live-sidebar-right">
       <div class="live-sidebar-header">
-        <span class="pulse-dot"></span> LIVE DROP
+        <div class="live-brand-title"><span class="pulse-dot"></span> GD LUDKA</div>
+        <div class="live-brand-sub">У НАС ВЫИГРЫВАЮТ</div>
       </div>
       <div id="live-drop-feed" class="live-drop-feed"></div>
     </aside>
@@ -338,8 +351,8 @@
         <div class="card-3d-flipper" id="card-3d-flipper">
           <div class="card-3d-front" id="card-3d-front"></div>
           <div class="card-3d-back">
-            <div class="back-brand">GD<span>BATTLE</span></div>
-            <small>Потяни карточку мышкой или пальцем для вращения в 3D</small>
+            <div class="back-brand">GD<span>LUDKA</span></div>
+            <small>Зажми и потяни мышкой для вращения в 3D</small>
           </div>
         </div>
       </div>
