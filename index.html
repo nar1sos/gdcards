@@ -246,12 +246,18 @@
         </div>
 
         <div id="admin-panel-content" class="hidden">
-          <h2>Панель управления GD LUDKA</h2>
+          <div class="section-header">
+            <h2>Панель управления GD LUDKA</h2>
+            <div class="admin-cloud-actions">
+              <button id="push-cloud-catalog-btn" class="primary-btn" onclick="pushCatalogToCloud()">☁ Залить карточки в облако</button>
+              <button class="secondary-btn" onclick="syncCatalogFromCloud(true)">↓ Загрузить из облака</button>
+            </div>
+          </div>
 
-          <!-- Настройка общей лайв-ленты -->
+          <!-- Настройка общей лайв-ленты и облачного каталога -->
           <div class="admin-block">
-            <h3>Общая лента лайв-дропа (JSONBin.io)</h3>
-            <p class="hint-text">Вставь Bin ID и X-Master-Key для общей ленты всех игроков:</p>
+            <h3>Облако для всех игроков (JSONBin.io)</h3>
+            <p class="hint-text">Укажи Bin ID и X-Master-Key — через этот же Bin работает и общая лента дропа, и кнопка «Залить карточки в облако» для всех игроков:</p>
             <div class="form-row">
               <input type="text" id="cfg-bin-id" placeholder="JSONBin ID">
               <input type="text" id="cfg-api-key" placeholder="X-Master-Key">
@@ -323,9 +329,47 @@
             <div id="admin-case-cards-selector" class="checkbox-grid"></div>
           </div>
 
+          <!-- Редактор выбранной карточки из базы -->
+          <div id="admin-edit-card-panel" class="admin-block hidden">
+            <div class="section-header">
+              <h3>Изменить карточку: <span id="edit-card-heading"></span></h3>
+              <button class="secondary-btn" onclick="cancelEditCard()">Отмена</button>
+            </div>
+            <div class="card-creator-layout">
+              <div class="creator-form">
+                <div class="form-row">
+                  <input type="number" id="edit-card-top" placeholder="# Топ" oninput="updateEditCardPreview()">
+                  <input type="text" id="edit-card-name" placeholder="Название уровня" oninput="updateEditCardPreview()">
+                </div>
+                <div class="form-row">
+                  <select id="edit-card-rarity" onchange="updateEditCardPreview()"></select>
+                  <input type="number" id="edit-card-price" placeholder="Цена обычной (₽)" oninput="updateEditCardPreview()">
+                </div>
+                <div class="form-row">
+                  <input type="text" id="edit-card-img" placeholder="URL картинки превью" style="flex:1;" oninput="updateEditCardPreview()">
+                  <label class="holo-check-label">
+                    <input type="checkbox" id="edit-preview-holo-toggle" onchange="updateEditCardPreview()">
+                    Превью как HOLO
+                  </label>
+                </div>
+                <div class="form-row">
+                  <button class="primary-btn" onclick="saveEditedCard()">Сохранить изменения</button>
+                  <button class="secondary-btn" style="color:#f87171;" onclick="deleteEditingCard()">Удалить карту</button>
+                </div>
+              </div>
+              <div class="creator-preview-box">
+                <div class="slot-label">Предпросмотр</div>
+                <div id="edit-card-preview"></div>
+              </div>
+            </div>
+          </div>
+
           <!-- Список всех карт в игре -->
           <div class="admin-block">
-            <h3>Все карточки в базе (<span id="admin-cards-count">0</span>)</h3>
+            <div class="section-header">
+              <h3>Все карточки в базе (<span id="admin-cards-count">0</span>)</h3>
+              <span class="hint-text">Нажми на карту, чтобы изменить её</span>
+            </div>
             <div id="admin-all-cards" class="cards-grid collection-compact-grid"></div>
           </div>
         </div>
