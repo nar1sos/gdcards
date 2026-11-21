@@ -274,6 +274,12 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 }
 .secondary-btn:hover { border-color: var(--accent-gold); }
 
+.admin-cloud-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 /* КАРТОЧКИ УРОВНЕЙ С ДВУХЦВЕТНЫМ ГРАДИЕНТОМ РЕДКОСТИ */
 .cards-grid {
   display: grid;
@@ -321,7 +327,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   transform: translateY(-4px);
 }
 
-.gd-card.selected {
+.gd-card.selected, .gd-card.editing-target {
   outline: 3px solid #ffffff;
   transform: scale(1.02);
 }
@@ -392,7 +398,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   color: var(--accent-green);
 }
 
-/* HOLO ПЕРЕЛИВ: ТОЛЬКО НА HOLO-КАРТАХ (И КАРТА, И ОБЛОЖКА) */
+/* HOLO ПЕРЕЛИВ: ТОЛЬКО НА HOLO-КАРТАХ */
 .gd-card.is-holo .holo-full-overlay {
   position: absolute;
   inset: 0;
@@ -631,7 +637,6 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 }
 .chance-inner span { font-size: 26px; font-weight: 900; color: var(--accent-gold); }
 
-/* Ротор стрелки по кругу колеса */
 .upgrade-arrow-rotor {
   position: absolute;
   inset: 0;
