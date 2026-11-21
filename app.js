@@ -1,4 +1,17 @@
+// === ОБЩИЙ ОБЛАЧНЫЙ КОНФИГ ДЛЯ ВСЕХ БРАУЗЕРОВ И ИГРОКОВ ===
+// Впиши сюда свой Bin ID и X-Master-Key, чтобы у всех пользователей сразу работало облако
+const SHARED_CLOUD_CONFIG = {
+  binId: '6b01dba4ac6210605a9a4b56',
+  apiKey: '$2a$10$uRETf0psynxbv1ND6K6TkOEOldfaLwR07Hx7U7imDwBJpF6fJKFRe'
+};
+
 // === СОСТОЯНИЕ И СОХРАНЕНИЕ ===
+const savedCloud = JSON.parse(localStorage.getItem('gd_cloud') || 'null');
+const initialCloud = {
+  binId: (savedCloud && savedCloud.binId) || SHARED_CLOUD_CONFIG.binId || '',
+  apiKey: (savedCloud && savedCloud.apiKey) || SHARED_CLOUD_CONFIG.apiKey || ''
+};
+
 let state = {
   nickname: localStorage.getItem('gd_nick') || 'Player_' + Math.floor(100 + Math.random() * 900),
   balance: Number(localStorage.getItem('gd_balance') ?? 2500),
@@ -7,12 +20,15 @@ let state = {
   rarities: JSON.parse(localStorage.getItem('gd_rarities') || JSON.stringify(DEFAULT_RARITIES)),
   cards: JSON.parse(localStorage.getItem('gd_cards') || JSON.stringify(DEFAULT_CARDS)),
   cases: JSON.parse(localStorage.getItem('gd_cases') || JSON.stringify(DEFAULT_CASES)),
-  cloud: JSON.parse(localStorage.getItem('gd_cloud') || '{"binId":"","apiKey":""}'),
-  liveDrops: JSON.parse(localStorage.getItem('gd_livedrops') || '[]')
+  cloud: initialCloud,
+  liveDrops: JSON.parse(localStorage.getItem('gd_livedrops') || '[]'),
+  holoMultiplier: Number(localStorage.getItem('gd_holo_mult') ?? 2.5),
+  holoChance: Number(localStorage.getItem('gd_holo_chance') ?? 0.12)
 };
 
-const HOLO_MULTIPLIER = 2.5;
-const HOLO_CHANCE = 0.12;
+// Нормализуем инвентарь при старте
+if (!Array.isArray(state.inventory)) state.inventory = [];
+state.inventory = state.inventory.filter(item => item && typeof item.uid === 'string' && typeof item.cardId === 'string');
 
 let currentCaseId = null;
 let isSpinning = false;
@@ -48,6 +64,9 @@ function sanitizeChanceInput(rawVal) {
 }
 
 function normalizeRaritiesWeights() {
+  if (!Array.isArray(state.rarities) || state.rarities.length === 0) {
+    state.rarities = [...DEFAULT_RARITIES];
+  }
   state.rarities.forEach(r => {
     r.weight = sanitizeChanceInput(r.weight);
   });
@@ -78,6 +97,8 @@ function saveState() {
   localStorage.setItem('gd_cards', JSON.stringify(state.cards));
   localStorage.setItem('gd_cases', JSON.stringify(state.cases));
   localStorage.setItem('gd_livedrops', JSON.stringify(state.liveDrops.slice(0, 25)));
+  localStorage.setItem('gd_holo_mult', String(state.holoMultiplier));
+  localStorage.setItem('gd_holo_chance', String(state.holoChance));
   updateTopBar();
 }
 
@@ -111,6 +132,13 @@ function switchTab(tabName) {
     if (upgRandomPool.length === 0) rerollUpgradeTargets();
     renderUpgradeUI();
   }
+  if (tabName === 'trade') {
+    if (document.getElementById('trade-arena').classList.contains('hidden')) {
+      startBotTrade();
+    } else {
+      renderTradeUI();
+    }
+  }
   if (tabName === 'collection') renderCollection();
   if (tabName === 'craft') renderCraftUI();
   if (tabName === 'admin') renderAdminUI();
@@ -122,7 +150,9 @@ function getRarityObj(rarityId) {
 }
 
 function getCardPrice(card, isHolo) {
-  return Math.round(card.price * (isHolo ? HOLO_MULTIPLIER : 1));
+  if (!card) return 0;
+  const mult = Number(state.holoMultiplier) > 0 ? Number(state.holoMultiplier) : 2.5;
+  return Math.round(Number(card.price || 0) * (isHolo ? mult : 1));
 }
 
 function sortItems(items, sortMode) {
@@ -182,7 +212,7 @@ function giveCardToPlayer(card, isHolo, sourceLabel = 'Кейс') {
   const item = {
     uid: 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
     cardId: card.id,
-    isHolo: isHolo
+    isHolo: Boolean(isHolo)
   };
   state.inventory.push(item);
   saveState();
@@ -190,60 +220,76 @@ function giveCardToPlayer(card, isHolo, sourceLabel = 'Кейс') {
   return item;
 }
 
-// === ОБЛАКО ДЛЯ ВСЕХ ИГРОКОВ (КАТАЛОГ КАРТ + ЛАЙВ-ДРОП) ===
+// === ОБЛАКО ДЛЯ ВСЕХ ИГРОКОВ (КАРТЫ, РЕДКОСТИ, КЕЙСЫ, HOLO + ЛАЙВ-ДРОП) ===
+function buildCloudHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  if (state.cloud.apiKey) {
+    headers['X-Master-Key'] = state.cloud.apiKey;
+  }
+  return headers;
+}
+
 async function readCloudRecord() {
-  if (!state.cloud.binId || !state.cloud.apiKey) return null;
-  const res = await fetch(`https://api.jsonbin.io/v3/b/${state.cloud.binId}/latest`, {
-    headers: { 'X-Master-Key': state.cloud.apiKey }
-  });
+  if (!state.cloud.binId) return null;
+  const headers = {};
+  if (state.cloud.apiKey) headers['X-Master-Key'] = state.cloud.apiKey;
+  const res = await fetch(`https://api.jsonbin.io/v3/b/${state.cloud.binId}/latest`, { headers });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
   const json = await res.json();
   return json.record && typeof json.record === 'object' ? json.record : {};
 }
 
 async function writeCloudRecord(recordObj) {
-  if (!state.cloud.binId || !state.cloud.apiKey) return;
-  await fetch(`https://api.jsonbin.io/v3/b/${state.cloud.binId}`, {
+  if (!state.cloud.binId) return;
+  const res = await fetch(`https://api.jsonbin.io/v3/b/${state.cloud.binId}`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Master-Key': state.cloud.apiKey
-    },
+    headers: buildCloudHeaders(),
     body: JSON.stringify(recordObj)
   });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
 }
 
 async function pushCatalogToCloud() {
-  if (!state.cloud.binId || !state.cloud.apiKey) {
-    return alert('Сначала укажи JSONBin ID и X-Master-Key в блоке «Облако для всех игроков»!');
+  if (!state.cloud.binId) {
+    return alert('Сначала укажи JSONBin ID в блоке «Облако для всех игроков»!');
   }
   const btn = document.getElementById('push-cloud-catalog-btn');
   if (btn) btn.disabled = true;
 
   try {
     normalizeRaritiesWeights();
-    const currentRecord = await readCloudRecord() || {};
+    let currentRecord = {};
+    try {
+      currentRecord = (await readCloudRecord()) || {};
+    } catch (_) {
+      currentRecord = {};
+    }
+
     currentRecord.catalog = {
       cards: state.cards,
       rarities: state.rarities,
       cases: state.cases,
+      holoMultiplier: state.holoMultiplier,
+      holoChance: state.holoChance,
       updatedAt: Date.now()
     };
     if (!Array.isArray(currentRecord.drops)) {
       currentRecord.drops = state.liveDrops.slice(0, 30);
     }
+
     await writeCloudRecord(currentRecord);
-    alert('Карточки, редкости и кейсы залиты в облако! Теперь они появятся у всех игроков.');
+    alert('Всё загружено в облако: карты, редкости, кейсы и настройки Holo! Теперь это доступно всем игрокам.');
   } catch (e) {
-    console.warn('Ошибка загрузки каталога в облако:', e);
-    alert('Не удалось залить в облако. Проверь Bin ID и X-Master-Key.');
+    console.warn('Ошибка загрузки в облако:', e);
+    alert('Не удалось залить в облако. Проверь Bin ID, X-Master-Key и права доступа Bin.');
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
 async function syncCatalogFromCloud(showToast = false) {
-  if (!state.cloud.binId || !state.cloud.apiKey) {
-    if (showToast) alert('Сначала укажи JSONBin ID и X-Master-Key.');
+  if (!state.cloud.binId) {
+    if (showToast) alert('Укажи JSONBin ID в облаке.');
     return;
   }
   try {
@@ -251,40 +297,52 @@ async function syncCatalogFromCloud(showToast = false) {
     if (!record) return;
 
     let changed = false;
-    if (record.catalog && Array.isArray(record.catalog.cards) && record.catalog.cards.length > 0) {
-      state.cards = record.catalog.cards;
-      changed = true;
+    const cat = record.catalog;
+    if (cat && typeof cat === 'object') {
+      if (Array.isArray(cat.cards) && cat.cards.length > 0) {
+        state.cards = cat.cards;
+        changed = true;
+      }
+      if (Array.isArray(cat.rarities) && cat.rarities.length > 0) {
+        state.rarities = cat.rarities;
+        normalizeRaritiesWeights();
+        changed = true;
+      }
+      if (Array.isArray(cat.cases) && cat.cases.length > 0) {
+        state.cases = cat.cases;
+        changed = true;
+      }
+      if (typeof cat.holoMultiplier === 'number' && cat.holoMultiplier > 0) {
+        state.holoMultiplier = cat.holoMultiplier;
+        changed = true;
+      }
+      if (typeof cat.holoChance === 'number' && cat.holoChance >= 0 && cat.holoChance <= 1) {
+        state.holoChance = cat.holoChance;
+        changed = true;
+      }
     }
-    if (record.catalog && Array.isArray(record.catalog.rarities) && record.catalog.rarities.length > 0) {
-      state.rarities = record.catalog.rarities;
-      normalizeRaritiesWeights();
-      changed = true;
-    }
-    if (record.catalog && Array.isArray(record.catalog.cases) && record.catalog.cases.length > 0) {
-      state.cases = record.catalog.cases;
-      changed = true;
-    }
+
     if (Array.isArray(record.drops)) {
       state.liveDrops = record.drops;
+      localStorage.setItem('gd_livedrops', JSON.stringify(state.liveDrops.slice(0, 25)));
       renderLiveFeed();
     }
 
     if (changed) {
-      localStorage.setItem('gd_cards', JSON.stringify(state.cards));
-      localStorage.setItem('gd_rarities', JSON.stringify(state.rarities));
-      localStorage.setItem('gd_cases', JSON.stringify(state.cases));
+      saveState();
       renderCasesList();
       if (document.getElementById('tab-collection').classList.contains('active')) renderCollection();
       if (document.getElementById('tab-admin').classList.contains('active')) renderAdminUI();
       if (document.getElementById('tab-upgrade').classList.contains('active')) renderUpgradeUI();
       if (document.getElementById('tab-craft').classList.contains('active')) renderCraftUI();
+      if (document.getElementById('tab-trade').classList.contains('active')) renderTradeUI();
     }
 
     if (showToast) {
-      alert('Каталог и дропы синхронизированы с облаком!');
+      alert('Данные (карты, редкости, кейсы и дропы) синхронизированы с облаком!');
     }
   } catch (e) {
-    if (showToast) alert('Ошибка синхронизации с облаком.');
+    if (showToast) alert('Ошибка чтения из облака. Проверь Bin ID и ключ.');
   }
 }
 
@@ -307,9 +365,9 @@ async function pushLiveDrop(card, isHolo, source) {
   saveState();
   renderLiveFeed();
 
-  if (state.cloud.binId && state.cloud.apiKey) {
+  if (state.cloud.binId) {
     try {
-      const record = await readCloudRecord() || {};
+      const record = (await readCloudRecord()) || {};
       const cloudDrops = Array.isArray(record.drops) ? record.drops : [];
       cloudDrops.unshift(dropEntry);
       record.drops = cloudDrops.slice(0, 30);
@@ -397,7 +455,7 @@ function prepareRouletteTape(caseObj, winCard = null, winHolo = false) {
       html += createCardHTML(winCard, winHolo);
     } else {
       const rndCard = pool[Math.floor(Math.random() * pool.length)];
-      html += createCardHTML(rndCard, Math.random() < HOLO_CHANCE);
+      html += createCardHTML(rndCard, Math.random() < state.holoChance);
     }
   }
   track.innerHTML = html;
@@ -414,7 +472,7 @@ function spinCurrentCase(fast = false) {
 
   const pool = c.cardIds.map(id => state.cards.find(card => card.id === id)).filter(Boolean);
   const wonCard = rollWeightedCard(pool);
-  const wonHolo = Math.random() < HOLO_CHANCE;
+  const wonHolo = Math.random() < state.holoChance;
 
   prepareRouletteTape(c, wonCard, wonHolo);
   isSpinning = true;
@@ -448,7 +506,7 @@ function buyPack() {
 
   for (let i = 0; i < 5; i++) {
     const card = rollWeightedCard(state.cards);
-    const isHolo = Math.random() < HOLO_CHANCE;
+    const isHolo = Math.random() < state.holoChance;
     giveCardToPlayer(card, isHolo, 'Пак 500₽');
     revealArea.innerHTML += createCardHTML(card, isHolo);
   }
@@ -611,19 +669,19 @@ function recalculateBotOffer() {
   let mySum = 0;
   tradeMyOfferUids.forEach(uid => {
     const item = state.inventory.find(x => x.uid === uid);
-    if (item) {
-      const card = state.cards.find(c => c.id === item.cardId);
-      mySum += getCardPrice(card, item.isHolo);
-    }
+    if (!item) return;
+    const card = state.cards.find(c => c.id === item.cardId);
+    if (!card) return;
+    mySum += getCardPrice(card, item.isHolo);
   });
 
   let targetBotBudget = Math.floor(mySum * (0.90 + Math.random() * 0.10));
   tradeBotOffer = [];
 
-  if (targetBotBudget > 0) {
-    const sortedCatalog = [...state.cards].sort((a, b) => b.price - a.price);
-    for (let guard = 0; guard < 12 && targetBotBudget >= 100; guard++) {
-      const affordable = sortedCatalog.filter(c => c.price <= targetBotBudget);
+  if (targetBotBudget > 0 && state.cards.length > 0) {
+    const sortedCatalog = [...state.cards].sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+    for (let guard = 0; guard < 12 && targetBotBudget >= 10; guard++) {
+      const affordable = sortedCatalog.filter(c => getCardPrice(c, false) <= targetBotBudget);
       if (affordable.length === 0) break;
       const pick = affordable[Math.floor(Math.random() * Math.min(3, affordable.length))];
       const canHolo = getCardPrice(pick, true) <= targetBotBudget && Math.random() < 0.25;
@@ -634,37 +692,55 @@ function recalculateBotOffer() {
 }
 
 function renderTradeUI() {
+  tradeMyOfferUids = tradeMyOfferUids.filter(uid => {
+    const item = state.inventory.find(x => x.uid === uid);
+    return item && state.cards.some(c => c.id === item.cardId);
+  });
+
   let mySum = 0;
   const offerHtml = tradeMyOfferUids.map(uid => {
     const item = state.inventory.find(x => x.uid === uid);
     const card = state.cards.find(c => c.id === item.cardId);
+    if (!item || !card) return '';
     mySum += getCardPrice(card, item.isHolo);
     return createCardHTML(card, item.isHolo, '', `onclick="toggleTradeCard('${uid}')"`);
   }).join('');
 
   let botSum = 0;
-  const botHtml = tradeBotOffer.map(b => {
+  const botHtml = tradeBotOffer.filter(b => b && b.card).map(b => {
     botSum += getCardPrice(b.card, b.isHolo);
     return createCardHTML(b.card, b.isHolo);
   }).join('');
 
   document.getElementById('my-trade-sum').textContent = mySum;
   document.getElementById('bot-trade-sum').textContent = botSum;
-  document.getElementById('my-trade-offer').innerHTML = offerHtml;
-  document.getElementById('bot-trade-offer').innerHTML = botHtml;
+  document.getElementById('my-trade-offer').innerHTML = offerHtml || '<div class="hint-text">Пока ничего не выбрано</div>';
+  document.getElementById('bot-trade-offer').innerHTML = botHtml || '<div class="hint-text">Выбери свои карты слева</div>';
 
-  const availInv = state.inventory.filter(x => !tradeMyOfferUids.includes(x.uid));
-  document.getElementById('trade-my-inv').innerHTML = availInv.map(item => {
-    const card = state.cards.find(c => c.id === item.cardId);
-    return createCardHTML(card, item.isHolo, '', `onclick="toggleTradeCard('${item.uid}')"`);
-  }).join('');
+  const availInv = state.inventory
+    .map(item => ({ ...item, card: state.cards.find(c => c.id === item.cardId) }))
+    .filter(x => x.card && !tradeMyOfferUids.includes(x.uid));
+
+  const countEl = document.getElementById('trade-inv-count');
+  if (countEl) countEl.textContent = availInv.length;
+
+  const invEl = document.getElementById('trade-my-inv');
+  if (availInv.length === 0) {
+    invEl.innerHTML = '<div class="hint-text">В инвентаре нет карт для обмена. Открой кейс или пак!</div>';
+  } else {
+    invEl.innerHTML = availInv.map(item =>
+      createCardHTML(item.card, item.isHolo, '', `onclick="toggleTradeCard('${item.uid}')"`)
+    ).join('');
+  }
 
   document.getElementById('confirm-trade-btn').disabled = !(mySum > 0 && tradeBotOffer.length > 0);
 }
 
 function confirmTrade() {
   state.inventory = state.inventory.filter(x => !tradeMyOfferUids.includes(x.uid));
-  tradeBotOffer.forEach(b => giveCardToPlayer(b.card, b.isHolo, 'Трейд с ботом'));
+  tradeBotOffer.forEach(b => {
+    if (b && b.card) giveCardToPlayer(b.card, b.isHolo, 'Трейд с ботом');
+  });
   tradeMyOfferUids = [];
   tradeBotOffer = [];
   saveState();
@@ -750,12 +826,12 @@ function executeCraft() {
 
   const sortedPool = [...pool].sort((a, b) => a.price - b.price);
   const minInput = Math.min(...state.cards.filter(c => c.rarity === baseRarityId).map(c => c.price));
-  const maxInput = Math.max(...state.cards.filter(c => c.rarity === baseRarityId).map(c => c.price * HOLO_MULTIPLIER));
+  const maxInput = Math.max(...state.cards.filter(c => c.rarity === baseRarityId).map(c => getCardPrice(c, true)));
   const ratio = maxInput > minInput ? Math.min(1, Math.max(0, (avgInputPrice - minInput) / (maxInput - minInput))) : 0.5;
 
   const targetIndex = Math.min(sortedPool.length - 1, Math.floor(ratio * sortedPool.length));
   const craftedCard = sortedPool[targetIndex];
-  const isHolo = Math.random() < HOLO_CHANCE;
+  const isHolo = Math.random() < state.holoChance;
 
   state.inventory = state.inventory.filter(x => !craftSelectedUids.includes(x.uid));
   craftSelectedUids = [];
@@ -792,7 +868,7 @@ function getCardDropChancePercentText(card, isHolo) {
   const sameRarityCount = Math.max(1, state.cards.filter(c => c.rarity === card.rarity).length);
   const totalW = state.rarities.reduce((sum, r) => sum + sanitizeChanceInput(r.weight), 0) || 1;
   const rarShare = sanitizeChanceInput(rar.weight) / totalW;
-  const holoShare = isHolo ? HOLO_CHANCE : (1 - HOLO_CHANCE);
+  const holoShare = isHolo ? state.holoChance : (1 - state.holoChance);
   const exactPct = (rarShare / sameRarityCount) * holoShare * 100;
 
   if (exactPct === 0) return '0%';
@@ -878,7 +954,7 @@ function sellInventoryCard(uid) {
   if (idx === -1) return;
   const item = state.inventory[idx];
   const card = state.cards.find(c => c.id === item.cardId);
-  state.balance += getCardPrice(card, item.isHolo);
+  if (card) state.balance += getCardPrice(card, item.isHolo);
   state.inventory.splice(idx, 1);
   saveState();
   renderCollection();
@@ -891,7 +967,7 @@ function sellAllDuplicates() {
     const key = item.cardId + '_' + item.isHolo;
     if (seen.has(key)) {
       const card = state.cards.find(c => c.id === item.cardId);
-      earned += getCardPrice(card, item.isHolo);
+      if (card) earned += getCardPrice(card, item.isHolo);
       return false;
     }
     seen.add(key);
@@ -919,7 +995,7 @@ function saveCloudConfig() {
   state.cloud.binId = document.getElementById('cfg-bin-id').value.trim();
   state.cloud.apiKey = document.getElementById('cfg-api-key').value.trim();
   localStorage.setItem('gd_cloud', JSON.stringify(state.cloud));
-  alert('Ключи облака сохранены!');
+  alert('Ключи облака сохранены в этом браузере! Чтобы они работали у всех в других браузерах, впиши их в SHARED_CLOUD_CONFIG в начале app.js.');
   syncCatalogFromCloud(false);
 }
 
@@ -928,7 +1004,6 @@ function renderAdminUI() {
   document.getElementById('cfg-bin-id').value = state.cloud.binId || '';
   document.getElementById('cfg-api-key').value = state.cloud.apiKey || '';
 
-  // Редкости: градиент из 2 цветов, шанс и эффект
   document.getElementById('admin-rarities-list').innerHTML = state.rarities.map(r => {
     const pctText = formatChancePercent(r.weight);
     return `
@@ -1067,7 +1142,7 @@ function saveEditedCard() {
   saveState();
   document.getElementById('edit-card-heading').textContent = name;
   renderAdminUI();
-  alert('Карточка изменена! Не забудь нажать «Залить карточки в облако», чтобы изменения увидели все игроки.');
+  alert('Карточка изменена! Нажми «Залить всё в облако», чтобы изменения увидели все игроки.');
 }
 
 function deleteEditingCard() {
@@ -1156,7 +1231,7 @@ function adminAddCard() {
   state.cards.push({ id: 'c_' + Date.now(), top, name, rarity, price, img });
   saveState();
   renderAdminUI();
-  alert('Карточка добавлена в базу! Нажми «Залить карточки в облако», чтобы она появилась у всех игроков.');
+  alert('Карточка добавлена в базу! Нажми «Залить всё в облако», чтобы она появилась у всех игроков.');
 }
 
 function adminDeleteCard(id) {
@@ -1174,7 +1249,7 @@ function adminAddCase() {
   if (!name || selectedIds.length === 0) return alert('Укажи название кейса и выбери хотя бы 1 карту!');
   state.cases.push({ id: 'case_' + Date.now(), name, price, img, cardIds: selectedIds });
   saveState();
-  alert('Кейс создан!');
+  alert('Кейс создан! Нажми «Залить всё в облако», чтобы он появился у всех.');
 }
 
 // === МОДАЛЬНОЕ ОКНО ВЫИГРЫША ===
