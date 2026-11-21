@@ -28,7 +28,45 @@ let tradeBotOffer = [];
 
 let craftSelectedUids = [];
 
+// Состояние 3D-вращения карточки в модалке коллекции
+let rotX = 0;
+let rotY = 0;
+let isDragging3D = false;
+let dragStartX = 0;
+let dragStartY = 0;
+
+// === АВТОНОРМАЛИЗАЦИЯ ШАНСОВ (ОТ 0.0000000001 ДО 100) ===
+function sanitizeChanceInput(rawVal) {
+  const cleaned = String(rawVal ?? '').replace(',', '.').trim();
+  let num = Number(cleaned);
+  if (!Number.isFinite(num) || num < 0) return 0;
+  if (num > 100) return 100;
+  return num;
+}
+
+function normalizeRaritiesWeights() {
+  state.rarities.forEach(r => {
+    r.weight = sanitizeChanceInput(r.weight);
+  });
+  const sum = state.rarities.reduce((acc, r) => acc + r.weight, 0);
+  if (sum <= 0 && state.rarities.length > 0) {
+    state.rarities[0].weight = 100;
+  }
+}
+
+function formatChancePercent(weight) {
+  const total = state.rarities.reduce((acc, r) => acc + sanitizeChanceInput(r.weight), 0) || 1;
+  const pct = (sanitizeChanceInput(weight) / total) * 100;
+  if (pct === 0) return '0%';
+  if (pct < 0.0001) return pct.toFixed(10).replace(/0+$/, '').replace(/\.$/, '') + '%';
+  if (pct < 1) return pct.toFixed(4).replace(/0+$/, '').replace(/\.$/, '') + '%';
+  return pct.toFixed(2).replace(/\.00$/, '') + '%';
+}
+
+normalizeRaritiesWeights();
+
 function saveState() {
+  normalizeRaritiesWeights();
   localStorage.setItem('gd_nick', state.nickname);
   localStorage.setItem('gd_balance', state.balance);
   localStorage.setItem('gd_inventory', JSON.stringify(state.inventory));
@@ -101,27 +139,38 @@ function sortItems(items, sortMode) {
   });
 }
 
-function createCardHTML(card, isHolo = false, extraClass = '', clickAttr = '') {
+function createCardHTML(card, isHolo = false, extraClass = '', clickAttr = '', actionBtnHTML = '') {
   const rar = getRarityObj(card.rarity);
   const price = getCardPrice(card, isHolo);
   const effectClass = rar.effect && rar.effect !== 'none' ? `effect-${rar.effect}` : '';
   const holoClass = isHolo ? 'is-holo' : '';
 
+  const sweepLayer = rar.effect === 'shine-sweep' ? '<div class="shine-sweep-layer"></div>' : '';
+  const sparkleLayer = rar.effect === 'sparkle'
+    ? '<div class="sparkle-layer"><span class="spark-dot"></span><span class="spark-dot"></span><span class="spark-dot"></span><span class="spark-dot"></span></div>'
+    : '';
+  const holoLayer = isHolo ? '<div class="holo-full-overlay"></div>' : '';
+
   return `
-    <div class="gd-card ${holoClass} ${effectClass} ${extraClass}"
-         style="--rar-color: ${rar.color}; --rar-bg: ${rar.bg};"
-         ${clickAttr}>
-      <div class="card-surface-fx"></div>
-      <div class="card-top-row">
-        <span class="card-rank">${card.top > 0 ? '#' + card.top : '★'}</span>
-        <span class="card-rarity-badge">${rar.name}</span>
+    <div class="card-wrap">
+      <div class="gd-card ${holoClass} ${effectClass} ${extraClass}"
+           style="--rar-color: ${rar.color}; --rar-bg: ${rar.bg};"
+           ${clickAttr}>
+        ${holoLayer}
+        ${sweepLayer}
+        ${sparkleLayer}
+        <div class="card-top-row">
+          <span class="card-rank">${card.top > 0 ? '#' + card.top : '★'}</span>
+          <span class="card-rarity-badge">${rar.name}</span>
+        </div>
+        <img class="card-thumb" src="${card.img}" alt="${card.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=GD+LEVEL'">
+        <div class="card-title">${card.name}</div>
+        <div class="card-bottom-area">
+          <span class="card-price">${price} ₽</span>
+          ${isHolo ? '<span class="holo-pill">✦ HOLO</span>' : ''}
+        </div>
       </div>
-      <img class="card-thumb" src="${card.img}" alt="${card.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=GD+LEVEL'">
-      <div class="card-title">${card.name}</div>
-      <div class="card-bottom-area">
-        <span class="card-price">${price} ₽</span>
-        ${isHolo ? '<span class="holo-pill">✦ HOLO</span>' : ''}
-      </div>
+      ${actionBtnHTML}
     </div>
   `;
 }
@@ -247,16 +296,17 @@ function renderCaseContents() {
 function rollWeightedCard(poolCards) {
   let totalWeight = 0;
   const weighted = poolCards.map(card => {
-    const w = Math.max(0.01, Number(getRarityObj(card.rarity).weight) || 1);
+    const w = sanitizeChanceInput(getRarityObj(card.rarity).weight);
     totalWeight += w;
     return { card, w };
   });
+  if (totalWeight <= 0) return poolCards[Math.floor(Math.random() * poolCards.length)];
   let rnd = Math.random() * totalWeight;
   for (const item of weighted) {
     if (rnd < item.w) return item.card;
     rnd -= item.w;
   }
-  return poolCards[0];
+  return poolCards[poolCards.length - 1];
 }
 
 function prepareRouletteTape(caseObj, winCard = null, winHolo = false) {
@@ -295,8 +345,8 @@ function spinCurrentCase(fast = false) {
   document.getElementById('spin-case-btn').disabled = true;
 
   const track = document.getElementById('roulette-track');
-  const cardWidth = 207;
-  const offset = 38 * cardWidth + (Math.random() * 60 - 30) + 95;
+  const cardWidth = 217; // 205px + 12px gap
+  const offset = 38 * cardWidth + (Math.random() * 60 - 30) + 102;
 
   setTimeout(() => {
     track.style.transition = fast ? 'transform 0.8s cubic-bezier(0.15, 0.85, 0.25, 1)' : 'transform 4.2s cubic-bezier(0.12, 0.88, 0.22, 1)';
@@ -622,7 +672,7 @@ function executeCraft() {
   renderCraftUI();
 }
 
-// === 4) КОЛЛЕКЦИЯ И СТАТИСТИКА ===
+// === 4) КОЛЛЕКЦИЯ, СТАТИСТИКА И 3D-ПРОСМОТР КАРТЫ ===
 function renderCollection() {
   const sortMode = document.getElementById('col-sort').value;
   const mapped = state.inventory.map(item => ({
@@ -639,16 +689,87 @@ function renderCollection() {
   const sorted = sortItems(mapped, sortMode);
   document.getElementById('collection-grid').innerHTML = sorted.map(item => {
     const price = getCardPrice(item.card, item.isHolo);
-    return `
-      <div>
-        ${createCardHTML(item.card, item.isHolo)}
-        <button class="secondary-btn" style="width:100%; margin-top:8px; font-size:12px;" onclick="sellInventoryCard('${item.uid}')">
-          Продать за ${price} ₽
-        </button>
-      </div>
-    `;
+    const sellBtn = `<button class="secondary-btn" style="width:100%; margin-top:8px; font-size:12px;" onclick="event.stopPropagation(); sellInventoryCard('${item.uid}')">Продать за ${price} ₽</button>`;
+    return createCardHTML(item.card, item.isHolo, '', `onclick="openCard3DModal('${item.card.id}', ${item.isHolo})"`, sellBtn);
   }).join('');
 }
+
+function getCardDropChancePercentText(card, isHolo) {
+  const rar = getRarityObj(card.rarity);
+  const sameRarityCount = Math.max(1, state.cards.filter(c => c.rarity === card.rarity).length);
+  const totalW = state.rarities.reduce((sum, r) => sum + sanitizeChanceInput(r.weight), 0) || 1;
+  const rarShare = sanitizeChanceInput(rar.weight) / totalW;
+  const holoShare = isHolo ? HOLO_CHANCE : (1 - HOLO_CHANCE);
+  const exactPct = (rarShare / sameRarityCount) * holoShare * 100;
+
+  if (exactPct === 0) return '0%';
+  if (exactPct < 0.0001) return exactPct.toFixed(10).replace(/0+$/, '').replace(/\.$/, '') + '%';
+  if (exactPct < 1) return exactPct.toFixed(4).replace(/0+$/, '').replace(/\.$/, '') + '%';
+  return exactPct.toFixed(2).replace(/\.00$/, '') + '%';
+}
+
+function openCard3DModal(cardId, isHolo) {
+  const card = state.cards.find(c => c.id === cardId);
+  if (!card) return;
+  const rar = getRarityObj(card.rarity);
+
+  document.getElementById('card-3d-front').innerHTML = createCardHTML(card, isHolo);
+  document.getElementById('card-3d-info').innerHTML = `
+    <div><span>Название:</span><b>${card.name}</b></div>
+    <div><span>Позиция в топе:</span><b>${card.top > 0 ? '#' + card.top : 'Без топа (★)'}</b></div>
+    <div><span>Редкость:</span><b style="color:${rar.color}">${rar.name}</b></div>
+    <div><span>Тип:</span><b>${isHolo ? '✦ HOLO' : 'Обычная'}</b></div>
+    <div><span>Шанс выпадения:</span><b>${getCardDropChancePercentText(card, isHolo)}</b></div>
+    <div><span>Цена:</span><b style="color:var(--accent-green)">${getCardPrice(card, isHolo)} ₽</b></div>
+  `;
+
+  reset3DRotation();
+  document.getElementById('card-3d-modal').classList.remove('hidden');
+}
+
+function closeCard3DModal(e) {
+  if (e && e.target !== document.getElementById('card-3d-modal')) return;
+  document.getElementById('card-3d-modal').classList.add('hidden');
+}
+
+function reset3DRotation() {
+  rotX = 0;
+  rotY = 0;
+  apply3DRotation();
+}
+
+function apply3DRotation() {
+  const flipper = document.getElementById('card-3d-flipper');
+  if (flipper) {
+    flipper.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+  }
+}
+
+(function init3DStageEvents() {
+  const stage = document.getElementById('stage-3d');
+  if (!stage) return;
+
+  stage.addEventListener('pointerdown', (e) => {
+    isDragging3D = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    if (!isDragging3D) return;
+    const dx = e.clientX - dragStartX;
+    const dy = e.clientY - dragStartY;
+    rotY += dx * 0.65;
+    rotX = Math.max(-55, Math.min(55, rotX - dy * 0.55));
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    apply3DRotation();
+  });
+
+  window.addEventListener('pointerup', () => {
+    isDragging3D = false;
+  });
+})();
 
 function sellInventoryCard(uid) {
   const idx = state.inventory.findIndex(x => x.uid === uid);
@@ -700,37 +821,31 @@ function saveCloudConfig() {
   fetchCloudLiveDrops();
 }
 
-function getTotalRarityWeight() {
-  return state.rarities.reduce((sum, r) => sum + Math.max(0, Number(r.weight) || 0), 0) || 1;
-}
-
 function renderAdminUI() {
+  normalizeRaritiesWeights();
   document.getElementById('cfg-bin-id').value = state.cloud.binId || '';
   document.getElementById('cfg-api-key').value = state.cloud.apiKey || '';
 
-  const totalW = getTotalRarityWeight();
-
-  // Редкости + прямое редактирование шанса/веса и эффекта
   document.getElementById('admin-rarities-list').innerHTML = state.rarities.map(r => {
-    const pct = (((Number(r.weight) || 0) / totalW) * 100).toFixed(1);
+    const pctText = formatChancePercent(r.weight);
     return `
       <div class="rar-manage-card" style="--rar-color:${r.color};">
         <div class="rar-manage-top">
-          <span style="color:${r.color};">${r.name} (~${pct}%)</span>
+          <span style="color:${r.color};">${r.name} (${pctText})</span>
           <button onclick="adminDeleteRarity('${r.id}')" style="background:none;border:none;color:#f87171;cursor:pointer;font-weight:900;">✕</button>
         </div>
         <div class="rar-chance-row">
-          <span>Шанс (вес):</span>
-          <input type="number" min="0" value="${r.weight ?? 10}" onchange="updateRarityWeight('${r.id}', this.value)">
+          <span>Шанс:</span>
+          <input type="text" value="${r.weight ?? 10}" onchange="updateRarityWeight('${r.id}', this.value)">
         </div>
         <div class="rar-chance-row">
           <span>Эффект:</span>
           <select onchange="updateRarityEffect('${r.id}', this.value)">
             <option value="none" ${r.effect === 'none' ? 'selected' : ''}>Нет</option>
+            <option value="aura" ${r.effect === 'aura' ? 'selected' : ''}>Левитирующая аура</option>
             <option value="shine-sweep" ${r.effect === 'shine-sweep' ? 'selected' : ''}>Блик сверху вниз</option>
-            <option value="aura" ${r.effect === 'aura' ? 'selected' : ''}>Аура</option>
             <option value="glow" ${r.effect === 'glow' ? 'selected' : ''}>Свечение (Glow)</option>
-            <option value="rainbow-shift" ${r.effect === 'rainbow-shift' ? 'selected' : ''}>Перелив карточки</option>
+            <option value="rainbow-shift" ${r.effect === 'rainbow-shift' ? 'selected' : ''}>Перелив цвета редкости</option>
             <option value="sparkle" ${r.effect === 'sparkle' ? 'selected' : ''}>Искры</option>
           </select>
         </div>
@@ -738,7 +853,6 @@ function renderAdminUI() {
     `;
   }).join('');
 
-  // Селект редкостей для новой карты
   const rarSelect = document.getElementById('new-card-rarity');
   const prevSelected = rarSelect.value;
   rarSelect.innerHTML = state.rarities.map(r =>
@@ -748,31 +862,28 @@ function renderAdminUI() {
     rarSelect.value = prevSelected;
   }
 
-  // Чекбоксы карт для нового кейса
   document.getElementById('admin-case-cards-selector').innerHTML = state.cards.map(c => `
     <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
       <input type="checkbox" class="case-card-cb" value="${c.id}"> #${c.top} ${c.name}
     </label>
   `).join('');
 
-  // Все карты
   document.getElementById('admin-cards-count').textContent = state.cards.length;
-  document.getElementById('admin-all-cards').innerHTML = state.cards.map(c => `
-    <div>
-      ${createCardHTML(c, false)}
-      <button class="secondary-btn" style="width:100%;margin-top:8px;color:#f87171;" onclick="adminDeleteCard('${c.id}')">Удалить</button>
-    </div>
-  `).join('');
+  document.getElementById('admin-all-cards').innerHTML = state.cards.map(c => {
+    const delBtn = `<button class="secondary-btn" style="width:100%;margin-top:8px;color:#f87171;" onclick="adminDeleteCard('${c.id}')">Удалить</button>`;
+    return createCardHTML(c, false, '', '', delBtn);
+  }).join('');
 
   updateCardPreview();
 }
 
-function updateRarityWeight(id, newVal) {
+function updateRarityWeight(id, rawVal) {
   const rar = state.rarities.find(r => r.id === id);
   if (!rar) return;
-  rar.weight = Math.max(0, Number(newVal) || 0);
+  rar.weight = sanitizeChanceInput(rawVal);
   saveState();
   renderAdminUI();
+  updateCardPreview();
 }
 
 function updateRarityEffect(id, newEffect) {
@@ -781,6 +892,7 @@ function updateRarityEffect(id, newEffect) {
   rar.effect = newEffect;
   saveState();
   renderAdminUI();
+  updateCardPreview();
 }
 
 function updateCardPreview() {
@@ -801,7 +913,7 @@ function adminAddRarity() {
   const name = document.getElementById('new-rar-name').value.trim();
   const color = document.getElementById('new-rar-color').value;
   const bg = document.getElementById('new-rar-bg').value;
-  const weight = Math.max(0, Number(document.getElementById('new-rar-weight').value) || 10);
+  const weight = sanitizeChanceInput(document.getElementById('new-rar-weight').value);
   const effect = document.getElementById('new-rar-effect').value;
   if (!name) return;
 
