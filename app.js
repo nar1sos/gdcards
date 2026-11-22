@@ -12,23 +12,24 @@ const initialCloud = {
   apiKey: (savedCloud && savedCloud.apiKey) || SHARED_CLOUD_CONFIG.apiKey || ''
 };
 
+const hasSavedRarities = localStorage.getItem('gd_rarities') !== null;
+const hasSavedCards = localStorage.getItem('gd_cards') !== null;
+const hasSavedCases = localStorage.getItem('gd_cases') !== null;
+
 let state = {
   nickname: localStorage.getItem('gd_nick') || 'Player_' + Math.floor(100 + Math.random() * 900),
   balance: Number(localStorage.getItem('gd_balance') ?? 700),
   inventory: JSON.parse(localStorage.getItem('gd_inventory') || '[]'),
   stats: JSON.parse(localStorage.getItem('gd_stats') || '{"opened":0,"upgrades":0}'),
-  rarities: JSON.parse(localStorage.getItem('gd_rarities') || JSON.stringify(DEFAULT_RARITIES)),
-  cards: JSON.parse(localStorage.getItem('gd_cards') || JSON.stringify(DEFAULT_CARDS)),
-  cases: JSON.parse(localStorage.getItem('gd_cases') || JSON.stringify(DEFAULT_CASES)),
+  rarities: hasSavedRarities ? JSON.parse(localStorage.getItem('gd_rarities')) : JSON.parse(JSON.stringify(DEFAULT_RARITIES)),
+  cards: hasSavedCards ? JSON.parse(localStorage.getItem('gd_cards')) : JSON.parse(JSON.stringify(DEFAULT_CARDS)),
+  cases: hasSavedCases ? JSON.parse(localStorage.getItem('gd_cases')) : JSON.parse(JSON.stringify(DEFAULT_CASES)),
   cloud: initialCloud,
-  liveDrops: JSON.parse(localStorage.getItem('gd_livedrops') || '[]'),
   holoMultiplier: Number(localStorage.getItem('gd_holo_mult') ?? 2.5),
   holoChance: Number(localStorage.getItem('gd_holo_chance') ?? 0.12)
 };
 
 if (!Number.isFinite(state.balance) || state.balance < 0) state.balance = 700;
-
-// Нормализуем инвентарь при старте
 if (!Array.isArray(state.inventory)) state.inventory = [];
 state.inventory = state.inventory.filter(item => item && typeof item.uid === 'string' && typeof item.cardId === 'string');
 
@@ -38,7 +39,7 @@ let isUpgrading = false;
 let lastWonCard = null;
 let editingCardId = null;
 let editingCaseId = null;
-let hasLocalCatalogEdits = false;
+let hasLocalCatalogEdits = localStorage.getItem('gd_dirty_catalog') === '1';
 let cloudSyncInProgress = false;
 
 let draggedRarityId = null;
@@ -55,7 +56,6 @@ let tradeBotOffer = [];
 
 let craftSelectedUids = [];
 
-// Состояние 3D-вращения карточки (только при зажатой кнопке мыши / пальце)
 let rotX = 0;
 let rotY = 0;
 let isDragging3D = false;
@@ -65,7 +65,7 @@ let dragStartY = 0;
 // === ИЕРАРХИЯ РЕДКОСТЕЙ И ОТДЕЛЬНЫЕ ШАНСЫ (КЕЙСЫ / ПАКИ) ===
 function recalculateRarityHierarchy() {
   if (!Array.isArray(state.rarities) || state.rarities.length === 0) {
-    state.rarities = [...DEFAULT_RARITIES];
+    state.rarities = JSON.parse(JSON.stringify(DEFAULT_RARITIES));
   }
   const total = state.rarities.length;
   state.rarities.forEach((r, idx) => {
@@ -169,6 +169,7 @@ function saveState(markCatalogDirty = false) {
   normalizeCardsAndRanks();
   if (markCatalogDirty) {
     hasLocalCatalogEdits = true;
+    localStorage.setItem('gd_dirty_catalog', '1');
   }
   localStorage.setItem('gd_nick', state.nickname);
   localStorage.setItem('gd_balance', String(state.balance));
@@ -177,7 +178,6 @@ function saveState(markCatalogDirty = false) {
   localStorage.setItem('gd_rarities', JSON.stringify(state.rarities));
   localStorage.setItem('gd_cards', JSON.stringify(state.cards));
   localStorage.setItem('gd_cases', JSON.stringify(state.cases));
-  localStorage.setItem('gd_livedrops', JSON.stringify(state.liveDrops.slice(0, 25)));
   localStorage.setItem('gd_holo_mult', String(state.holoMultiplier));
   localStorage.setItem('gd_holo_chance', String(state.holoChance));
   updateTopBar();
@@ -301,7 +301,7 @@ function createCardHTML(card, isHolo = false, extraClass = '', clickAttr = '', a
   `;
 }
 
-function giveCardToPlayer(card, isHolo, sourceLabel = 'Кейс') {
+function giveCardToPlayer(card, isHolo) {
   const item = {
     uid: 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
     cardId: card.id,
@@ -309,11 +309,10 @@ function giveCardToPlayer(card, isHolo, sourceLabel = 'Кейс') {
   };
   state.inventory.push(item);
   saveState(false);
-  pushLiveDrop(card, isHolo, sourceLabel);
   return item;
 }
 
-// === ОБЛАКО ДЛЯ ВСЕХ ИГРОКОВ (КАРТЫ, РЕДКОСТИ, КЕЙСЫ, HOLO + ЛАЙВ-ДРОП) ===
+// === ОБЛАКО ДЛЯ ВСЕХ ИГРОКОВ (КАРТЫ, РЕДКОСТИ, КЕЙСЫ, HOLO) ===
 function buildCloudHeaders() {
   const headers = { 'Content-Type': 'application/json' };
   if (state.cloud.apiKey) {
@@ -366,12 +365,10 @@ async function pushCatalogToCloud() {
       holoChance: state.holoChance,
       updatedAt: Date.now()
     };
-    if (!Array.isArray(currentRecord.drops)) {
-      currentRecord.drops = state.liveDrops.slice(0, 30);
-    }
 
     await writeCloudRecord(currentRecord);
     hasLocalCatalogEdits = false;
+    localStorage.setItem('gd_dirty_catalog', '0');
     updateCloudSyncBadge();
   } catch (e) {
     console.warn('Ошибка загрузки в облако:', e);
@@ -402,7 +399,7 @@ async function syncCatalogFromCloud(forceOverwriteLocal = false) {
         recalculateRarityHierarchy();
         changed = true;
       }
-      if (Array.isArray(cat.cases)) {
+      if (Array.isArray(cat.cases) && cat.cases.length > 0) {
         state.cases = cat.cases;
         changed = true;
       }
@@ -416,14 +413,11 @@ async function syncCatalogFromCloud(forceOverwriteLocal = false) {
       }
     }
 
-    if (Array.isArray(record.drops)) {
-      state.liveDrops = record.drops;
-      localStorage.setItem('gd_livedrops', JSON.stringify(state.liveDrops.slice(0, 25)));
-      renderLiveFeed();
-    }
-
     if (changed) {
-      if (forceOverwriteLocal) hasLocalCatalogEdits = false;
+      if (forceOverwriteLocal) {
+        hasLocalCatalogEdits = false;
+        localStorage.setItem('gd_dirty_catalog', '0');
+      }
       saveState(false);
       renderCasesList();
       if (document.getElementById('tab-collection').classList.contains('active')) renderCollection();
@@ -437,49 +431,6 @@ async function syncCatalogFromCloud(forceOverwriteLocal = false) {
   } finally {
     cloudSyncInProgress = false;
   }
-}
-
-// === ОБЩАЯ ЛЕНТА ЛАЙВ-ДРОПА (СПРАВА В СТИЛЕ CASE-BATTLE) ===
-async function pushLiveDrop(card, isHolo, source) {
-  const rar = getRarityObj(card.rarity);
-  const dropEntry = {
-    id: Date.now() + Math.random(),
-    user: state.nickname,
-    cardName: card.name,
-    img: card.img,
-    isHolo: isHolo,
-    rarColor: rar.color,
-    rarName: rar.name,
-    source: source
-  };
-
-  state.liveDrops.unshift(dropEntry);
-  state.liveDrops = state.liveDrops.slice(0, 25);
-  saveState(false);
-  renderLiveFeed();
-
-  if (state.cloud.binId) {
-    try {
-      const record = (await readCloudRecord()) || {};
-      const cloudDrops = Array.isArray(record.drops) ? record.drops : [];
-      cloudDrops.unshift(dropEntry);
-      record.drops = cloudDrops.slice(0, 30);
-      await writeCloudRecord(record);
-    } catch (e) {
-      console.warn('Ошибка отправки в общую ленту:', e);
-    }
-  }
-}
-
-function renderLiveFeed() {
-  const feed = document.getElementById('live-drop-feed');
-  feed.innerHTML = state.liveDrops.map(d => `
-    <div class="live-item" style="--rar-color: ${d.rarColor}">
-      <img src="${d.img}" alt="">
-      <div class="live-item-title">${d.isHolo ? '✦ HOLO ' : ''}${d.cardName}</div>
-      <div class="live-item-sub">${d.rarName} • ${d.user}</div>
-    </div>
-  `).join('');
 }
 
 // === 6) КЕЙСЫ И РУЛЕТКА ===
@@ -589,7 +540,7 @@ function spinCurrentCase(fast = false) {
   setTimeout(() => {
     isSpinning = false;
     document.getElementById('spin-case-btn').disabled = false;
-    const addedItem = giveCardToPlayer(wonCard, wonHolo, c.name);
+    const addedItem = giveCardToPlayer(wonCard, wonHolo);
     showWinModal(wonCard, wonHolo, addedItem.uid);
   }, fast ? 900 : 4350);
 }
@@ -606,7 +557,7 @@ function buyPack() {
   for (let i = 0; i < 5; i++) {
     const card = rollWeightedCard(state.cards, 'pack');
     const isHolo = Math.random() < state.holoChance;
-    giveCardToPlayer(card, isHolo, 'Пак 500₽');
+    giveCardToPlayer(card, isHolo);
     revealArea.innerHTML += createCardHTML(card, isHolo);
   }
   saveState(false);
@@ -761,7 +712,7 @@ function executeUpgrade() {
     const msg = document.getElementById('upgrade-result-msg');
     if (roll <= chance) {
       state.stats.upgrades += 1;
-      giveCardToPlayer(tgtCard, upgSelectedTargetHolo, 'Апгрейд');
+      giveCardToPlayer(tgtCard, upgSelectedTargetHolo);
       msg.innerHTML = `<span style="color:#4ade80; font-weight:800;">УСПЕХ! Выпал ${tgtCard.name}</span>`;
     } else {
       msg.innerHTML = `<span style="color:#f87171; font-weight:800;">НЕУДАЧА! Карточка сгорела</span>`;
@@ -862,7 +813,7 @@ function renderTradeUI() {
 function confirmTrade() {
   state.inventory = state.inventory.filter(x => !tradeMyOfferUids.includes(x.uid));
   tradeBotOffer.forEach(b => {
-    if (b && b.card) giveCardToPlayer(b.card, b.isHolo, 'Трейд с ботом');
+    if (b && b.card) giveCardToPlayer(b.card, b.isHolo);
   });
   tradeMyOfferUids = [];
   tradeBotOffer = [];
@@ -956,7 +907,7 @@ function executeCraft() {
   state.inventory = state.inventory.filter(x => !craftSelectedUids.includes(x.uid));
   craftSelectedUids = [];
 
-  const added = giveCardToPlayer(craftedCard, isHolo, 'Крафт 10→1');
+  const added = giveCardToPlayer(craftedCard, isHolo);
   showWinModal(craftedCard, isHolo, added.uid);
   renderCraftUI();
 }
@@ -1111,7 +1062,9 @@ function saveCloudConfig() {
   state.cloud.binId = document.getElementById('cfg-bin-id').value.trim();
   state.cloud.apiKey = document.getElementById('cfg-api-key').value.trim();
   localStorage.setItem('gd_cloud', JSON.stringify(state.cloud));
-  syncCatalogFromCloud(false);
+  if (!hasLocalCatalogEdits) {
+    syncCatalogFromCloud(false);
+  }
 }
 
 function handleRarityDrop(targetId) {
@@ -1672,6 +1625,6 @@ function sellWonCard() {
 updateTopBar();
 updateCloudSyncBadge();
 renderCasesList();
-renderLiveFeed();
-syncCatalogFromCloud(false);
-setInterval(() => syncCatalogFromCloud(false), 6000);
+if (!hasLocalCatalogEdits) {
+  syncCatalogFromCloud(false);
+}
