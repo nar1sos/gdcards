@@ -31,7 +31,7 @@
     </div>
   </header>
 
-  <!-- ОСНОВНОЙ МАКЕТ: КОНТЕНТ СЛЕВА + ЛАЙВ-ЛЕНТА СПРАВА -->
+  <!-- ОСНОВНОЙ МАКЕТ -->
   <div class="workspace-layout">
     <main class="container">
 
@@ -259,10 +259,10 @@
             </div>
           </div>
 
-          <!-- Настройка общей лайв-ленты и облачного каталога -->
+          <!-- Настройка облачного каталога -->
           <div class="admin-block">
             <h3>Облако для всех игроков (JSONBin.io)</h3>
-            <p class="hint-text">Укажи Bin ID и X-Master-Key — через этот же Bin работает и общая лента дропа, и кнопка «Залить всё в облако» (карты, редкости, кейсы и Holo) для всех игроков:</p>
+            <p class="hint-text">Укажи Bin ID и X-Master-Key — нажми «Залить всё в облако», чтобы сохранить свои карты, редкости и кейсы в облаке.</p>
             <div class="form-row">
               <input type="text" id="cfg-bin-id" placeholder="JSONBin ID">
               <input type="text" id="cfg-api-key" placeholder="X-Master-Key">
@@ -430,15 +430,6 @@
       </section>
 
     </main>
-
-    <!-- ЛЕНТА ЛАЙВ-ДРОПА СПРАВА (В СТИЛЕ CASE-BATTLE) -->
-    <aside class="live-sidebar-right">
-      <div class="live-sidebar-header">
-        <div class="live-brand-title"><span class="pulse-dot"></span> GD LUDKA</div>
-        <div class="live-brand-sub">У НАС ВЫИГРЫВАЮТ</div>
-      </div>
-      <div id="live-drop-feed" class="live-drop-feed"></div>
-    </aside>
   </div>
 
   <!-- 3D-ИНСПЕКТОР КАРТОЧКИ ПРИ КЛИКЕ В КОЛЛЕКЦИИ -->
