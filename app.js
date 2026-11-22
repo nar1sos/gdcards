@@ -5,6 +5,9 @@ const SHARED_CLOUD_CONFIG = {
   apiKey: '$2a$10$uRETf0psynxbv1ND6K6TkOEOldfaLwR07Hx7U7imDwBJpF6fJKFRe'
 };
 
+const PACK_PRICE = 1000;
+const INITIAL_BALANCE = 1500;
+
 // === СОСТОЯНИЕ И СОХРАНЕНИЕ ===
 const savedCloud = JSON.parse(localStorage.getItem('gd_cloud') || 'null');
 const initialCloud = {
@@ -18,7 +21,7 @@ const hasSavedCases = localStorage.getItem('gd_cases') !== null;
 
 let state = {
   nickname: localStorage.getItem('gd_nick') || 'Player_' + Math.floor(100 + Math.random() * 900),
-  balance: Number(localStorage.getItem('gd_balance') ?? 700),
+  balance: Number(localStorage.getItem('gd_balance') ?? INITIAL_BALANCE),
   inventory: JSON.parse(localStorage.getItem('gd_inventory') || '[]'),
   stats: JSON.parse(localStorage.getItem('gd_stats') || '{"opened":0,"upgrades":0}'),
   rarities: hasSavedRarities ? JSON.parse(localStorage.getItem('gd_rarities')) : JSON.parse(JSON.stringify(DEFAULT_RARITIES)),
@@ -29,13 +32,14 @@ let state = {
   holoChance: Number(localStorage.getItem('gd_holo_chance') ?? 0.12)
 };
 
-if (!Number.isFinite(state.balance) || state.balance < 0) state.balance = 700;
+if (!Number.isFinite(state.balance) || state.balance < 0) state.balance = INITIAL_BALANCE;
 if (!Array.isArray(state.inventory)) state.inventory = [];
 state.inventory = state.inventory.filter(item => item && typeof item.uid === 'string' && typeof item.cardId === 'string');
 
 let currentCaseId = null;
 let isSpinning = false;
 let isUpgrading = false;
+let isOpeningPack = false;
 let lastWonCard = null;
 let editingCardId = null;
 let editingCaseId = null;
@@ -545,22 +549,43 @@ function spinCurrentCase(fast = false) {
   }, fast ? 900 : 4350);
 }
 
-// === 1) ПАКИ ЗА 500 РУБЛЕЙ ===
+// === 1) ПАКИ ЗА 1000 РУБЛЕЙ С АНИМАЦИЕЙ ПОЯВЛЕНИЯ 5 КАРТ ===
 function buyPack() {
-  if (state.balance < 500) return;
-  state.balance -= 500;
+  if (isOpeningPack || state.balance < PACK_PRICE) return;
+  isOpeningPack = true;
+  const buyBtn = document.getElementById('buy-pack-btn');
+  if (buyBtn) buyBtn.disabled = true;
+
+  state.balance -= PACK_PRICE;
   state.stats.opened += 1;
+  saveState(false);
 
   const revealArea = document.getElementById('pack-reveal-area');
   revealArea.innerHTML = '';
 
+  const pulledCards = [];
   for (let i = 0; i < 5; i++) {
     const card = rollWeightedCard(state.cards, 'pack');
     const isHolo = Math.random() < state.holoChance;
     giveCardToPlayer(card, isHolo);
-    revealArea.innerHTML += createCardHTML(card, isHolo);
+    pulledCards.push({ card, isHolo });
   }
-  saveState(false);
+
+  pulledCards.forEach((entry, idx) => {
+    setTimeout(() => {
+      const temp = document.createElement('div');
+      temp.innerHTML = createCardHTML(entry.card, entry.isHolo);
+      const wrap = temp.firstElementChild;
+      if (wrap) {
+        wrap.classList.add('pack-reveal-anim');
+        revealArea.appendChild(wrap);
+      }
+      if (idx === pulledCards.length - 1) {
+        isOpeningPack = false;
+        if (buyBtn) buyBtn.disabled = false;
+      }
+    }, idx * 140);
+  });
 }
 
 // === 3) АПГРЕЙДЫ (ВСЕ КАРТЫ + ПОИСК + РУЛЕТКА) ===
@@ -912,8 +937,19 @@ function executeCraft() {
   renderCraftUI();
 }
 
-// === 4) КОЛЛЕКЦИЯ, СТАТИСТИКА И 3D-ПРОСМОТР КАРТЫ ===
+// === 4) КОЛЛЕКЦИЯ, ПРОДАЖА ПО РЕДКОСТИ / ВСЁ, СТАТИСТИКА И 3D-ПРОСМОТР ===
+function renderSellRarityOptions() {
+  const sel = document.getElementById('sell-rarity-select');
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = state.rarities.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+  if (prev && state.rarities.some(r => r.id === prev)) {
+    sel.value = prev;
+  }
+}
+
 function renderCollection() {
+  renderSellRarityOptions();
   const sortMode = document.getElementById('col-sort').value;
   const mapped = state.inventory.map(item => ({
     ...item,
@@ -932,6 +968,44 @@ function renderCollection() {
     const sellBtn = `<button class="secondary-btn" style="width:100%; margin-top:6px; padding:6px 8px; font-size:11px;" onclick="event.stopPropagation(); sellInventoryCard('${item.uid}')">Продать за ${price} ₽</button>`;
     return createCardHTML(item.card, item.isHolo, '', `onclick="openCard3DModal('${item.card.id}', ${item.isHolo})"`, sellBtn);
   }).join('');
+}
+
+function sellBySelectedRarity() {
+  const rarityId = document.getElementById('sell-rarity-select')?.value;
+  if (!rarityId) return;
+
+  let earned = 0;
+  state.inventory = state.inventory.filter(item => {
+    const card = state.cards.find(c => c.id === item.cardId);
+    if (card && card.rarity === rarityId) {
+      earned += getCardPrice(card, item.isHolo);
+      return false;
+    }
+    return true;
+  });
+
+  if (earned > 0) {
+    state.balance += earned;
+    saveState(false);
+    renderCollection();
+  }
+}
+
+function sellAllInventoryCards() {
+  if (state.inventory.length === 0) return;
+
+  let earned = 0;
+  state.inventory.forEach(item => {
+    const card = state.cards.find(c => c.id === item.cardId);
+    if (card) {
+      earned += getCardPrice(card, item.isHolo);
+    }
+  });
+
+  state.inventory = [];
+  state.balance += earned;
+  saveState(false);
+  renderCollection();
 }
 
 function getCardDropChancePercentText(card, isHolo) {
