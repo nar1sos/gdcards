@@ -66,6 +66,23 @@ let isDragging3D = false;
 let dragStartX = 0;
 let dragStartY = 0;
 
+// === РАСЧЁТ ШАНСА АПГРЕЙДА (ПОДДЕРЖКА < 1%, МАКСИМУМ 85%) ===
+function calculateUpgradeChance(srcPrice, tgtPrice) {
+  const s = Number(srcPrice) || 0;
+  const t = Number(tgtPrice) || 0;
+  if (s <= 0 || t <= 0) return 0;
+  const rawChance = (s / t) * 85;
+  return Math.min(85, Math.max(0, rawChance));
+}
+
+function formatUpgradeChanceText(chance) {
+  if (!Number.isFinite(chance) || chance <= 0) return '0%';
+  if (chance < 0.0001) return chance.toFixed(6).replace(/0+$/, '').replace(/\.$/, '') + '%';
+  if (chance < 0.01) return chance.toFixed(4).replace(/0+$/, '').replace(/\.$/, '') + '%';
+  if (chance < 1) return chance.toFixed(3).replace(/0+$/, '').replace(/\.$/, '') + '%';
+  return chance.toFixed(2).replace(/\.00$/, '') + '%';
+}
+
 // === ИЕРАРХИЯ РЕДКОСТЕЙ И ОТДЕЛЬНЫЕ ШАНСЫ (КЕЙСЫ / ПАКИ) ===
 function recalculateRarityHierarchy() {
   if (!Array.isArray(state.rarities) || state.rarities.length === 0) {
@@ -497,6 +514,13 @@ function rollWeightedCard(poolCards, mode = 'case') {
   return poolCards[poolCards.length - 1];
 }
 
+function getRouletteStepWidth() {
+  const firstCard = document.querySelector('#roulette-track .card-wrap');
+  const cardW = firstCard ? firstCard.getBoundingClientRect().width : 195;
+  const gapW = window.innerWidth <= 768 ? 8 : 12;
+  return { cardW, stepW: cardW + gapW };
+}
+
 function prepareRouletteTape(caseObj, winCard = null, winHolo = false) {
   const pool = caseObj.cardIds.map(id => state.cards.find(c => c.id === id)).filter(Boolean);
   const track = document.getElementById('roulette-track');
@@ -533,8 +557,9 @@ function spinCurrentCase(fast = false) {
   document.getElementById('spin-case-btn').disabled = true;
 
   const track = document.getElementById('roulette-track');
-  const cardWidth = 207;
-  const offset = 38 * cardWidth + (Math.random() * 60 - 30) + 97;
+  const { cardW, stepW } = getRouletteStepWidth();
+  const jitter = Math.random() * Math.min(40, cardW * 0.2) - Math.min(20, cardW * 0.1);
+  const offset = 38 * stepW + jitter + cardW / 2;
 
   setTimeout(() => {
     track.style.transition = fast ? 'transform 0.8s cubic-bezier(0.15, 0.85, 0.25, 1)' : 'transform 4.2s cubic-bezier(0.12, 0.88, 0.22, 1)';
@@ -588,7 +613,7 @@ function buyPack() {
   });
 }
 
-// === 3) АПГРЕЙДЫ (ВСЕ КАРТЫ + ПОИСК + РУЛЕТКА) ===
+// === 3) АПГРЕЙДЫ (ВСЕ КАРТЫ + ПОИСК + РУЛЕТКА С ШАНСАМИ < 1%) ===
 function rerollUpgradeTargets() {
   renderUpgradeTargets();
 }
@@ -683,10 +708,9 @@ function updateUpgradeSlotsAndChance() {
   if (srcCard && tgtCard) {
     const srcPrice = getCardPrice(srcCard, srcItem.isHolo);
     const tgtPrice = getCardPrice(tgtCard, upgSelectedTargetHolo);
-    let chance = (srcPrice / tgtPrice) * 85;
-    chance = Math.max(1, Math.min(85, chance));
+    const chance = calculateUpgradeChance(srcPrice, tgtPrice);
 
-    chanceText.textContent = chance.toFixed(2) + '%';
+    chanceText.textContent = formatUpgradeChanceText(chance);
     const deg = (chance / 100) * 360;
     circle.style.background = `conic-gradient(var(--accent-gold) 0deg ${deg}deg, #262934 ${deg}deg 360deg)`;
     btn.disabled = isUpgrading;
@@ -709,7 +733,7 @@ function executeUpgrade() {
 
   const srcPrice = getCardPrice(srcCard, srcItem.isHolo);
   const tgtPrice = getCardPrice(tgtCard, upgSelectedTargetHolo);
-  const chance = Math.max(1, Math.min(85, (srcPrice / tgtPrice) * 85));
+  const chance = calculateUpgradeChance(srcPrice, tgtPrice);
 
   const speedMode = document.getElementById('upgrade-speed-select')?.value || 'normal';
   const durationMs = speedMode === 'slow' ? 4500 : speedMode === 'fast' ? 800 : 2500;
@@ -735,7 +759,7 @@ function executeUpgrade() {
     upgSelectedSourceUid = null;
 
     const msg = document.getElementById('upgrade-result-msg');
-    if (roll <= chance) {
+    if (chance > 0 && roll < chance) {
       state.stats.upgrades += 1;
       giveCardToPlayer(tgtCard, upgSelectedTargetHolo);
       msg.innerHTML = `<span style="color:#4ade80; font-weight:800;">УСПЕХ! Выпал ${tgtCard.name}</span>`;
