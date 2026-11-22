@@ -96,7 +96,6 @@ body {
   gap: 6px;
 }
 
-/* ЖЁСТКИЙ ДВУХКОЛОНОЧНЫЙ МАКЕТ: КОНТЕНТ СЛЕВА + ЛАЙВ-ДРОП СПРАВА */
 .workspace-layout {
   display: flex;
   align-items: stretch;
@@ -108,105 +107,6 @@ body {
   flex: 1;
   min-width: 0;
   padding: 24px;
-}
-
-.live-sidebar-right {
-  width: 225px;
-  min-width: 225px;
-  flex-shrink: 0;
-  background: #111319;
-  border-left: 1px solid var(--border);
-  position: sticky;
-  top: 60px;
-  height: calc(100vh - 60px);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.live-sidebar-header {
-  padding: 12px 10px 10px;
-  text-align: center;
-  border-bottom: 1px solid var(--border);
-  background: #151821;
-}
-
-.live-brand-title {
-  font-size: 14px;
-  font-weight: 900;
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.live-brand-sub {
-  font-size: 10px;
-  font-weight: 800;
-  color: #8b92a5;
-  margin-top: 2px;
-  letter-spacing: 0.6px;
-}
-
-.pulse-dot {
-  width: 8px;
-  height: 8px;
-  background: #4ade80;
-  border-radius: 50%;
-  animation: pulse 1.5s infinite;
-}
-
-.live-drop-feed {
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  scrollbar-width: thin;
-}
-
-/* ВЕРТИКАЛЬНЫЕ ПЛИТКИ ДРОПА В СТИЛЕ СКРИНШОТА CASE-BATTLE */
-.live-item {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 12px 10px;
-  border-left: 4px solid var(--rar-color, #3b82f6);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  background: linear-gradient(90deg, color-mix(in srgb, var(--rar-color, #3b82f6) 24%, #141720) 0%, #141720 100%);
-  animation: slideIn 0.25s ease;
-}
-
-.live-item img {
-  width: 112px;
-  height: 63px;
-  object-fit: cover;
-  border-radius: 6px;
-  margin-bottom: 7px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.45);
-}
-
-.live-item-title {
-  font-size: 12px;
-  font-weight: 800;
-  color: #ffffff;
-  line-height: 1.25;
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.live-item-sub {
-  font-size: 11px;
-  font-weight: 600;
-  color: #9ca3af;
-  margin-top: 2px;
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* ВКЛАДКИ И КНОПКИ */
@@ -221,6 +121,13 @@ body {
   margin-bottom: 18px;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.sort-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .hint-text {
@@ -292,6 +199,12 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   display: flex;
   flex-direction: column;
   width: 100%;
+}
+
+.card-wrap.pack-reveal-anim {
+  opacity: 0;
+  transform: translateY(22px) scale(0.88);
+  animation: packCardPopIn 0.42s cubic-bezier(0.2, 0.9, 0.25, 1.05) forwards;
 }
 
 .card-wrap.drag-over {
@@ -1027,7 +940,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   transform: none !important;
 }
 
-/* ЗАДНЯЯ СТОРОНА КАРТОЧКИ — СТРОГО ЧЁРНАЯ */
+/* ЗАДНЯЯ СТОРОНА КАРТОЧКИ — СТРОГО ЧЁРНАЯ С ПРЯМОЙ НАДПИСЬЮ GD LUDKA */
 .card-3d-back {
   background: #040406;
   border: 3px solid #232630;
@@ -1045,9 +958,10 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   font-weight: 900;
   color: #ffffff;
   letter-spacing: 1px;
+  transform: scaleX(-1);
 }
 .back-brand span { color: var(--accent-gold); margin-left: 5px; }
-.card-3d-back small { color: #717687; font-size: 11px; }
+.card-3d-back small { color: #717687; font-size: 11px; transform: scaleX(-1); }
 
 .card-3d-info {
   width: 100%;
@@ -1067,6 +981,21 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 }
 .card-3d-info span { color: var(--text-muted); }
 .card-3d-info b { color: #fff; text-align: right; }
+
+@keyframes packCardPopIn {
+  0% {
+    opacity: 0;
+    transform: translateY(22px) scale(0.86);
+  }
+  70% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
 
 @keyframes holoCardShift {
   0% { background-position: 0% 0%; }
@@ -1091,14 +1020,6 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 @keyframes sparkTwinkle {
   0%, 100% { transform: scale(0.4); opacity: 0.2; }
   50% { transform: scale(1.25); opacity: 1; }
-}
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-@keyframes slideIn {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
 }
 
 @media (max-width: 900px) {
