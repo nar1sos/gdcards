@@ -16,7 +16,7 @@
     </div>
     <nav class="nav-links">
       <button class="nav-btn active" data-tab="cases" onclick="switchTab('cases')">Кейсы</button>
-      <button class="nav-btn" data-tab="packs" onclick="switchTab('packs')">Паки (500 ₽)</button>
+      <button class="nav-btn" data-tab="packs" onclick="switchTab('packs')">Паки (1000 ₽)</button>
       <button class="nav-btn" data-tab="upgrade" onclick="switchTab('upgrade')">Апгрейд</button>
       <button class="nav-btn" data-tab="trade" onclick="switchTab('trade')">Трейды</button>
       <button class="nav-btn" data-tab="craft" onclick="switchTab('craft')">Крафты</button>
@@ -26,7 +26,7 @@
     <div class="user-panel">
       <input type="text" id="nickname-input" class="nick-input" placeholder="Твой ник" maxlength="16" onchange="saveNickname()">
       <div class="balance-box">
-        <span id="user-balance">700</span> ₽
+        <span id="user-balance">1500</span> ₽
       </div>
     </div>
   </header>
@@ -91,7 +91,7 @@
           <div class="pack-info">
             <h2>Открытие паков</h2>
             <p>В каждом паке выпадает 5 карточек любых редкостей: от Common до UPCOMING, включая редкие Holo-версии.</p>
-            <button class="primary-btn big-btn" onclick="buyPack()">Купить пак за 500 ₽</button>
+            <button id="buy-pack-btn" class="primary-btn big-btn" onclick="buyPack()">Купить пак за 1000 ₽</button>
           </div>
         </div>
         <div id="pack-reveal-area" class="cards-grid" style="margin-top: 25px;"></div>
@@ -230,7 +230,10 @@
         <div class="section-header">
           <h2>Моя коллекция</h2>
           <div class="sort-controls">
+            <select id="sell-rarity-select" title="Выбери редкость для продажи"></select>
+            <button class="secondary-btn" onclick="sellBySelectedRarity()">Продать редкость</button>
             <button class="secondary-btn" onclick="sellAllDuplicates()">Продать дубликаты</button>
+            <button class="secondary-btn" style="color:#f87171;" onclick="sellAllInventoryCards()">Продать все</button>
             <select id="col-sort" onchange="renderCollection()">
               <option value="price-desc">Сначала дорогие</option>
               <option value="price-asc">Сначала дешевые</option>
