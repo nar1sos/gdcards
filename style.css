@@ -20,6 +20,7 @@ body {
   background-color: var(--bg-dark);
   color: var(--text-main);
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 /* ШАПКА */
@@ -42,6 +43,7 @@ body {
   font-weight: 900;
   cursor: pointer;
   letter-spacing: 1px;
+  white-space: nowrap;
 }
 .logo-accent { color: var(--accent-gold); }
 
@@ -60,6 +62,7 @@ body {
   font-weight: 700;
   cursor: pointer;
   transition: 0.2s;
+  white-space: nowrap;
 }
 .nav-btn:hover, .nav-btn.active {
   background: var(--bg-card);
@@ -94,6 +97,7 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
 }
 
 .workspace-layout {
@@ -143,6 +147,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   padding: 8px 12px;
   border-radius: 8px;
   font-weight: 600;
+  max-width: 100%;
 }
 
 .primary-btn {
@@ -199,6 +204,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   display: flex;
   flex-direction: column;
   width: 100%;
+  min-width: 0;
 }
 
 .card-wrap.pack-reveal-anim {
@@ -566,6 +572,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  text-align: center;
 }
 .upgrade-slot-box .card-wrap {
   max-width: 190px;
@@ -598,8 +605,16 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   align-items: center;
   justify-content: center;
   z-index: 2;
+  padding: 8px;
+  text-align: center;
 }
-.chance-inner span { font-size: 26px; font-weight: 900; color: var(--accent-gold); }
+.chance-inner span {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--accent-gold);
+  line-height: 1.15;
+  word-break: break-word;
+}
 
 .upgrade-arrow-rotor {
   position: absolute;
@@ -637,6 +652,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   padding: 16px;
   border-radius: 14px;
   border: 1px solid var(--border);
+  min-width: 0;
 }
 
 .upgrade-target-controls {
@@ -668,6 +684,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   border-radius: 14px;
   border: 1px solid var(--border);
   margin-bottom: 18px;
+  min-width: 0;
 }
 .trade-box {
   min-height: 180px;
@@ -940,7 +957,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   transform: none !important;
 }
 
-/* ЗАДНЯЯ СТОРОНА КАРТОЧКИ — СТРОГО ЧЁРНАЯ С ПРЯМОЙ НАДПИСЬЮ GD LUDKA */
+/* ЗАДНЯЯ СТОРОНА КАРТОЧКИ — СТРОГО ЧЁРНАЯ С НОРМАЛЬНОЙ НАДПИСЬЮ GD LUDKA */
 .card-3d-back {
   background: #040406;
   border: 3px solid #232630;
@@ -958,10 +975,9 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   font-weight: 900;
   color: #ffffff;
   letter-spacing: 1px;
-  transform: scaleX(-1);
 }
 .back-brand span { color: var(--accent-gold); margin-left: 5px; }
-.card-3d-back small { color: #717687; font-size: 11px; transform: scaleX(-1); }
+.card-3d-back small { color: #717687; font-size: 11px; }
 
 .card-3d-info {
   width: 100%;
@@ -1025,5 +1041,287 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 @media (max-width: 900px) {
   .upgrade-arena, .upgrade-inventories, .trade-arena, .card-creator-layout {
     grid-template-columns: 1fr;
+  }
+}
+
+/* МОБИЛЬНАЯ ВЕРСИЯ (ТЕЛЕФОНЫ) */
+@media (max-width: 768px) {
+  .topbar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .logo {
+    font-size: 18px;
+  }
+
+  .user-panel {
+    gap: 6px;
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  .nick-input {
+    width: 96px;
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+
+  .balance-box {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  .nav-links {
+    width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+    gap: 6px;
+  }
+  .nav-links::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-btn {
+    padding: 7px 11px;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .container {
+    padding: 14px 12px 28px;
+  }
+
+  .section-header h2 {
+    font-size: 18px;
+  }
+
+  .section-header h3 {
+    font-size: 15px;
+  }
+
+  .sort-controls {
+    width: 100%;
+  }
+
+  .sort-controls > select,
+  .sort-controls > button {
+    flex: 1 1 auto;
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+
+  /* Кейсы */
+  .cases-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .case-item {
+    padding: 10px;
+    border-radius: 12px;
+  }
+
+  .case-item img {
+    height: 92px;
+    margin-bottom: 8px;
+  }
+
+  .case-item h3 {
+    font-size: 13px;
+  }
+
+  .case-price-tag {
+    font-size: 12px;
+    padding: 4px 10px;
+  }
+
+  /* Рулетка кейса */
+  .roulette-wrapper {
+    height: 255px;
+    margin: 14px 0;
+  }
+
+  .roulette-track {
+    gap: 8px;
+  }
+
+  .roulette-track .card-wrap {
+    width: 152px;
+    min-width: 152px;
+  }
+
+  .roulette-controls {
+    flex-direction: column;
+  }
+
+  .big-btn {
+    width: 100%;
+    padding: 12px 18px;
+    font-size: 14px;
+  }
+
+  /* Паки */
+  .pack-hero {
+    padding: 16px;
+    gap: 18px;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .pack-card-art {
+    width: 170px;
+    height: 215px;
+  }
+
+  .pack-info {
+    width: 100%;
+  }
+
+  /* Апгрейды */
+  .upgrade-arena {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .upgrade-slot-box {
+    min-height: 215px;
+    padding: 12px;
+  }
+
+  .upgrade-slot-box .card-wrap {
+    max-width: 150px;
+  }
+
+  .chance-circle {
+    width: 164px;
+    height: 164px;
+  }
+
+  .chance-inner {
+    width: 124px;
+    height: 124px;
+  }
+
+  .chance-inner span {
+    font-size: 18px;
+  }
+
+  .upgrade-target-controls {
+    width: 100%;
+  }
+
+  .upg-search-input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .upgrade-target-controls > select {
+    flex: 1 1 auto;
+    font-size: 12px;
+  }
+
+  .upgrade-all-targets-scroll {
+    max-height: 440px;
+  }
+
+  /* Крафты */
+  .craft-slots-bar {
+    padding: 12px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .craft-mini-slot {
+    width: 46px;
+    height: 62px;
+  }
+
+  .craft-action-box {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+
+  /* Статистика и сетки карточек */
+  .stats-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .stat-card {
+    padding: 12px;
+  }
+
+  .stat-card b {
+    font-size: 18px;
+  }
+
+  .cards-grid,
+  .collection-compact-grid,
+  .small-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .gd-card {
+    padding: 9px;
+    border-radius: 12px;
+    border-width: 2px;
+  }
+
+  .card-rank {
+    font-size: 14px;
+  }
+
+  .card-rarity-badge {
+    font-size: 8px;
+    padding: 2px 6px;
+    max-width: 74px;
+  }
+
+  .card-title {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+
+  .card-price {
+    font-size: 12px;
+  }
+
+  /* Админка и модалки */
+  .admin-block {
+    padding: 14px;
+  }
+
+  .admin-rarities-grid,
+  .admin-cases-manage-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-3d-dialog {
+    padding: 18px 14px;
+  }
+
+  .stage-3d {
+    width: 185px;
+    height: 262px;
+  }
+}
+
+@media (max-width: 400px) {
+  .cases-grid,
+  .cards-grid,
+  .collection-compact-grid,
+  .small-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 }
