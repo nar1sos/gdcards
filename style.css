@@ -336,28 +336,44 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.98), 0 0 5px rgba(0, 0, 0, 0.95);
 }
 
-/* ПЕРЕРАБОТАННЫЙ HOLO ПЕРЕЛИВ (ТОЛЬКО НА HOLO-КАРТАХ И НЕ ЗАДЕВАЕТ .card-thumb) */
+/* СТАРЫЙ HOLO ПЕРЕЛИВ */
+.gd-card.is-holo {
+  box-shadow:
+    0 0 16px rgba(244, 114, 182, 0.24),
+    0 0 24px rgba(56, 189, 248, 0.2);
+}
+
 .gd-card.is-holo .holo-full-overlay {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 6;
   border-radius: inherit;
-  background: linear-gradient(
-    125deg,
-    rgba(175, 45, 115, 0.24) 0%,
-    rgba(170, 115, 28, 0.22) 25%,
-    rgba(30, 140, 100, 0.24) 50%,
-    rgba(38, 102, 178, 0.26) 75%,
-    rgba(105, 55, 160, 0.24) 100%
-  );
+  background:
+    linear-gradient(
+      125deg,
+      rgba(190, 55, 125, 0.25) 0%,
+      rgba(185, 130, 35, 0.22) 24%,
+      rgba(35, 155, 110, 0.24) 48%,
+      rgba(45, 115, 195, 0.26) 72%,
+      rgba(120, 65, 175, 0.25) 100%
+    ),
+    repeating-linear-gradient(
+      -35deg,
+      rgba(255, 255, 255, 0.06) 0px,
+      rgba(255, 255, 255, 0.06) 3px,
+      transparent 3px,
+      transparent 11px
+    );
+  background-size: 260% 260%, 100% 100%;
   mix-blend-mode: screen;
+  animation: holoCardShift 6s ease-in-out infinite;
 }
 
 .holo-pill {
   align-self: flex-start;
-  background: linear-gradient(90deg, #ec4899, #eab308, #0ea5e9);
-  color: #090b10;
+  background: linear-gradient(90deg, #f472b6, #facc15, #38bdf8);
+  color: #0b0d12;
   font-size: 9px;
   font-weight: 900;
   padding: 2px 8px;
@@ -365,10 +381,10 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   letter-spacing: 0.4px;
   position: relative;
   z-index: 8;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
-/* ЭФФЕКТ "РАДУЖНЫЙ ФОЙЛ" (ЛЁГКИЙ И ПРИТЕМНЁННЫЙ, БЕЗ ТЯЖЁЛОГО РЕНДЕРА В АПГРЕЙДАХ) */
+/* ЭФФЕКТ "РАДУЖНЫЙ ФОЙЛ" */
 .gd-card.effect-prismatic-foil {
   border-color: #c05684;
   background: linear-gradient(
@@ -1119,6 +1135,11 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   }
 }
 
+@keyframes holoCardShift {
+  0% { background-position: 0% 50%, 0% 0%; }
+  50% { background-position: 100% 50%, 0% 45px; }
+  100% { background-position: 0% 50%, 0% 0%; }
+}
 @keyframes rarityColorCycle {
   0% { filter: hue-rotate(0deg); }
   50% { filter: hue-rotate(28deg); }
