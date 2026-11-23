@@ -53,15 +53,22 @@
         <!-- ОТДЕЛЬНАЯ СТРАНИЦА ОТКРЫТИЯ ВЫБРАННОГО КЕЙСА -->
         <div id="case-open-view" class="hidden">
           <button class="back-btn" onclick="closeCaseView()">← Назад к кейсам</button>
-          <h2 id="active-case-title" class="case-open-title">Название кейса</h2>
-
-          <div class="roulette-wrapper">
-            <div class="roulette-pointer"></div>
-            <div id="roulette-track" class="roulette-track"></div>
+          <div class="case-open-top">
+            <h2 id="active-case-title" class="case-open-title">Название кейса</h2>
+            <div class="multi-open-selector" id="case-count-selector">
+              <button type="button" class="count-chip active" data-count="1" onclick="setCaseOpenCount(1)">x1</button>
+              <button type="button" class="count-chip" data-count="2" onclick="setCaseOpenCount(2)">x2</button>
+              <button type="button" class="count-chip" data-count="3" onclick="setCaseOpenCount(3)">x3</button>
+              <button type="button" class="count-chip" data-count="5" onclick="setCaseOpenCount(5)">x5</button>
+            </div>
           </div>
 
+          <div id="roulettes-multi-container" class="roulettes-multi-container"></div>
+
           <div class="roulette-controls">
-            <button id="spin-case-btn" class="primary-btn big-btn" onclick="spinCurrentCase()">Открыть за <span id="active-case-price">0</span> ₽</button>
+            <button id="spin-case-btn" class="primary-btn big-btn" onclick="spinCurrentCase(false)">
+              Открыть <span id="active-case-count-label">x1</span> за <span id="active-case-total-price">0</span> ₽
+            </button>
             <button id="fast-spin-btn" class="secondary-btn" onclick="spinCurrentCase(true)">Быстро</button>
           </div>
 
@@ -285,6 +292,7 @@
               <input type="text" id="new-rar-pack-weight" placeholder="Шанс паки (0..100)" value="25">
               <select id="new-rar-effect" title="Эффект карточки">
                 <option value="none">Без эффекта</option>
+                <option value="prismatic-foil">Радужный фойл как на референсе</option>
                 <option value="aura">Левитирующая аура (Aura Levitate)</option>
                 <option value="shine-sweep">Блик сверху вниз (Sweep Shine)</option>
                 <option value="glow">Неоновое свечение (Glow)</option>
@@ -458,9 +466,9 @@
 
   <!-- МОДАЛЬНОЕ ОКНО ВЫИГРЫША -->
   <div id="win-modal" class="modal hidden">
-    <div class="modal-content">
-      <h2>Тебе выпало!</h2>
-      <div id="win-card-container"></div>
+    <div class="modal-content multi-win-content">
+      <h2 id="win-modal-title">Тебе выпало!</h2>
+      <div id="win-card-container" class="win-cards-stage"></div>
       <div class="modal-actions">
         <button class="primary-btn" onclick="closeWinModal()">Забрать в коллекцию</button>
         <button class="secondary-btn" id="sell-won-btn" onclick="sellWonCard()">Продать</button>
