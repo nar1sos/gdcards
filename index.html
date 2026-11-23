@@ -35,7 +35,7 @@
   <div class="workspace-layout">
     <main class="container">
 
-      <!-- 6) СТРАНИЦА КЕЙСОВ -->
+      <!-- СТРАНИЦА КЕЙСОВ -->
       <section id="tab-cases" class="tab-content active">
         <div id="cases-grid-view">
           <div class="section-header">
@@ -59,7 +59,6 @@
               <button type="button" class="count-chip active" data-count="1" onclick="setCaseOpenCount(1)">x1</button>
               <button type="button" class="count-chip" data-count="2" onclick="setCaseOpenCount(2)">x2</button>
               <button type="button" class="count-chip" data-count="3" onclick="setCaseOpenCount(3)">x3</button>
-              <button type="button" class="count-chip" data-count="5" onclick="setCaseOpenCount(5)">x5</button>
             </div>
           </div>
 
@@ -84,7 +83,7 @@
         </div>
       </section>
 
-      <!-- 1) СТРАНИЦА ПАКОВ -->
+      <!-- СТРАНИЦА ПАКОВ -->
       <section id="tab-packs" class="tab-content">
         <div class="pack-hero">
           <div class="pack-visual">
@@ -104,7 +103,7 @@
         <div id="pack-reveal-area" class="cards-grid" style="margin-top: 25px;"></div>
       </section>
 
-      <!-- 3) СТРАНИЦА АПГРЕЙДОВ (ВСЕ КАРТЫ + ПОИСК) -->
+      <!-- СТРАНИЦА АПГРЕЙДОВ -->
       <section id="tab-upgrade" class="tab-content">
         <div class="upgrade-arena">
           <div class="upgrade-slot-box">
@@ -178,7 +177,7 @@
         </div>
       </section>
 
-      <!-- 2) СТРАНИЦА ТРЕЙДОВ С БОТОМ -->
+      <!-- СТРАНИЦА ТРЕЙДОВ С БОТОМ -->
       <section id="tab-trade" class="tab-content">
         <div class="section-header">
           <h2>Трейд с ботом</h2>
@@ -203,7 +202,7 @@
         </div>
       </section>
 
-      <!-- 7) СТРАНИЦА КРАФТОВ (10 -> 1) -->
+      <!-- СТРАНИЦА КРАФТОВ (10 -> 1) -->
       <section id="tab-craft" class="tab-content">
         <div class="section-header">
           <h2>Крафт карточек (10 → 1)</h2>
@@ -225,7 +224,7 @@
         <div id="craft-inv-grid" class="cards-grid" style="margin-top: 20px;"></div>
       </section>
 
-      <!-- 4) СТРАНИЦА КОЛЛЕКЦИИ И СТАТИСТИКИ -->
+      <!-- СТРАНИЦА КОЛЛЕКЦИИ И СТАТИСТИКИ -->
       <section id="tab-collection" class="tab-content">
         <div class="stats-bar">
           <div class="stat-card"><span>Всего карт</span><b id="stat-total-cards">0</b></div>
@@ -252,7 +251,7 @@
         <div id="collection-grid" class="cards-grid collection-compact-grid"></div>
       </section>
 
-      <!-- 5) СТРАНИЦА АДМИНА -->
+      <!-- СТРАНИЦА АДМИНА -->
       <section id="tab-admin" class="tab-content">
         <div id="admin-login-box" class="admin-login">
           <h2>Вход в панель администратора</h2>
@@ -269,7 +268,6 @@
             </div>
           </div>
 
-          <!-- Настройка облачного каталога -->
           <div class="admin-block">
             <h3>Облако для всех игроков (JSONBin.io)</h3>
             <p class="hint-text">Укажи Bin ID и X-Master-Key — нажми «Залить всё в облако», чтобы сохранить свои карты, редкости и кейсы в облаке.</p>
@@ -280,7 +278,6 @@
             </div>
           </div>
 
-          <!-- Редактор редкостей с Drag-and-Drop и отдельными шансами на кейсы и паки -->
           <div class="admin-block">
             <h3>Редкости и отдельные шансы: Кейсы / Паки</h3>
             <p class="hint-text">Перетаскивай редкости мышкой вверх/вниз (выше = круче по редкости) и задавай отдельные шансы отдельно для <b>кейсов</b> и отдельно для <b>паков</b>.</p>
@@ -292,7 +289,7 @@
               <input type="text" id="new-rar-pack-weight" placeholder="Шанс паки (0..100)" value="25">
               <select id="new-rar-effect" title="Эффект карточки">
                 <option value="none">Без эффекта</option>
-                <option value="prismatic-foil">Радужный фойл как на референсе</option>
+                <option value="prismatic-foil">Радужный фойл</option>
                 <option value="aura">Левитирующая аура (Aura Levitate)</option>
                 <option value="shine-sweep">Блик сверху вниз (Sweep Shine)</option>
                 <option value="glow">Неоновое свечение (Glow)</option>
@@ -304,7 +301,6 @@
             <div id="admin-rarities-list" class="admin-rarities-grid"></div>
           </div>
 
-          <!-- Добавление новой карточки + живой предпросмотр -->
           <div class="admin-block">
             <h3>Добавить новую карточку уровня</h3>
             <p class="hint-text">Укажи номер в топе (например <b>10</b> — встанет на 10-е место и сдвинет остальные вниз) или <b>0</b> / редкость <b>UPCOMING</b> для невышедших демонов.</p>
@@ -335,7 +331,6 @@
             </div>
           </div>
 
-          <!-- Создание кейса + предпросмотр кейса -->
           <div class="admin-block">
             <h3>Создать новый кейс</h3>
             <div class="card-creator-layout">
@@ -358,7 +353,6 @@
             </div>
           </div>
 
-          <!-- Редактор выбранного кейса из базы -->
           <div id="admin-edit-case-panel" class="admin-block hidden">
             <div class="section-header">
               <h3>Изменить кейс: <span id="edit-case-heading"></span></h3>
@@ -385,7 +379,6 @@
             </div>
           </div>
 
-          <!-- Список существующих кейсов с возможностью редактирования и удаления -->
           <div class="admin-block">
             <div class="section-header">
               <h3>Кейсы в базе (<span id="admin-cases-count">0</span>)</h3>
@@ -394,7 +387,6 @@
             <div id="admin-cases-list" class="admin-cases-manage-grid"></div>
           </div>
 
-          <!-- Редактор выбранной карточки из базы -->
           <div id="admin-edit-card-panel" class="admin-block hidden">
             <div class="section-header">
               <h3>Изменить карточку: <span id="edit-card-heading"></span></h3>
@@ -429,7 +421,6 @@
             </div>
           </div>
 
-          <!-- Список всех карт в игре с Drag-and-Drop пересчётом топа -->
           <div class="admin-block">
             <div class="section-header">
               <h3>Все карточки в базе (<span id="admin-cards-count">0</span>)</h3>
