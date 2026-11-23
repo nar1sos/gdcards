@@ -37,10 +37,11 @@ if (!Array.isArray(state.inventory)) state.inventory = [];
 state.inventory = state.inventory.filter(item => item && typeof item.uid === 'string' && typeof item.cardId === 'string');
 
 let currentCaseId = null;
+let caseOpenCount = 1;
 let isSpinning = false;
 let isUpgrading = false;
 let isOpeningPack = false;
-let lastWonCard = null;
+let lastWonItems = [];
 let editingCardId = null;
 let editingCaseId = null;
 let hasLocalCatalogEdits = localStorage.getItem('gd_dirty_catalog') === '1';
@@ -454,7 +455,7 @@ async function syncCatalogFromCloud(forceOverwriteLocal = false) {
   }
 }
 
-// === 6) КЕЙСЫ И РУЛЕТКА ===
+// === 6) КЕЙСЫ И МУЛЬТИ-РУЛЕТКА (x1..x5) ===
 function renderCasesList() {
   const sortMode = document.getElementById('cases-sort').value;
   const sorted = [...state.cases].sort((a, b) => sortMode === 'price-asc' ? a.price - b.price : b.price - a.price);
@@ -467,6 +468,66 @@ function renderCasesList() {
   `).join('');
 }
 
+function setCaseOpenCount(count) {
+  if (isSpinning) return;
+  caseOpenCount = count;
+  document.querySelectorAll('#case-count-selector .count-chip').forEach(btn => {
+    btn.classList.toggle('active', Number(btn.dataset.count) === count);
+  });
+  updateCaseOpenCostLabel();
+  const c = state.cases.find(x => x.id === currentCaseId);
+  if (c) buildMultiRouletteTracks(c);
+}
+
+function updateCaseOpenCostLabel() {
+  const c = state.cases.find(x => x.id === currentCaseId);
+  if (!c) return;
+  const countLabel = document.getElementById('active-case-count-label');
+  const totalPriceEl = document.getElementById('active-case-total-price');
+  if (countLabel) countLabel.textContent = `x${caseOpenCount}`;
+  if (totalPriceEl) totalPriceEl.textContent = c.price * caseOpenCount;
+}
+
+function buildMultiRouletteTracks(caseObj, winners = null) {
+  const container = document.getElementById('roulettes-multi-container');
+  if (!container || !caseObj) return;
+
+  const pool = caseObj.cardIds.map(id => state.cards.find(c => c.id === id)).filter(Boolean);
+  if (pool.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  let tracksHtml = '';
+  for (let row = 0; row < caseOpenCount; row++) {
+    const winEntry = winners && winners[row] ? winners[row] : null;
+    let cardsHtml = '';
+    for (let i = 0; i < 45; i++) {
+      if (i === 38 && winEntry) {
+        cardsHtml += createCardHTML(winEntry.card, winEntry.isHolo);
+      } else {
+        const rndCard = pool[Math.floor(Math.random() * pool.length)];
+        cardsHtml += createCardHTML(rndCard, Math.random() < state.holoChance);
+      }
+    }
+    tracksHtml += `
+      <div class="roulette-wrapper">
+        <div class="roulette-pointer"></div>
+        <div id="roulette-track-${row}" class="roulette-track">${cardsHtml}</div>
+      </div>
+    `;
+  }
+
+  container.innerHTML = tracksHtml;
+  for (let row = 0; row < caseOpenCount; row++) {
+    const track = document.getElementById(`roulette-track-${row}`);
+    if (track) {
+      track.style.transition = 'none';
+      track.style.transform = 'translateX(0px)';
+    }
+  }
+}
+
 function openCaseView(caseId) {
   currentCaseId = caseId;
   const c = state.cases.find(x => x.id === caseId);
@@ -477,9 +538,9 @@ function openCaseView(caseId) {
   document.getElementById('cases-grid-view').classList.add('hidden');
   document.getElementById('case-open-view').classList.remove('hidden');
   document.getElementById('active-case-title').textContent = c.name;
-  document.getElementById('active-case-price').textContent = c.price;
+  updateCaseOpenCostLabel();
   renderCaseContents();
-  prepareRouletteTape(c);
+  buildMultiRouletteTracks(c);
 }
 
 function closeCaseView() {
@@ -515,63 +576,70 @@ function rollWeightedCard(poolCards, mode = 'case') {
 }
 
 function getRouletteStepWidth() {
-  const firstCard = document.querySelector('#roulette-track .card-wrap');
-  const cardW = firstCard ? firstCard.getBoundingClientRect().width : 195;
+  const firstCard = document.querySelector('.roulette-track .card-wrap');
+  const cardW = firstCard ? firstCard.getBoundingClientRect().width : 180;
   const gapW = window.innerWidth <= 768 ? 8 : 12;
   return { cardW, stepW: cardW + gapW };
 }
 
-function prepareRouletteTape(caseObj, winCard = null, winHolo = false) {
-  const pool = caseObj.cardIds.map(id => state.cards.find(c => c.id === id)).filter(Boolean);
-  const track = document.getElementById('roulette-track');
-  track.style.transition = 'none';
-  track.style.transform = 'translateX(0px)';
-
-  let html = '';
-  for (let i = 0; i < 45; i++) {
-    if (i === 38 && winCard) {
-      html += createCardHTML(winCard, winHolo);
-    } else {
-      const rndCard = pool[Math.floor(Math.random() * pool.length)];
-      html += createCardHTML(rndCard, Math.random() < state.holoChance);
-    }
-  }
-  track.innerHTML = html;
+function setCaseControlsDisabled(disabled) {
+  document.getElementById('spin-case-btn').disabled = disabled;
+  document.getElementById('fast-spin-btn').disabled = disabled;
+  document.querySelectorAll('#case-count-selector .count-chip').forEach(btn => {
+    btn.disabled = disabled;
+  });
 }
 
 function spinCurrentCase(fast = false) {
   if (isSpinning) return;
   const c = state.cases.find(x => x.id === currentCaseId);
-  if (!c || state.balance < c.price) return;
+  if (!c) return;
 
-  state.balance -= c.price;
-  state.stats.opened += 1;
-  saveState(false);
+  const totalCost = c.price * caseOpenCount;
+  if (state.balance < totalCost) return;
 
   const pool = c.cardIds.map(id => state.cards.find(card => card.id === id)).filter(Boolean);
-  const wonCard = rollWeightedCard(pool, 'case');
-  const wonHolo = Math.random() < state.holoChance;
+  if (pool.length === 0) return;
 
-  prepareRouletteTape(c, wonCard, wonHolo);
+  state.balance -= totalCost;
+  state.stats.opened += caseOpenCount;
+  saveState(false);
+
+  const rolledWinners = [];
+  for (let i = 0; i < caseOpenCount; i++) {
+    rolledWinners.push({
+      card: rollWeightedCard(pool, 'case'),
+      isHolo: Math.random() < state.holoChance
+    });
+  }
+
+  buildMultiRouletteTracks(c, rolledWinners);
   isSpinning = true;
-  document.getElementById('spin-case-btn').disabled = true;
+  setCaseControlsDisabled(true);
 
-  const track = document.getElementById('roulette-track');
   const { cardW, stepW } = getRouletteStepWidth();
-  const jitter = Math.random() * Math.min(40, cardW * 0.2) - Math.min(20, cardW * 0.1);
-  const offset = 38 * stepW + jitter + cardW / 2;
+  const durationSec = fast ? 0.85 : 4.2;
 
   setTimeout(() => {
-    track.style.transition = fast ? 'transform 0.8s cubic-bezier(0.15, 0.85, 0.25, 1)' : 'transform 4.2s cubic-bezier(0.12, 0.88, 0.22, 1)';
-    track.style.transform = `translateX(-${offset}px)`;
+    for (let row = 0; row < caseOpenCount; row++) {
+      const track = document.getElementById(`roulette-track-${row}`);
+      if (!track) continue;
+      const jitter = Math.random() * Math.min(36, cardW * 0.2) - Math.min(18, cardW * 0.1);
+      const offset = 38 * stepW + jitter + cardW / 2;
+      track.style.transition = `transform ${durationSec}s cubic-bezier(0.12, 0.88, 0.22, 1)`;
+      track.style.transform = `translateX(-${offset}px)`;
+    }
   }, 30);
 
   setTimeout(() => {
     isSpinning = false;
-    document.getElementById('spin-case-btn').disabled = false;
-    const addedItem = giveCardToPlayer(wonCard, wonHolo);
-    showWinModal(wonCard, wonHolo, addedItem.uid);
-  }, fast ? 900 : 4350);
+    setCaseControlsDisabled(false);
+    const addedEntries = rolledWinners.map(w => {
+      const added = giveCardToPlayer(w.card, w.isHolo);
+      return { card: w.card, isHolo: w.isHolo, uid: added.uid };
+    });
+    showWinModal(addedEntries);
+  }, fast ? 950 : 4350);
 }
 
 // === 1) ПАКИ ЗА 1000 РУБЛЕЙ С АНИМАЦИЕЙ ПОЯВЛЕНИЯ 5 КАРТ ===
@@ -957,7 +1025,7 @@ function executeCraft() {
   craftSelectedUids = [];
 
   const added = giveCardToPlayer(craftedCard, isHolo);
-  showWinModal(craftedCard, isHolo, added.uid);
+  showWinModal([{ card: craftedCard, isHolo, uid: added.uid }]);
   renderCraftUI();
 }
 
@@ -1408,6 +1476,7 @@ function renderAdminUI() {
           <span>Эффект:</span>
           <select onchange="updateRarityEffect('${r.id}', this.value)">
             <option value="none" ${r.effect === 'none' ? 'selected' : ''}>Нет</option>
+            <option value="prismatic-foil" ${r.effect === 'prismatic-foil' ? 'selected' : ''}>Радужный фойл как на референсе</option>
             <option value="aura" ${r.effect === 'aura' ? 'selected' : ''}>Левитирующая аура</option>
             <option value="shine-sweep" ${r.effect === 'shine-sweep' ? 'selected' : ''}>Блик сверху вниз</option>
             <option value="glow" ${r.effect === 'glow' ? 'selected' : ''}>Свечение (Glow)</option>
@@ -1700,23 +1769,59 @@ function adminAddCase() {
   renderCasesList();
 }
 
-// === МОДАЛЬНОЕ ОКНО ВЫИГРЫША ===
-function showWinModal(card, isHolo, uid) {
-  lastWonCard = { card, isHolo, uid };
-  document.getElementById('win-card-container').innerHTML = createCardHTML(card, isHolo);
-  document.getElementById('sell-won-btn').textContent = `Продать за ${getCardPrice(card, isHolo)} ₽`;
+// === МОДАЛЬНОЕ ОКНО ВЫИГРЫША (1 ИЛИ НЕСКОЛЬКО КАРТ) ===
+function showWinModal(itemsList) {
+  lastWonItems = Array.isArray(itemsList) ? itemsList : [];
+  const modalContent = document.querySelector('#win-modal .modal-content');
+  const titleEl = document.getElementById('win-modal-title');
+  const container = document.getElementById('win-card-container');
+  const sellBtn = document.getElementById('sell-won-btn');
+
+  if (modalContent) {
+    modalContent.classList.toggle('multi-win-content', lastWonItems.length > 1);
+  }
+  if (titleEl) {
+    titleEl.textContent = lastWonItems.length > 1 ? `Тебе выпало (${lastWonItems.length}):` : 'Тебе выпало!';
+  }
+
+  container.innerHTML = lastWonItems.map(entry => createCardHTML(entry.card, entry.isHolo)).join('');
+
+  const totalSellPrice = lastWonItems.reduce((sum, entry) => sum + getCardPrice(entry.card, entry.isHolo), 0);
+  sellBtn.textContent = lastWonItems.length > 1 ? `Продать все за ${totalSellPrice} ₽` : `Продать за ${totalSellPrice} ₽`;
+  sellBtn.disabled = totalSellPrice <= 0;
+
   document.getElementById('win-modal').classList.remove('hidden');
 }
 
 function closeWinModal() {
+  lastWonItems = [];
   document.getElementById('win-modal').classList.add('hidden');
 }
 
 function sellWonCard() {
-  if (lastWonCard) {
-    sellInventoryCard(lastWonCard.uid);
-    closeWinModal();
+  if (lastWonItems.length === 0) return;
+
+  const uidSet = new Set(lastWonItems.map(x => x.uid));
+  let earned = 0;
+
+  state.inventory = state.inventory.filter(item => {
+    if (uidSet.has(item.uid)) {
+      const card = state.cards.find(c => c.id === item.cardId);
+      if (card) earned += getCardPrice(card, item.isHolo);
+      return false;
+    }
+    return true;
+  });
+
+  if (earned > 0) {
+    state.balance += earned;
+    saveState(false);
+    if (document.getElementById('tab-collection').classList.contains('active')) {
+      renderCollection();
+    }
   }
+
+  closeWinModal();
 }
 
 // === ЗАПУСК ===
