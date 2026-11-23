@@ -61,7 +61,7 @@ body {
   border-radius: 8px;
   font-weight: 700;
   cursor: pointer;
-  transition: 0.2s;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
   white-space: nowrap;
 }
 .nav-btn:hover, .nav-btn.active {
@@ -158,7 +158,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   border-radius: 8px;
   font-weight: 800;
   cursor: pointer;
-  transition: 0.2s;
+  transition: filter 0.15s, transform 0.15s;
 }
 .primary-btn:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
 .primary-btn:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -181,12 +181,13 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   flex-wrap: wrap;
 }
 
-/* КАРТОЧКИ УРОВНЕЙ С ДВУХЦВЕТНЫМ ГРАДИЕНТОМ РЕДКОСТИ */
+/* КАРТОЧКИ УРОВНЕЙ */
 .cards-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
   gap: 16px;
   align-items: start;
+  contain: layout style;
 }
 
 .collection-compact-grid {
@@ -231,13 +232,14 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   flex-direction: column;
   justify-content: space-between;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.25s ease;
+  transition: transform 0.16s ease;
   overflow: hidden;
   user-select: none;
+  contain: layout style paint;
 }
 
 .gd-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-3px);
 }
 
 .gd-card.selected, .gd-card.editing-target {
@@ -261,14 +263,14 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   color: #ffffff;
   letter-spacing: -0.5px;
   white-space: nowrap;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.95);
 }
 
 .card-rank.is-upcoming {
   font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.4px;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(10, 12, 18, 0.78);
   border: 1px solid rgba(255, 255, 255, 0.32);
   padding: 2px 6px;
   border-radius: 6px;
@@ -287,7 +289,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 96px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 /* КАРТИНКА УРОВНЯ ВСЕГДА ЧИСТАЯ — ПОВЕРХ ВСЕХ ОВЕРЛЕЕВ КАРТОЧКИ */
@@ -296,12 +298,12 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   aspect-ratio: 16 / 9;
   border-radius: 9px;
   object-fit: cover;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.24);
   margin-bottom: 10px;
   position: relative;
   z-index: 12;
   isolation: isolate;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.55);
   -webkit-user-drag: none;
 }
 
@@ -315,7 +317,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   text-overflow: ellipsis;
   position: relative;
   z-index: 4;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.75);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.98), 0 0 5px rgba(0, 0, 0, 0.95);
 }
 
 .card-bottom-area {
@@ -330,48 +332,32 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 .card-price {
   font-size: 14px;
   font-weight: 900;
-  color: var(--accent-green);
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.75);
+  color: #a3e635;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.98), 0 0 5px rgba(0, 0, 0, 0.95);
 }
 
 /* ПЕРЕРАБОТАННЫЙ HOLO ПЕРЕЛИВ (ТОЛЬКО НА HOLO-КАРТАХ И НЕ ЗАДЕВАЕТ .card-thumb) */
-.gd-card.is-holo {
-  box-shadow:
-    0 0 16px rgba(244, 114, 182, 0.26),
-    0 0 24px rgba(56, 189, 248, 0.22);
-}
-
 .gd-card.is-holo .holo-full-overlay {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 6;
   border-radius: inherit;
-  background:
-    linear-gradient(
-      125deg,
-      rgba(255, 130, 195, 0.26) 0%,
-      rgba(255, 225, 130, 0.22) 22%,
-      rgba(120, 255, 205, 0.24) 45%,
-      rgba(125, 195, 255, 0.28) 68%,
-      rgba(215, 145, 255, 0.25) 100%
-    ),
-    repeating-linear-gradient(
-      -35deg,
-      rgba(255, 255, 255, 0.08) 0px,
-      rgba(255, 255, 255, 0.08) 3px,
-      transparent 3px,
-      transparent 11px
-    );
-  background-size: 260% 260%, 100% 100%;
+  background: linear-gradient(
+    125deg,
+    rgba(175, 45, 115, 0.24) 0%,
+    rgba(170, 115, 28, 0.22) 25%,
+    rgba(30, 140, 100, 0.24) 50%,
+    rgba(38, 102, 178, 0.26) 75%,
+    rgba(105, 55, 160, 0.24) 100%
+  );
   mix-blend-mode: screen;
-  animation: holoCardShift 6s ease-in-out infinite;
 }
 
 .holo-pill {
   align-self: flex-start;
-  background: linear-gradient(90deg, #fbcfe8, #fef08a, #bae6fd);
-  color: #111827;
+  background: linear-gradient(90deg, #ec4899, #eab308, #0ea5e9);
+  color: #090b10;
   font-size: 9px;
   font-weight: 900;
   padding: 2px 8px;
@@ -379,27 +365,20 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   letter-spacing: 0.4px;
   position: relative;
   z-index: 8;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
 }
 
-/* ЭФФЕКТ РЕДКОСТИ В СТИЛЕ РЕФЕРЕНСА (РАДУЖНЫЙ ФОЙЛ НА КАРТОЧКЕ, КАРТИНКА УРОВНЯ ЧИСТАЯ) */
+/* ЭФФЕКТ "РАДУЖНЫЙ ФОЙЛ" (ЛЁГКИЙ И ПРИТЕМНЁННЫЙ, БЕЗ ТЯЖЁЛОГО РЕНДЕРА В АПГРЕЙДАХ) */
 .gd-card.effect-prismatic-foil {
-  border: 3px solid transparent;
-  background:
-    linear-gradient(
-      142deg,
-      #f29bb2 0%,
-      #f3c98b 20%,
-      #a8dfa4 42%,
-      #7bc5e8 66%,
-      #c697e8 86%,
-      #f29bb2 100%
-    ) border-box;
-  background-size: 240% 240%;
-  box-shadow:
-    0 0 18px rgba(242, 155, 178, 0.28),
-    0 0 26px rgba(123, 197, 232, 0.24);
-  animation: prismaticFoilDrift 7s ease-in-out infinite;
+  border-color: #c05684;
+  background: linear-gradient(
+    152deg,
+    rgba(138, 38, 74, 0.72) 0%,
+    rgba(126, 76, 24, 0.68) 28%,
+    rgba(32, 98, 66, 0.7) 56%,
+    rgba(32, 82, 138, 0.72) 80%,
+    rgba(84, 42, 126, 0.74) 100%
+  );
 }
 
 .gd-card.effect-prismatic-foil::before {
@@ -411,44 +390,36 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   z-index: 5;
   background:
     linear-gradient(
-      138deg,
-      rgba(242, 155, 178, 0.56) 0%,
-      rgba(243, 201, 139, 0.48) 24%,
-      rgba(168, 223, 164, 0.46) 48%,
-      rgba(123, 197, 232, 0.52) 74%,
-      rgba(198, 151, 232, 0.54) 100%
+      180deg,
+      rgba(10, 12, 18, 0.42) 0%,
+      rgba(10, 12, 18, 0.22) 50%,
+      rgba(10, 12, 18, 0.48) 100%
     ),
-    repeating-linear-gradient(
+    linear-gradient(
       138deg,
-      rgba(255, 255, 255, 0.07) 0px,
-      rgba(255, 255, 255, 0.07) 2px,
-      rgba(0, 0, 0, 0.05) 2px,
-      rgba(0, 0, 0, 0.05) 5px
-    ),
-    radial-gradient(circle at 22% 18%, rgba(255, 255, 255, 0.24), transparent 52%);
-  background-size: 240% 240%, 100% 100%, 100% 100%;
-  animation: prismaticFoilDrift 7s ease-in-out infinite;
+      rgba(165, 48, 90, 0.34) 0%,
+      rgba(165, 98, 34, 0.3) 35%,
+      rgba(38, 112, 74, 0.3) 68%,
+      rgba(42, 96, 156, 0.34) 100%
+    );
 }
 
 .gd-card.effect-prismatic-foil .card-rarity-badge {
-  background: linear-gradient(90deg, #f48fb1, #f6c390, #b2dfdb, #90caf9);
-  color: #16181d;
+  background: linear-gradient(90deg, #e86ca0, #eab308, #2dd4bf, #60a5fa);
+  color: #0b0d12;
 }
 
 /* ОСТАЛЬНЫЕ ЭФФЕКТЫ РЕДКОСТИ */
 .gd-card.effect-rainbow-shift {
-  animation: rarityColorCycle 4s linear infinite;
+  animation: rarityColorCycle 5s linear infinite;
 }
 
 .gd-card.effect-aura {
-  box-shadow:
-    0 0 22px color-mix(in srgb, var(--rar-color) 65%, transparent),
-    inset 0 0 18px color-mix(in srgb, var(--rar-color) 30%, transparent);
-  animation: auraLevitate 2.8s ease-in-out infinite;
+  box-shadow: 0 0 16px color-mix(in srgb, var(--rar-color) 55%, transparent);
 }
 
 .gd-card.effect-glow {
-  box-shadow: 0 0 18px color-mix(in srgb, var(--rar-color) 60%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--rar-color) 50%, transparent);
 }
 
 .gd-card.effect-shine-sweep .shine-sweep-layer {
@@ -456,16 +427,17 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   left: -15%;
   right: -15%;
   top: -85px;
-  height: 80px;
+  height: 75px;
   background: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.34) 50%,
+    rgba(255, 255, 255, 0.26) 50%,
     rgba(255, 255, 255, 0) 100%
   );
-  animation: topToBottomSweep 2.8s ease-in-out infinite;
+  animation: topToBottomSweep 3.2s linear infinite;
   pointer-events: none;
   z-index: 6;
+  will-change: transform;
 }
 
 .gd-card.effect-sparkle .sparkle-layer {
@@ -476,17 +448,16 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 }
 .spark-dot {
   position: absolute;
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: #ffffff;
-  box-shadow: 0 0 8px #ffffff, 0 0 14px var(--rar-color);
-  animation: sparkTwinkle 1.6s ease-in-out infinite;
+  animation: sparkTwinkle 2s ease-in-out infinite;
 }
 .spark-dot:nth-child(1) { top: 18%; left: 16%; animation-delay: 0s; }
-.spark-dot:nth-child(2) { top: 32%; right: 18%; animation-delay: 0.35s; }
-.spark-dot:nth-child(3) { top: 58%; left: 22%; animation-delay: 0.7s; }
-.spark-dot:nth-child(4) { bottom: 24%; right: 16%; animation-delay: 1.05s; }
+.spark-dot:nth-child(2) { top: 32%; right: 18%; animation-delay: 0.4s; }
+.spark-dot:nth-child(3) { top: 58%; left: 22%; animation-delay: 0.8s; }
+.spark-dot:nth-child(4) { bottom: 24%; right: 16%; animation-delay: 1.2s; }
 
 /* КЕЙСЫ И МУЛЬТИ-РУЛЕТКА */
 .cases-grid {
@@ -502,9 +473,9 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   padding: 16px;
   text-align: center;
   cursor: pointer;
-  transition: 0.2s;
+  transition: transform 0.15s, border-color 0.15s;
 }
-.case-item:hover { border-color: var(--accent-gold); transform: translateY(-4px); }
+.case-item:hover { border-color: var(--accent-gold); transform: translateY(-3px); }
 .case-item img { width: 100%; height: 140px; object-fit: cover; border-radius: 10px; margin-bottom: 12px; }
 .case-price-tag {
   display: inline-block;
@@ -542,7 +513,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   border-radius: 8px;
   font-weight: 800;
   cursor: pointer;
-  transition: 0.15s;
+  transition: background-color 0.15s, color 0.15s;
 }
 
 .count-chip:hover:not(:disabled) {
@@ -744,6 +715,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   pointer-events: none;
   z-index: 4;
   transform: rotate(0deg);
+  will-change: transform;
 }
 .upgrade-arrow {
   position: absolute;
@@ -792,6 +764,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   max-height: 620px;
   overflow-y: auto;
   padding-right: 4px;
+  content-visibility: auto;
 }
 
 /* ТРЕЙДЫ И КРАФТЫ */
@@ -915,7 +888,6 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   flex-direction: column;
   gap: 8px;
   cursor: grab;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .rar-manage-card:active { cursor: grabbing; }
 .rar-manage-card.drag-over {
@@ -1147,34 +1119,20 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   }
 }
 
-@keyframes holoCardShift {
-  0% { background-position: 0% 50%, 0% 0%; }
-  50% { background-position: 100% 50%, 0% 45px; }
-  100% { background-position: 0% 50%, 0% 0%; }
-}
-@keyframes prismaticFoilDrift {
-  0% { background-position: 0% 25%, 0% 0%, 0% 0%; }
-  50% { background-position: 100% 75%, 0% 35px, 100% 100%; }
-  100% { background-position: 0% 25%, 0% 0%, 0% 0%; }
-}
 @keyframes rarityColorCycle {
   0% { filter: hue-rotate(0deg); }
-  50% { filter: hue-rotate(35deg); }
+  50% { filter: hue-rotate(28deg); }
   100% { filter: hue-rotate(0deg); }
 }
-@keyframes auraLevitate {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-7px); }
-}
 @keyframes topToBottomSweep {
-  0% { top: -85px; opacity: 0; }
+  0% { transform: translateY(0); opacity: 0; }
   15% { opacity: 1; }
   85% { opacity: 1; }
-  100% { top: 108%; opacity: 0; }
+  100% { transform: translateY(420px); opacity: 0; }
 }
 @keyframes sparkTwinkle {
-  0%, 100% { transform: scale(0.4); opacity: 0.2; }
-  50% { transform: scale(1.25); opacity: 1; }
+  0%, 100% { transform: scale(0.5); opacity: 0.25; }
+  50% { transform: scale(1.2); opacity: 0.95; }
 }
 
 @media (max-width: 900px) {
