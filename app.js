@@ -7,6 +7,7 @@ const SHARED_CLOUD_CONFIG = {
 
 const PACK_PRICE = 1000;
 const INITIAL_BALANCE = 1500;
+const MAX_CASE_OPEN_COUNT = 3;
 
 // === СОСТОЯНИЕ И СОХРАНЕНИЕ ===
 const savedCloud = JSON.parse(localStorage.getItem('gd_cloud') || 'null');
@@ -53,7 +54,6 @@ let draggedCardId = null;
 let upgSelectedSourceUid = null;
 let upgSelectedTargetId = null;
 let upgSelectedTargetHolo = false;
-let upgRandomPool = [];
 let currentWheelAngle = 0;
 
 let tradeMyOfferUids = [];
@@ -66,6 +66,14 @@ let rotY = 0;
 let isDragging3D = false;
 let dragStartX = 0;
 let dragStartY = 0;
+
+let rarityMapCache = new Map();
+let cardMapCache = new Map();
+
+function rebuildLookupCaches() {
+  rarityMapCache = new Map(state.rarities.map(r => [r.id, r]));
+  cardMapCache = new Map(state.cards.map(c => [c.id, c]));
+}
 
 // === РАСЧЁТ ШАНСА АПГРЕЙДА (ПОДДЕРЖКА < 1%, МАКСИМУМ 85%) ===
 function calculateUpgradeChance(srcPrice, tgtPrice) {
@@ -107,6 +115,7 @@ function recalculateRarityHierarchy() {
   if (packSum <= 0 && state.rarities.length > 0) {
     state.rarities[state.rarities.length - 1].packWeight = 100;
   }
+  rebuildLookupCaches();
 }
 
 function getRarityChanceWeight(rarityId, mode = 'case') {
@@ -145,8 +154,7 @@ function normalizeCardsAndRanks() {
   ranked.sort((a, b) => {
     const topA = Number(a.top) > 0 ? Number(a.top) : 999999;
     const topB = Number(b.top) > 0 ? Number(b.top) : 999999;
-    if (topA !== topB) return topA - topB;
-    return 0;
+    return topA - topB;
   });
 
   ranked.forEach((c, idx) => {
@@ -154,19 +162,16 @@ function normalizeCardsAndRanks() {
   });
 
   state.cards = [...upcoming, ...ranked];
+  rebuildLookupCaches();
 }
 
-// === АВТОНОРМАЛИЗАЦИЯ ШАНСОВ (ОТ 0.0000000001 ДО 100) ===
+// === АВТОНОРМАЛИЗАЦИЯ ШАНСОВ ===
 function sanitizeChanceInput(rawVal) {
   const cleaned = String(rawVal ?? '').replace(',', '.').trim();
   let num = Number(cleaned);
   if (!Number.isFinite(num) || num < 0) return 0;
   if (num > 100) return 100;
   return num;
-}
-
-function normalizeRaritiesWeights() {
-  recalculateRarityHierarchy();
 }
 
 function formatChancePercent(weight, mode = 'case') {
@@ -233,10 +238,7 @@ function switchTab(tabName) {
   document.querySelector(`.nav-btn[data-tab="${tabName}"]`).classList.add('active');
 
   if (tabName === 'cases') renderCasesList();
-  if (tabName === 'upgrade') {
-    if (upgRandomPool.length === 0) rerollUpgradeTargets();
-    renderUpgradeUI();
-  }
+  if (tabName === 'upgrade') renderUpgradeUI();
   if (tabName === 'trade') {
     if (document.getElementById('trade-arena').classList.contains('hidden')) {
       startBotTrade();
@@ -251,7 +253,11 @@ function switchTab(tabName) {
 
 // === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ КАРТОЧЕК И СОРТИРОВКИ ===
 function getRarityObj(rarityId) {
-  return state.rarities.find(r => r.id === rarityId) || state.rarities[state.rarities.length - 1] || state.rarities[0];
+  return rarityMapCache.get(rarityId) || state.rarities[state.rarities.length - 1] || state.rarities[0];
+}
+
+function getCardById(cardId) {
+  return cardMapCache.get(cardId);
 }
 
 function getCardPrice(card, isHolo) {
@@ -311,7 +317,7 @@ function createCardHTML(card, isHolo = false, extraClass = '', clickAttr = '', a
           ${rankHTML}
           <span class="card-rarity-badge">${rar.name}</span>
         </div>
-        <img class="card-thumb" draggable="false" src="${card.img}" alt="${card.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=GD+LEVEL'">
+        <img class="card-thumb" loading="lazy" decoding="async" draggable="false" src="${card.img}" alt="${card.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=GD+LEVEL'">
         <div class="card-title">${card.name}</div>
         <div class="card-bottom-area">
           <span class="card-price">${price} ₽</span>
@@ -334,7 +340,7 @@ function giveCardToPlayer(card, isHolo) {
   return item;
 }
 
-// === ОБЛАКО ДЛЯ ВСЕХ ИГРОКОВ (КАРТЫ, РЕДКОСТИ, КЕЙСЫ, HOLO) ===
+// === ОБЛАКО ДЛЯ ВСЕХ ИГРОКОВ ===
 function buildCloudHeaders() {
   const headers = { 'Content-Type': 'application/json' };
   if (state.cloud.apiKey) {
@@ -455,7 +461,7 @@ async function syncCatalogFromCloud(forceOverwriteLocal = false) {
   }
 }
 
-// === 6) КЕЙСЫ И МУЛЬТИ-РУЛЕТКА (x1..x5) ===
+// === КЕЙСЫ И МУЛЬТИ-РУЛЕТКА (МАКСИМУМ x3) ===
 function renderCasesList() {
   const sortMode = document.getElementById('cases-sort').value;
   const sorted = [...state.cases].sort((a, b) => sortMode === 'price-asc' ? a.price - b.price : b.price - a.price);
@@ -470,9 +476,10 @@ function renderCasesList() {
 
 function setCaseOpenCount(count) {
   if (isSpinning) return;
-  caseOpenCount = count;
+  const clamped = Math.max(1, Math.min(MAX_CASE_OPEN_COUNT, Number(count) || 1));
+  caseOpenCount = clamped;
   document.querySelectorAll('#case-count-selector .count-chip').forEach(btn => {
-    btn.classList.toggle('active', Number(btn.dataset.count) === count);
+    btn.classList.toggle('active', Number(btn.dataset.count) === caseOpenCount);
   });
   updateCaseOpenCostLabel();
   const c = state.cases.find(x => x.id === currentCaseId);
@@ -492,7 +499,7 @@ function buildMultiRouletteTracks(caseObj, winners = null) {
   const container = document.getElementById('roulettes-multi-container');
   if (!container || !caseObj) return;
 
-  const pool = caseObj.cardIds.map(id => state.cards.find(c => c.id === id)).filter(Boolean);
+  const pool = caseObj.cardIds.map(getCardById).filter(Boolean);
   if (pool.length === 0) {
     container.innerHTML = '';
     return;
@@ -535,12 +542,12 @@ function openCaseView(caseId) {
     closeCaseView();
     return;
   }
+  if (caseOpenCount > MAX_CASE_OPEN_COUNT) caseOpenCount = MAX_CASE_OPEN_COUNT;
   document.getElementById('cases-grid-view').classList.add('hidden');
   document.getElementById('case-open-view').classList.remove('hidden');
   document.getElementById('active-case-title').textContent = c.name;
-  updateCaseOpenCostLabel();
+  setCaseOpenCount(caseOpenCount);
   renderCaseContents();
-  buildMultiRouletteTracks(c);
 }
 
 function closeCaseView() {
@@ -554,7 +561,7 @@ function renderCaseContents() {
   const c = state.cases.find(x => x.id === currentCaseId);
   if (!c) return;
   const sortMode = document.getElementById('case-contents-sort').value;
-  const caseCards = c.cardIds.map(id => state.cards.find(card => card.id === id)).filter(Boolean);
+  const caseCards = c.cardIds.map(getCardById).filter(Boolean);
   const sorted = sortItems(caseCards, sortMode);
   document.getElementById('case-contents-grid').innerHTML = sorted.map(card => createCardHTML(card, false)).join('');
 }
@@ -595,18 +602,19 @@ function spinCurrentCase(fast = false) {
   const c = state.cases.find(x => x.id === currentCaseId);
   if (!c) return;
 
-  const totalCost = c.price * caseOpenCount;
+  const count = Math.min(MAX_CASE_OPEN_COUNT, caseOpenCount);
+  const totalCost = c.price * count;
   if (state.balance < totalCost) return;
 
-  const pool = c.cardIds.map(id => state.cards.find(card => card.id === id)).filter(Boolean);
+  const pool = c.cardIds.map(getCardById).filter(Boolean);
   if (pool.length === 0) return;
 
   state.balance -= totalCost;
-  state.stats.opened += caseOpenCount;
+  state.stats.opened += count;
   saveState(false);
 
   const rolledWinners = [];
-  for (let i = 0; i < caseOpenCount; i++) {
+  for (let i = 0; i < count; i++) {
     rolledWinners.push({
       card: rollWeightedCard(pool, 'case'),
       isHolo: Math.random() < state.holoChance
@@ -621,7 +629,7 @@ function spinCurrentCase(fast = false) {
   const durationSec = fast ? 0.85 : 4.2;
 
   setTimeout(() => {
-    for (let row = 0; row < caseOpenCount; row++) {
+    for (let row = 0; row < count; row++) {
       const track = document.getElementById(`roulette-track-${row}`);
       if (!track) continue;
       const jitter = Math.random() * Math.min(36, cardW * 0.2) - Math.min(18, cardW * 0.1);
@@ -642,7 +650,7 @@ function spinCurrentCase(fast = false) {
   }, fast ? 950 : 4350);
 }
 
-// === 1) ПАКИ ЗА 1000 РУБЛЕЙ С АНИМАЦИЕЙ ПОЯВЛЕНИЯ 5 КАРТ ===
+// === ПАКИ ЗА 1000 РУБЛЕЙ ===
 function buyPack() {
   if (isOpeningPack || state.balance < PACK_PRICE) return;
   isOpeningPack = true;
@@ -681,26 +689,24 @@ function buyPack() {
   });
 }
 
-// === 3) АПГРЕЙДЫ (ВСЕ КАРТЫ + ПОИСК + РУЛЕТКА С ШАНСАМИ < 1%) ===
-function rerollUpgradeTargets() {
+// === АПГРЕЙДЫ (ОПТИМИЗИРОВАННЫЙ РЕНДЕР БЕЗ ПЕРЕРИСОВКИ ВСЕГО ДЕРЕВА ПРИ КЛИКЕ) ===
+function renderUpgradeUI() {
+  renderUpgradeMyInventory();
   renderUpgradeTargets();
+  updateUpgradeSlotsAndChance();
 }
 
-function renderUpgradeUI() {
+function renderUpgradeMyInventory() {
   const invSort = document.getElementById('upg-inv-sort').value;
-  const myMapped = state.inventory.map(item => ({
-    ...item,
-    card: state.cards.find(c => c.id === item.cardId)
-  })).filter(x => x.card);
+  const myMapped = state.inventory
+    .map(item => ({ ...item, card: getCardById(item.cardId) }))
+    .filter(x => x.card);
 
   const sortedMy = sortItems(myMapped, invSort);
   document.getElementById('upgrade-my-cards').innerHTML = sortedMy.map(item => {
     const sel = item.uid === upgSelectedSourceUid ? 'selected' : '';
-    return createCardHTML(item.card, item.isHolo, sel, `onclick="selectUpgradeSource('${item.uid}')"`);
+    return createCardHTML(item.card, item.isHolo, sel, `data-upg-uid="${item.uid}" onclick="selectUpgradeSource('${item.uid}')"`);
   }).join('');
-
-  renderUpgradeTargets();
-  updateUpgradeSlotsAndChance();
 }
 
 function renderUpgradeTargets() {
@@ -708,19 +714,21 @@ function renderUpgradeTargets() {
   const searchQ = (document.getElementById('upg-target-search')?.value || '').trim().toLowerCase();
   const holoMode = document.getElementById('upg-target-holo-filter')?.value || 'all';
 
-  let allTargets = [];
-  state.cards.forEach(card => {
+  const allTargets = [];
+  for (let i = 0; i < state.cards.length; i++) {
+    const card = state.cards[i];
     if (holoMode === 'all' || holoMode === 'normal') {
       allTargets.push({ card, isHolo: false });
     }
     if (holoMode === 'all' || holoMode === 'holo') {
       allTargets.push({ card, isHolo: true });
     }
-  });
+  }
 
+  let filtered = allTargets;
   if (searchQ) {
     const cleanNum = searchQ.replace(/^#/, '');
-    allTargets = allTargets.filter(t => {
+    filtered = allTargets.filter(t => {
       const nameMatch = String(t.card.name || '').toLowerCase().includes(searchQ);
       const rarMatch = String(getRarityObj(t.card.rarity)?.name || '').toLowerCase().includes(searchQ);
       const upcomingMatch = isUpcomingCard(t.card) && 'upcoming'.includes(searchQ);
@@ -729,7 +737,7 @@ function renderUpgradeTargets() {
     });
   }
 
-  const sortedTargets = sortItems(allTargets, tSort);
+  const sortedTargets = sortItems(filtered, tSort);
   const countEl = document.getElementById('upg-targets-count');
   if (countEl) countEl.textContent = sortedTargets.length;
 
@@ -739,24 +747,42 @@ function renderUpgradeTargets() {
   } else {
     gridEl.innerHTML = sortedTargets.map(t => {
       const sel = (t.card.id === upgSelectedTargetId && t.isHolo === upgSelectedTargetHolo) ? 'selected' : '';
-      return createCardHTML(t.card, t.isHolo, sel, `onclick="selectUpgradeTarget('${t.card.id}', ${t.isHolo})"`);
+      return createCardHTML(
+        t.card,
+        t.isHolo,
+        sel,
+        `data-upg-target="${t.card.id}_${t.isHolo}" onclick="selectUpgradeTarget('${t.card.id}', ${t.isHolo})"`
+      );
     }).join('');
   }
 }
 
 function selectUpgradeSource(uid) {
   if (isUpgrading) return;
+  const prevUid = upgSelectedSourceUid;
   upgSelectedSourceUid = uid;
+
+  if (prevUid) {
+    document.querySelectorAll(`[data-upg-uid="${prevUid}"]`).forEach(el => el.classList.remove('selected'));
+  }
+  document.querySelectorAll(`[data-upg-uid="${uid}"]`).forEach(el => el.classList.add('selected'));
+
   updateUpgradeSlotsAndChance();
-  renderUpgradeUI();
 }
 
 function selectUpgradeTarget(cardId, isHolo) {
   if (isUpgrading) return;
+  const prevKey = upgSelectedTargetId ? `${upgSelectedTargetId}_${upgSelectedTargetHolo}` : null;
   upgSelectedTargetId = cardId;
   upgSelectedTargetHolo = isHolo;
+  const nextKey = `${cardId}_${isHolo}`;
+
+  if (prevKey) {
+    document.querySelectorAll(`[data-upg-target="${prevKey}"]`).forEach(el => el.classList.remove('selected'));
+  }
+  document.querySelectorAll(`[data-upg-target="${nextKey}"]`).forEach(el => el.classList.add('selected'));
+
   updateUpgradeSlotsAndChance();
-  renderUpgradeTargets();
 }
 
 function updateUpgradeSlotsAndChance() {
@@ -767,8 +793,8 @@ function updateUpgradeSlotsAndChance() {
   const circle = document.getElementById('upgrade-circle');
 
   const srcItem = state.inventory.find(x => x.uid === upgSelectedSourceUid);
-  const srcCard = srcItem ? state.cards.find(c => c.id === srcItem.cardId) : null;
-  const tgtCard = state.cards.find(c => c.id === upgSelectedTargetId);
+  const srcCard = srcItem ? getCardById(srcItem.cardId) : null;
+  const tgtCard = upgSelectedTargetId ? getCardById(upgSelectedTargetId) : null;
 
   srcSlot.innerHTML = srcCard ? createCardHTML(srcCard, srcItem.isHolo) : 'Выбери карту снизу';
   tgtSlot.innerHTML = tgtCard ? createCardHTML(tgtCard, upgSelectedTargetHolo) : 'Выбери цель справа';
@@ -795,8 +821,8 @@ function executeUpgrade() {
   if (srcIdx === -1) return;
 
   const srcItem = state.inventory[srcIdx];
-  const srcCard = state.cards.find(c => c.id === srcItem.cardId);
-  const tgtCard = state.cards.find(c => c.id === upgSelectedTargetId);
+  const srcCard = getCardById(srcItem.cardId);
+  const tgtCard = getCardById(upgSelectedTargetId);
   if (!srcCard || !tgtCard) return;
 
   const srcPrice = getCardPrice(srcCard, srcItem.isHolo);
@@ -839,7 +865,7 @@ function executeUpgrade() {
   }, durationMs + 80);
 }
 
-// === 2) ТРЕЙД С БОТОМ ===
+// === ТРЕЙД С БОТОМ ===
 function startBotTrade() {
   tradeMyOfferUids = [];
   tradeBotOffer = [];
@@ -861,7 +887,7 @@ function recalculateBotOffer() {
   tradeMyOfferUids.forEach(uid => {
     const item = state.inventory.find(x => x.uid === uid);
     if (!item) return;
-    const card = state.cards.find(c => c.id === item.cardId);
+    const card = getCardById(item.cardId);
     if (!card) return;
     mySum += getCardPrice(card, item.isHolo);
   });
@@ -885,13 +911,13 @@ function recalculateBotOffer() {
 function renderTradeUI() {
   tradeMyOfferUids = tradeMyOfferUids.filter(uid => {
     const item = state.inventory.find(x => x.uid === uid);
-    return item && state.cards.some(c => c.id === item.cardId);
+    return item && getCardById(item.cardId);
   });
 
   let mySum = 0;
   const offerHtml = tradeMyOfferUids.map(uid => {
     const item = state.inventory.find(x => x.uid === uid);
-    const card = state.cards.find(c => c.id === item.cardId);
+    const card = item ? getCardById(item.cardId) : null;
     if (!item || !card) return '';
     mySum += getCardPrice(card, item.isHolo);
     return createCardHTML(card, item.isHolo, '', `onclick="toggleTradeCard('${uid}')"`);
@@ -909,7 +935,7 @@ function renderTradeUI() {
   document.getElementById('bot-trade-offer').innerHTML = botHtml || '<div class="hint-text">Выбери свои карты слева</div>';
 
   const availInv = state.inventory
-    .map(item => ({ ...item, card: state.cards.find(c => c.id === item.cardId) }))
+    .map(item => ({ ...item, card: getCardById(item.cardId) }))
     .filter(x => x.card && !tradeMyOfferUids.includes(x.uid));
 
   const countEl = document.getElementById('trade-inv-count');
@@ -938,13 +964,12 @@ function confirmTrade() {
   renderTradeUI();
 }
 
-// === 7) КРАФТЫ (10 -> 1) ===
+// === КРАФТЫ (10 -> 1) ===
 function renderCraftUI() {
   const sortMode = document.getElementById('craft-sort').value;
-  const mapped = state.inventory.map(item => ({
-    ...item,
-    card: state.cards.find(c => c.id === item.cardId)
-  })).filter(x => x.card);
+  const mapped = state.inventory
+    .map(item => ({ ...item, card: getCardById(item.cardId) }))
+    .filter(x => x.card);
 
   const sorted = sortItems(mapped, sortMode);
   document.getElementById('craft-inv-grid').innerHTML = sorted.map(item => {
@@ -960,7 +985,7 @@ function renderCraftUI() {
     const uid = craftSelectedUids[i];
     if (uid) {
       const item = state.inventory.find(x => x.uid === uid);
-      const card = state.cards.find(c => c.id === item.cardId);
+      const card = getCardById(item.cardId);
       sumPrice += getCardPrice(card, item.isHolo);
       slotsHtml += `<div class="craft-mini-slot" onclick="toggleCraftCard('${uid}')"><img src="${card.img}" style="width:100%;height:100%;object-fit:cover;"></div>`;
     } else {
@@ -980,11 +1005,11 @@ function toggleCraftCard(uid) {
   } else {
     if (craftSelectedUids.length >= 10) return;
     const newItem = state.inventory.find(x => x.uid === uid);
-    const newCard = state.cards.find(c => c.id === newItem.cardId);
+    const newCard = getCardById(newItem.cardId);
 
     if (craftSelectedUids.length > 0) {
       const firstItem = state.inventory.find(x => x.uid === craftSelectedUids[0]);
-      const firstCard = state.cards.find(c => c.id === firstItem.cardId);
+      const firstCard = getCardById(firstItem.cardId);
       if (firstCard.rarity !== newCard.rarity) return;
     }
     craftSelectedUids.push(uid);
@@ -1000,7 +1025,7 @@ function executeCraft() {
 
   craftSelectedUids.forEach(uid => {
     const item = state.inventory.find(x => x.uid === uid);
-    const card = state.cards.find(c => c.id === item.cardId);
+    const card = getCardById(item.cardId);
     baseRarityId = card.rarity;
     totalValue += getCardPrice(card, item.isHolo);
   });
@@ -1029,7 +1054,7 @@ function executeCraft() {
   renderCraftUI();
 }
 
-// === 4) КОЛЛЕКЦИЯ, ПРОДАЖА ПО РЕДКОСТИ / ВСЁ, СТАТИСТИКА И 3D-ПРОСМОТР ===
+// === КОЛЛЕКЦИЯ, ПРОДАЖА, СТАТИСТИКА И 3D-ПРОСМОТР ===
 function renderSellRarityOptions() {
   const sel = document.getElementById('sell-rarity-select');
   if (!sel) return;
@@ -1043,10 +1068,9 @@ function renderSellRarityOptions() {
 function renderCollection() {
   renderSellRarityOptions();
   const sortMode = document.getElementById('col-sort').value;
-  const mapped = state.inventory.map(item => ({
-    ...item,
-    card: state.cards.find(c => c.id === item.cardId)
-  })).filter(x => x.card);
+  const mapped = state.inventory
+    .map(item => ({ ...item, card: getCardById(item.cardId) }))
+    .filter(x => x.card);
 
   const totalValue = mapped.reduce((acc, x) => acc + getCardPrice(x.card, x.isHolo), 0);
   document.getElementById('stat-total-cards').textContent = mapped.length;
@@ -1068,7 +1092,7 @@ function sellBySelectedRarity() {
 
   let earned = 0;
   state.inventory = state.inventory.filter(item => {
-    const card = state.cards.find(c => c.id === item.cardId);
+    const card = getCardById(item.cardId);
     if (card && card.rarity === rarityId) {
       earned += getCardPrice(card, item.isHolo);
       return false;
@@ -1088,7 +1112,7 @@ function sellAllInventoryCards() {
 
   let earned = 0;
   state.inventory.forEach(item => {
-    const card = state.cards.find(c => c.id === item.cardId);
+    const card = getCardById(item.cardId);
     if (card) {
       earned += getCardPrice(card, item.isHolo);
     }
@@ -1114,7 +1138,7 @@ function getCardDropChancePercentText(card, isHolo) {
 }
 
 function openCard3DModal(cardId, isHolo) {
-  const card = state.cards.find(c => c.id === cardId);
+  const card = getCardById(cardId);
   if (!card) return;
   const rar = getRarityObj(card.rarity);
 
@@ -1189,7 +1213,7 @@ function sellInventoryCard(uid) {
   const idx = state.inventory.findIndex(x => x.uid === uid);
   if (idx === -1) return;
   const item = state.inventory[idx];
-  const card = state.cards.find(c => c.id === item.cardId);
+  const card = getCardById(item.cardId);
   if (card) state.balance += getCardPrice(card, item.isHolo);
   state.inventory.splice(idx, 1);
   saveState(false);
@@ -1202,7 +1226,7 @@ function sellAllDuplicates() {
   state.inventory = state.inventory.filter(item => {
     const key = item.cardId + '_' + item.isHolo;
     if (seen.has(key)) {
-      const card = state.cards.find(c => c.id === item.cardId);
+      const card = getCardById(item.cardId);
       if (card) earned += getCardPrice(card, item.isHolo);
       return false;
     }
@@ -1214,7 +1238,7 @@ function sellAllDuplicates() {
   renderCollection();
 }
 
-// === 5) АДМИН-ПАНЕЛЬ (ПАРОЛЬ 12356790) + DRAG-AND-DROP + КЕЙСЫ ===
+// === АДМИН-ПАНЕЛЬ ===
 function checkAdminPass() {
   const pass = document.getElementById('admin-pass-input').value;
   if (pass === '12356790') {
@@ -1476,7 +1500,7 @@ function renderAdminUI() {
           <span>Эффект:</span>
           <select onchange="updateRarityEffect('${r.id}', this.value)">
             <option value="none" ${r.effect === 'none' ? 'selected' : ''}>Нет</option>
-            <option value="prismatic-foil" ${r.effect === 'prismatic-foil' ? 'selected' : ''}>Радужный фойл как на референсе</option>
+            <option value="prismatic-foil" ${r.effect === 'prismatic-foil' ? 'selected' : ''}>Радужный фойл</option>
             <option value="aura" ${r.effect === 'aura' ? 'selected' : ''}>Левитирующая аура</option>
             <option value="shine-sweep" ${r.effect === 'shine-sweep' ? 'selected' : ''}>Блик сверху вниз</option>
             <option value="glow" ${r.effect === 'glow' ? 'selected' : ''}>Свечение (Glow)</option>
@@ -1553,7 +1577,7 @@ function renderAdminUI() {
 }
 
 function openEditCardPanel(cardId) {
-  const card = state.cards.find(c => c.id === cardId);
+  const card = getCardById(cardId);
   if (!card) return;
 
   editingCardId = card.id;
@@ -1769,7 +1793,7 @@ function adminAddCase() {
   renderCasesList();
 }
 
-// === МОДАЛЬНОЕ ОКНО ВЫИГРЫША (1 ИЛИ НЕСКОЛЬКО КАРТ) ===
+// === МОДАЛЬНОЕ ОКНО ВЫИГРЫША ===
 function showWinModal(itemsList) {
   lastWonItems = Array.isArray(itemsList) ? itemsList : [];
   const modalContent = document.querySelector('#win-modal .modal-content');
@@ -1806,7 +1830,7 @@ function sellWonCard() {
 
   state.inventory = state.inventory.filter(item => {
     if (uidSet.has(item.uid)) {
-      const card = state.cards.find(c => c.id === item.cardId);
+      const card = getCardById(item.cardId);
       if (card) earned += getCardPrice(card, item.isHolo);
       return false;
     }
