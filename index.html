@@ -3,62 +3,63 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GD LUDKA — Extreme Demon Simulator</title>
+  <title>GD LUDKA — GD CASE</title>
   <link rel="stylesheet" href="style.css">
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700;800;900&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800;900&display=swap" rel="stylesheet">
 </head>
 <body>
-
-  <!-- ВЕРХНЯЯ ПАНЕЛЬ НАВИГАЦИИ -->
   <header class="topbar">
     <div class="logo" onclick="switchTab('cases')">
-      <span class="logo-accent">GD</span> LUDKA
+      GD<span class="logo-accent">LUDKA</span>
     </div>
+
     <nav class="nav-links">
       <button class="nav-btn active" data-tab="cases" onclick="switchTab('cases')">Кейсы</button>
-      <button class="nav-btn" data-tab="packs" onclick="switchTab('packs')">Паки (1000 ₽)</button>
+      <button class="nav-btn" data-tab="packs" onclick="switchTab('packs')">Паки</button>
       <button class="nav-btn" data-tab="upgrade" onclick="switchTab('upgrade')">Апгрейд</button>
       <button class="nav-btn" data-tab="trade" onclick="switchTab('trade')">Трейды</button>
-      <button class="nav-btn" data-tab="craft" onclick="switchTab('craft')">Крафты</button>
       <button class="nav-btn" data-tab="collection" onclick="switchTab('collection')">Коллекция</button>
-      <button class="nav-btn admin-nav" data-tab="admin" onclick="switchTab('admin')">Админ</button>
+      <button class="nav-btn" data-tab="craft" onclick="switchTab('craft')">Крафты</button>
+      <button class="nav-btn" data-tab="admin" onclick="switchTab('admin')">Админка</button>
     </nav>
+
     <div class="user-panel">
-      <input type="text" id="nickname-input" class="nick-input" placeholder="Твой ник" maxlength="16" onchange="saveNickname()">
+      <input type="text" id="nickname-input" class="nick-input" placeholder="Никнейм" maxlength="18" onchange="saveNickname()">
       <div class="balance-box">
-        <span id="user-balance">1500</span> ₽
+        <span class="balance-icon">₽</span>
+        <span id="user-balance">1500</span>
       </div>
+      <button id="sound-toggle-btn" class="secondary-btn" style="padding:7px 10px;" onclick="toggleSoundMute()" title="Звук">🔊</button>
     </div>
   </header>
 
-  <!-- ОСНОВНОЙ МАКЕТ -->
   <div class="workspace-layout">
     <main class="container">
-
-      <!-- СТРАНИЦА КЕЙСОВ -->
+      <!-- ВКЛАДКА: КЕЙСЫ -->
       <section id="tab-cases" class="tab-content active">
         <div id="cases-grid-view">
           <div class="section-header">
-            <h2>Кейсы Extreme Demons</h2>
+            <h2>Кейсы уровней</h2>
             <div class="sort-controls">
               <select id="cases-sort" onchange="renderCasesList()">
-                <option value="price-asc">Сначала дешевые</option>
-                <option value="price-desc">Сначала дорогие</option>
+                <option value="price-asc">Сначала дешевле</option>
+                <option value="price-desc">Сначала дороже</option>
               </select>
             </div>
           </div>
-          <div id="cases-list" class="cases-grid"></div>
+          <div id="cases-list"></div>
         </div>
 
-        <!-- ОТДЕЛЬНАЯ СТРАНИЦА ОТКРЫТИЯ ВЫБРАННОГО КЕЙСА -->
         <div id="case-open-view" class="hidden">
           <button class="back-btn" onclick="closeCaseView()">← Назад к кейсам</button>
           <div class="case-open-top">
-            <h2 id="active-case-title" class="case-open-title">Название кейса</h2>
-            <div class="multi-open-selector" id="case-count-selector">
-              <button type="button" class="count-chip active" data-count="1" onclick="setCaseOpenCount(1)">x1</button>
-              <button type="button" class="count-chip" data-count="2" onclick="setCaseOpenCount(2)">x2</button>
-              <button type="button" class="count-chip" data-count="3" onclick="setCaseOpenCount(3)">x3</button>
+            <h2 id="active-case-title">Кейс</h2>
+            <div id="case-count-selector" class="multi-open-selector">
+              <button class="count-chip active" data-count="1" onclick="setCaseOpenCount(1)">x1</button>
+              <button class="count-chip" data-count="2" onclick="setCaseOpenCount(2)">x2</button>
+              <button class="count-chip" data-count="3" onclick="setCaseOpenCount(3)">x3</button>
             </div>
           </div>
 
@@ -71,73 +72,79 @@
             <button id="fast-spin-btn" class="secondary-btn" onclick="spinCurrentCase(true)">Быстро</button>
           </div>
 
-          <div class="section-header" style="margin-top: 30px;">
+          <div class="section-header" style="margin-top:28px;">
             <h3>Содержимое кейса</h3>
             <select id="case-contents-sort" onchange="renderCaseContents()">
-              <option value="rarity-desc">По редкости (сначала редкие)</option>
-              <option value="price-desc">По цене (убыв.)</option>
-              <option value="price-asc">По цене (возр.)</option>
+              <option value="top-asc">По топу (#1 → UPCOMING)</option>
+              <option value="price-desc">Сначала дорогие</option>
+              <option value="price-asc">Сначала дешёвые</option>
+              <option value="rarity-desc">По редкости (высшие)</option>
+              <option value="rarity-asc">По редкости (низшие)</option>
             </select>
           </div>
           <div id="case-contents-grid" class="cards-grid"></div>
         </div>
       </section>
 
-      <!-- СТРАНИЦА ПАКОВ -->
+      <!-- ВКЛАДКА: ПАКИ -->
       <section id="tab-packs" class="tab-content">
+        <div class="section-header">
+          <h2>Паки карточек</h2>
+        </div>
         <div class="pack-hero">
-          <div class="pack-visual">
-            <div class="pack-card-art">
-              <span class="pack-badge">EXTREME PACK</span>
-              <h3>GD LUDKA PACK</h3>
-              <p>5 случайных карточек уровней</p>
-              <span class="holo-tag">✦ ШАНС НА HOLO</span>
-            </div>
+          <div class="pack-card-art">
+            <div style="font-size:12px;font-weight:900;color:#f472b6;letter-spacing:1px;">EXTREME PACK</div>
+            <div style="font-size:28px;font-weight:900;color:#fff;">5 КАРТ</div>
+            <div style="font-size:12px;color:#cbd5e1;">Шанс на HOLO и редкие топы</div>
           </div>
           <div class="pack-info">
-            <h2>Открытие паков</h2>
-            <p>В каждом паке выпадает 5 карточек любых редкостей: от Common до UPCOMING, включая редкие Holo-версии.</p>
+            <h3>Пак Extreme Demon (5 карточек)</h3>
+            <p class="hint-text" style="margin:8px 0 16px;">Мгновенно открывает 5 карточек из каталога и добавляет их в твою коллекцию.</p>
             <button id="buy-pack-btn" class="primary-btn big-btn" onclick="buyPack()">Купить пак за 1000 ₽</button>
           </div>
         </div>
-        <div id="pack-reveal-area" class="cards-grid" style="margin-top: 25px;"></div>
+        <div id="pack-reveal-area" class="cards-grid" style="margin-top:22px;"></div>
       </section>
 
-      <!-- СТРАНИЦА АПГРЕЙДОВ -->
+      <!-- ВКЛАДКА: АПГРЕЙД -->
       <section id="tab-upgrade" class="tab-content">
+        <div class="section-header">
+          <h2>Апгрейд карточек</h2>
+          <div id="upgrade-result-msg"></div>
+        </div>
+
         <div class="upgrade-arena">
           <div class="upgrade-slot-box">
             <div class="slot-label">Твоя карточка</div>
-            <div id="upgrade-source-slot" class="slot-placeholder">Выбери карту снизу</div>
+            <div id="upgrade-source-slot">Выбери карту снизу</div>
           </div>
 
           <div class="upgrade-wheel-box">
-            <div class="chance-circle" id="upgrade-circle">
-              <div class="chance-inner">
-                <span id="upgrade-chance-text">0.00%</span>
-                <small>ШАНС</small>
-              </div>
+            <div id="upgrade-circle" class="chance-circle">
               <div id="upgrade-arrow-rotor" class="upgrade-arrow-rotor">
                 <div class="upgrade-arrow">▼</div>
+              </div>
+              <div class="chance-inner">
+                <small style="color:var(--text-muted);font-size:11px;font-weight:700;">ШАНС</small>
+                <span id="upgrade-chance-text">0.00%</span>
               </div>
             </div>
 
             <div class="upgrade-speed-row">
-              <label for="upgrade-speed-select">Скорость:</label>
+              <span>Скорость:</span>
               <select id="upgrade-speed-select">
-                <option value="slow">Медленно (4.5с)</option>
-                <option value="normal" selected>Обычно (2.5с)</option>
-                <option value="fast">Быстро (0.8с)</option>
+                <option value="fast">Быстро</option>
+                <option value="normal" selected>Обычно</option>
+                <option value="slow">Медленно</option>
               </select>
             </div>
 
-            <button id="do-upgrade-btn" class="primary-btn big-btn" onclick="executeUpgrade()" disabled>Апгрейд</button>
-            <div id="upgrade-result-msg" class="upgrade-msg"></div>
+            <button id="do-upgrade-btn" class="primary-btn big-btn" disabled onclick="executeUpgrade()">Апгрейднуть</button>
           </div>
 
           <div class="upgrade-slot-box">
-            <div class="slot-label">Желаемая карточка</div>
-            <div id="upgrade-target-slot" class="slot-placeholder">Выбери цель справа</div>
+            <div class="slot-label">Желаемая цель</div>
+            <div id="upgrade-target-slot">Выбери цель справа</div>
           </div>
         </div>
 
@@ -145,10 +152,11 @@
           <div class="inv-column">
             <div class="section-header">
               <h3>Твой инвентарь</h3>
-              <select id="upg-inv-sort" onchange="renderUpgradeUI()">
-                <option value="price-desc">Цена ↓</option>
-                <option value="price-asc">Цена ↑</option>
-                <option value="rarity-desc">Редкость ↓</option>
+              <select id="upg-inv-sort" onchange="renderUpgradeMyInventory()">
+                <option value="price-desc">Сначала дорогие</option>
+                <option value="price-asc">Сначала дешёвые</option>
+                <option value="rarity-desc">По редкости (высшие)</option>
+                <option value="top-asc">По топу</option>
               </select>
             </div>
             <div id="upgrade-my-cards" class="cards-grid small-grid"></div>
@@ -162,13 +170,13 @@
                 <select id="upg-target-holo-filter" onchange="renderUpgradeTargets()">
                   <option value="all">Все (Обычн. + Holo)</option>
                   <option value="normal">Только обычные</option>
-                  <option value="holo">Только HOLO</option>
+                  <option value="holo">Только Holo</option>
                 </select>
                 <select id="upg-target-sort" onchange="renderUpgradeTargets()">
-                  <option value="price-asc">Цена ↑</option>
-                  <option value="price-desc">Цена ↓</option>
-                  <option value="rarity-desc">Редкость ↓</option>
-                  <option value="top-asc">По топу (#1 →)</option>
+                  <option value="price-asc">Цена: от меньшей</option>
+                  <option value="price-desc">Цена: от большей</option>
+                  <option value="rarity-desc">По редкости (высшие)</option>
+                  <option value="top-asc">По топу</option>
                 </select>
               </div>
             </div>
@@ -177,293 +185,284 @@
         </div>
       </section>
 
-      <!-- СТРАНИЦА ТРЕЙДОВ С БОТОМ -->
+      <!-- ВКЛАДКА: ТРЕЙДЫ -->
       <section id="tab-trade" class="tab-content">
         <div class="section-header">
           <h2>Трейд с ботом</h2>
-          <button class="primary-btn" onclick="startBotTrade()">Начать новый трейд</button>
+          <button class="secondary-btn" onclick="startBotTrade()">Сбросить обмен</button>
         </div>
+
         <div id="trade-arena" class="trade-arena hidden">
           <div class="trade-side">
-            <h3>Твое предложение (<span id="my-trade-sum">0</span> ₽)</h3>
-            <div id="my-trade-offer" class="cards-grid small-grid trade-box"></div>
-            <h4>Твои карточки (<span id="trade-inv-count">0</span>):</h4>
-            <div id="trade-my-inv" class="cards-grid small-grid"></div>
+            <h3>Твоё предложение (<span id="my-trade-sum">0</span> ₽)</h3>
+            <div id="my-trade-offer" class="trade-box cards-grid small-grid"></div>
           </div>
+
           <div class="trade-center">
-            <div class="trade-status" id="trade-status-text">Нажми на свои карты внизу, чтобы добавить в трейд</div>
-            <button id="confirm-trade-btn" class="primary-btn big-btn" onclick="confirmTrade()" disabled>Обменять</button>
+            <div style="font-size:28px;">⇄</div>
+            <button id="confirm-trade-btn" class="primary-btn" disabled onclick="confirmTrade()">Обменять</button>
           </div>
+
           <div class="trade-side">
             <h3>Предложение бота (<span id="bot-trade-sum">0</span> ₽)</h3>
-            <div id="bot-trade-offer" class="cards-grid small-grid trade-box"></div>
-            <p class="hint-text">Бот автоматически подбирает карты на сумму ≤ твоей ставки.</p>
+            <div id="bot-trade-offer" class="trade-box cards-grid small-grid"></div>
           </div>
         </div>
+
+        <div class="section-header" style="margin-top:20px;">
+          <h3>Твой инвентарь для обмена (<span id="trade-inv-count">0</span>)</h3>
+        </div>
+        <div id="trade-my-inv" class="cards-grid small-grid"></div>
       </section>
 
-      <!-- СТРАНИЦА КРАФТОВ (10 -> 1) -->
+      <!-- ВКЛАДКА: КОЛЛЕКЦИЯ -->
+      <section id="tab-collection" class="tab-content">
+        <div class="stats-bar">
+          <div class="stat-card"><span>Всего карт</span><b id="stat-total-cards">0</b></div>
+          <div class="stat-card"><span>Стоимость инвентаря</span><b id="stat-inv-value">0 ₽</b></div>
+          <div class="stat-card"><span>Открыто кейсов/паков</span><b id="stat-opened">0</b></div>
+          <div class="stat-card"><span>Успешных апгрейдов</span><b id="stat-upgrades">0</b></div>
+        </div>
+
+        <div class="section-header">
+          <h2>Твоя коллекция</h2>
+          <div class="sort-controls">
+            <select id="col-sort" onchange="renderCollection()">
+              <option value="price-desc">Сначала дорогие</option>
+              <option value="price-asc">Сначала дешёвые</option>
+              <option value="rarity-desc">По редкости (высшие)</option>
+              <option value="rarity-asc">По редкости (низшие)</option>
+              <option value="top-asc">По топу (#1 → UPCOMING)</option>
+            </select>
+            <button class="secondary-btn" onclick="sellAllDuplicates()">Продать дубликаты</button>
+            <select id="sell-rarity-select"></select>
+            <button class="secondary-btn" onclick="sellBySelectedRarity()">Продать редкость</button>
+            <button class="secondary-btn" style="color:#f87171;" onclick="sellAllInventoryCards()">Продать всё</button>
+          </div>
+        </div>
+
+        <div id="collection-grid" class="cards-grid collection-compact-grid"></div>
+      </section>
+
+      <!-- ВКЛАДКА: КРАФТЫ -->
       <section id="tab-craft" class="tab-content">
         <div class="section-header">
-          <h2>Крафт карточек (10 → 1)</h2>
-          <select id="craft-sort" onchange="renderCraftUI()">
-            <option value="rarity-asc">Редкость ↑</option>
-            <option value="price-desc">Цена ↓</option>
-            <option value="price-asc">Цена ↑</option>
-          </select>
+          <h2>Крафт (10 карт одной редкости → 1 карта выше)</h2>
         </div>
-        <p class="hint-text">Выбери 10 карточек <b>одной редкости</b>. Чем дороже твои 10 карт, тем более дорогой скин следующей редкости ты получишь!</p>
+
         <div class="craft-slots-bar">
           <div id="craft-selected-slots" class="craft-slots"></div>
           <div class="craft-action-box">
             <div>Выбрано: <b id="craft-count">0</b> / 10</div>
             <div>Средняя цена: <b id="craft-avg-price">0</b> ₽</div>
-            <button id="do-craft-btn" class="primary-btn" onclick="executeCraft()" disabled>Скрафтить</button>
+            <button id="do-craft-btn" class="primary-btn" disabled onclick="executeCraft()">Скрафтить</button>
           </div>
         </div>
-        <div id="craft-inv-grid" class="cards-grid" style="margin-top: 20px;"></div>
+
+        <div class="section-header" style="margin-top:20px;">
+          <h3>Выбери 10 карточек одной редкости</h3>
+          <select id="craft-sort" onchange="renderCraftUI()">
+            <option value="rarity-asc">Сначала низкая редкость</option>
+            <option value="rarity-desc">Сначала высокая редкость</option>
+            <option value="price-asc">Сначала дешёвые</option>
+            <option value="price-desc">Сначала дорогие</option>
+          </select>
+        </div>
+        <div id="craft-inv-grid" class="cards-grid small-grid"></div>
       </section>
 
-      <!-- СТРАНИЦА КОЛЛЕКЦИИ И СТАТИСТИКИ -->
-      <section id="tab-collection" class="tab-content">
-        <div class="stats-bar">
-          <div class="stat-card"><span>Всего карт</span><b id="stat-total-cards">0</b></div>
-          <div class="stat-card"><span>Стоимость инвентаря</span><b id="stat-inv-value">0 ₽</b></div>
-          <div class="stat-card"><span>Открыто паков/кейсов</span><b id="stat-opened">0</b></div>
-          <div class="stat-card"><span>Успешных апгрейдов</span><b id="stat-upgrades">0</b></div>
-        </div>
-
-        <div class="section-header">
-          <h2>Моя коллекция</h2>
-          <div class="sort-controls">
-            <select id="sell-rarity-select" title="Выбери редкость для продажи"></select>
-            <button class="secondary-btn" onclick="sellBySelectedRarity()">Продать редкость</button>
-            <button class="secondary-btn" onclick="sellAllDuplicates()">Продать дубликаты</button>
-            <button class="secondary-btn" style="color:#f87171;" onclick="sellAllInventoryCards()">Продать все</button>
-            <select id="col-sort" onchange="renderCollection()">
-              <option value="price-desc">Сначала дорогие</option>
-              <option value="price-asc">Сначала дешевые</option>
-              <option value="rarity-desc">По редкости</option>
-            </select>
-          </div>
-        </div>
-        <p class="hint-text" style="margin-bottom: 14px;">Нажми на любую карточку в коллекции, чтобы открыть её 3D-просмотр и характеристики.</p>
-        <div id="collection-grid" class="cards-grid collection-compact-grid"></div>
-      </section>
-
-      <!-- СТРАНИЦА АДМИНА -->
+      <!-- ВКЛАДКА: АДМИНКА -->
       <section id="tab-admin" class="tab-content">
         <div id="admin-login-box" class="admin-login">
-          <h2>Вход в панель администратора</h2>
-          <input type="password" id="admin-pass-input" placeholder="Введите пароль">
+          <h3>Вход в админ-панель</h3>
+          <input type="password" id="admin-pass-input" placeholder="Пароль" onkeydown="if(event.key==='Enter')checkAdminPass()">
           <button class="primary-btn" onclick="checkAdminPass()">Войти</button>
         </div>
 
         <div id="admin-panel-content" class="hidden">
-          <div class="section-header">
-            <h2>Панель управления GD LUDKA</h2>
+          <!-- ОБЛАЧНАЯ СИНХРОНИЗАЦИЯ -->
+          <div class="admin-block">
+            <h3>Облачная синхронизация (JSONBin.io)</h3>
+            <div class="form-row">
+              <input type="text" id="cfg-bin-id" placeholder="Bin ID">
+              <input type="text" id="cfg-api-key" placeholder="X-Master-Key">
+              <button class="secondary-btn" onclick="saveCloudConfig()">Сохранить ключи</button>
+            </div>
             <div class="admin-cloud-actions">
               <button id="push-cloud-catalog-btn" class="primary-btn" onclick="pushCatalogToCloud()">☁ Залить всё в облако</button>
-              <button class="secondary-btn" onclick="syncCatalogFromCloud(true)">↓ Загрузить из облака</button>
+              <button class="secondary-btn" onclick="syncCatalogFromCloud(true)">⬇ Загрузить из облака</button>
             </div>
           </div>
 
+          <!-- КАТЕГОРИИ КЕЙСОВ И ЗВУК -->
           <div class="admin-block">
-            <h3>Облако для всех игроков (JSONBin.io)</h3>
-            <p class="hint-text">Укажи Bin ID и X-Master-Key — нажми «Залить всё в облако», чтобы сохранить свои карты, редкости и кейсы в облаке.</p>
+            <h3>Категории кейсов и звук</h3>
+            <p class="hint-text">Создавай категории, двигай их выше/ниже стрелками или перетаскиванием.</p>
             <div class="form-row">
-              <input type="text" id="cfg-bin-id" placeholder="JSONBin ID">
-              <input type="text" id="cfg-api-key" placeholder="X-Master-Key">
-              <button class="primary-btn" onclick="saveCloudConfig()">Сохранить ключи</button>
+              <input type="text" id="new-case-cat-name" placeholder="Название категории (напр. Кейсы игроков)">
+              <button class="primary-btn" onclick="adminAddCaseCategory()">+ Категория</button>
+              <label class="color-pick-label">
+                <span>Громкость:</span>
+                <input type="range" id="sound-volume-slider" min="0" max="100" value="45" oninput="setSoundVolume(this.value)">
+                <span id="sound-volume-label">45%</span>
+              </label>
             </div>
+            <div id="admin-case-categories-list" class="admin-categories-list"></div>
           </div>
 
+          <!-- УПРАВЛЕНИЕ РЕДКОСТЯМИ -->
           <div class="admin-block">
-            <h3>Редкости и отдельные шансы: Кейсы / Паки</h3>
-            <p class="hint-text">Перетаскивай редкости мышкой вверх/вниз (выше = круче по редкости) и задавай отдельные шансы отдельно для <b>кейсов</b> и отдельно для <b>паков</b>.</p>
+            <h3>Редкости (перетащи карточку для изменения иерархии)</h3>
             <div class="form-row">
-              <input type="text" id="new-rar-name" placeholder="Название редкости (напр. UPCOMING)">
-              <label class="color-pick-label">Рамка/Цвет 1: <input type="color" id="new-rar-color" value="#ff2a85"></label>
-              <label class="color-pick-label">Градиент Цвет 2: <input type="color" id="new-rar-bg" value="#160812"></label>
-              <input type="text" id="new-rar-weight" placeholder="Шанс кейсы (0..100)" value="25">
-              <input type="text" id="new-rar-pack-weight" placeholder="Шанс паки (0..100)" value="25">
-              <select id="new-rar-effect" title="Эффект карточки">
+              <input type="text" id="new-rar-name" placeholder="Название (напр. Mythic)">
+              <label class="color-pick-label">Цвет 1: <input type="color" id="new-rar-color" value="#f59e0b"></label>
+              <label class="color-pick-label">Цвет 2: <input type="color" id="new-rar-bg" value="#1e1b2e"></label>
+              <input type="text" id="new-rar-weight" placeholder="Вес кейсы (10)" style="width:130px;">
+              <input type="text" id="new-rar-pack-weight" placeholder="Вес паки (10)" style="width:130px;">
+              <select id="new-rar-effect">
                 <option value="none">Без эффекта</option>
                 <option value="prismatic-foil">Радужный фойл</option>
-                <option value="aura">Левитирующая аура (Aura Levitate)</option>
-                <option value="shine-sweep">Блик сверху вниз (Sweep Shine)</option>
-                <option value="glow">Неоновое свечение (Glow)</option>
+                <option value="aura">Левитирующая аура</option>
+                <option value="shine-sweep">Блик сверху вниз</option>
+                <option value="glow">Свечение (Glow)</option>
                 <option value="rainbow-shift">Перелив цвета редкости</option>
-                <option value="sparkle">Мерцающие искры (Sparkle)</option>
+                <option value="sparkle">Искры</option>
               </select>
-              <button class="primary-btn" onclick="adminAddRarity()">Добавить / Сохранить</button>
+              <button class="primary-btn" onclick="adminAddRarity()">+ Добавить редкость</button>
             </div>
             <div id="admin-rarities-list" class="admin-rarities-grid"></div>
           </div>
 
+          <!-- СОЗДАНИЕ КЕЙСА -->
           <div class="admin-block">
-            <h3>Добавить новую карточку уровня</h3>
-            <p class="hint-text">Укажи номер в топе (например <b>10</b> — встанет на 10-е место и сдвинет остальные вниз) или <b>0</b> / редкость <b>UPCOMING</b> для невышедших демонов.</p>
+            <h3>Создать кейс</h3>
             <div class="card-creator-layout">
-              <div class="creator-form">
-                <div class="form-row">
-                  <input type="number" id="new-card-top" placeholder="# Топ (0 = UPCOMING)" oninput="updateCardPreview()">
-                  <input type="text" id="new-card-name" placeholder="Название уровня" oninput="updateCardPreview()">
-                </div>
-                <div class="form-row">
-                  <select id="new-card-rarity" onchange="updateCardPreview()"></select>
-                  <input type="number" id="new-card-price" placeholder="Цена обычной (₽)" oninput="updateCardPreview()">
-                </div>
-                <div class="form-row">
-                  <input type="text" id="new-card-img" placeholder="URL картинки превью" style="flex:1;" oninput="updateCardPreview()">
-                  <label class="holo-check-label">
-                    <input type="checkbox" id="preview-holo-toggle" onchange="updateCardPreview()">
-                    Превью как HOLO
-                  </label>
-                </div>
-                <button class="primary-btn" onclick="adminAddCard()">Добавить карту в базу</button>
-              </div>
-
-              <div class="creator-preview-box">
-                <div class="slot-label">Предпросмотр карточки</div>
-                <div id="card-creator-preview"></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="admin-block">
-            <h3>Создать новый кейс</h3>
-            <div class="card-creator-layout">
-              <div class="creator-form">
+              <div>
                 <div class="form-row">
                   <input type="text" id="new-case-name" placeholder="Название кейса" oninput="updateCasePreview()">
-                  <input type="number" id="new-case-price" placeholder="Цена открытия (₽)" oninput="updateCasePreview()">
-                  <input type="text" id="new-case-img" placeholder="URL обложки кейса" style="flex:1;" oninput="updateCasePreview()">
+                  <input type="number" id="new-case-price" placeholder="Цена (₽)" value="500" oninput="updateCasePreview()">
+                  <select id="new-case-category" onchange="updateCasePreview()"></select>
+                  <input type="text" id="new-case-img" placeholder="URL обложки кейса" oninput="updateCasePreview()">
                 </div>
                 <div id="admin-case-cards-selector" class="checkbox-grid" onchange="updateCasePreview()"></div>
-                <div class="form-row" style="margin-top: 14px;">
-                  <button class="primary-btn" onclick="adminAddCase()">Создать кейс</button>
-                </div>
-              </div>
-
-              <div class="creator-preview-box">
-                <div class="slot-label">Предпросмотр кейса</div>
-                <div id="case-creator-preview" style="width:100%;"></div>
-              </div>
-            </div>
-          </div>
-
-          <div id="admin-edit-case-panel" class="admin-block hidden">
-            <div class="section-header">
-              <h3>Изменить кейс: <span id="edit-case-heading"></span></h3>
-              <button class="secondary-btn" onclick="cancelEditCase()">Отмена</button>
-            </div>
-            <div class="card-creator-layout">
-              <div class="creator-form">
                 <div class="form-row">
-                  <input type="text" id="edit-case-name" placeholder="Название кейса" oninput="updateEditCasePreview()">
-                  <input type="number" id="edit-case-price" placeholder="Цена открытия (₽)" oninput="updateEditCasePreview()">
-                  <input type="text" id="edit-case-img" placeholder="URL обложки кейса" style="flex:1;" oninput="updateEditCasePreview()">
-                </div>
-                <div id="admin-edit-case-cards-selector" class="checkbox-grid" onchange="updateEditCasePreview()"></div>
-                <div class="form-row" style="margin-top: 14px;">
-                  <button class="primary-btn" onclick="saveEditedCase()">Сохранить кейс</button>
-                  <button class="secondary-btn" style="color:#f87171;" onclick="deleteEditingCase()">Удалить кейс</button>
+                  <button class="primary-btn" onclick="adminAddCase()">+ Создать кейс</button>
                 </div>
               </div>
-
-              <div class="creator-preview-box">
-                <div class="slot-label">Предпросмотр кейса</div>
-                <div id="edit-case-preview" style="width:100%;"></div>
-              </div>
+              <div id="case-creator-preview" class="creator-preview-box"></div>
             </div>
           </div>
 
+          <!-- РЕДАКТИРОВАНИЕ СУЩЕСТВУЮЩИХ КЕЙСОВ -->
           <div class="admin-block">
-            <div class="section-header">
-              <h3>Кейсы в базе (<span id="admin-cases-count">0</span>)</h3>
-              <span class="hint-text">Нажми «Изменить», чтобы отредактировать кейс, или «Удалить»</span>
+            <h3>Управление кейсами (<span id="admin-cases-count">0</span>)</h3>
+            <div id="admin-edit-case-panel" class="hidden" style="margin-bottom:18px;padding:14px;border:1px solid var(--accent-gold);border-radius:12px;">
+              <div class="section-header">
+                <h4>Редактирование: <span id="edit-case-heading"></span></h4>
+                <button class="secondary-btn" onclick="cancelEditCase()">Закрыть</button>
+              </div>
+              <div class="card-creator-layout">
+                <div>
+                  <div class="form-row">
+                    <input type="text" id="edit-case-name" placeholder="Название" oninput="updateEditCasePreview()">
+                    <input type="number" id="edit-case-price" placeholder="Цена" oninput="updateEditCasePreview()">
+                    <select id="edit-case-category" onchange="updateEditCasePreview()"></select>
+                    <input type="text" id="edit-case-img" placeholder="URL обложки" oninput="updateEditCasePreview()">
+                  </div>
+                  <div id="admin-edit-case-cards-selector" class="checkbox-grid" onchange="updateEditCasePreview()"></div>
+                  <div class="form-row">
+                    <button class="primary-btn" onclick="saveEditedCase()">Сохранить кейс</button>
+                    <button class="secondary-btn" style="color:#f87171;" onclick="deleteEditingCase()">Удалить кейс</button>
+                  </div>
+                </div>
+                <div id="edit-case-preview" class="creator-preview-box"></div>
+              </div>
             </div>
             <div id="admin-cases-list" class="admin-cases-manage-grid"></div>
           </div>
 
-          <div id="admin-edit-card-panel" class="admin-block hidden">
-            <div class="section-header">
-              <h3>Изменить карточку: <span id="edit-card-heading"></span></h3>
-              <button class="secondary-btn" onclick="cancelEditCard()">Отмена</button>
-            </div>
+          <!-- СОЗДАНИЕ КАРТОЧКИ -->
+          <div class="admin-block">
+            <h3>Создать карточку уровня</h3>
             <div class="card-creator-layout">
-              <div class="creator-form">
+              <div>
                 <div class="form-row">
-                  <input type="number" id="edit-card-top" placeholder="# Топ (0 = UPCOMING)" oninput="updateEditCardPreview()">
-                  <input type="text" id="edit-card-name" placeholder="Название уровня" oninput="updateEditCardPreview()">
-                </div>
-                <div class="form-row">
-                  <select id="edit-card-rarity" onchange="updateEditCardPreview()"></select>
-                  <input type="number" id="edit-card-price" placeholder="Цена обычной (₽)" oninput="updateEditCardPreview()">
-                </div>
-                <div class="form-row">
-                  <input type="text" id="edit-card-img" placeholder="URL картинки превью" style="flex:1;" oninput="updateEditCardPreview()">
+                  <input type="number" id="new-card-top" placeholder="Топ # (0 = UPCOMING)" value="1" oninput="updateCardPreview()">
+                  <input type="text" id="new-card-name" placeholder="Название уровня" oninput="updateCardPreview()">
+                  <select id="new-card-rarity" onchange="updateCardPreview()"></select>
+                  <input type="number" id="new-card-price" placeholder="Цена (₽)" value="1000" oninput="updateCardPreview()">
+                  <input type="text" id="new-card-img" placeholder="URL картинки (16:9)" oninput="updateCardPreview()">
                   <label class="holo-check-label">
-                    <input type="checkbox" id="edit-preview-holo-toggle" onchange="updateEditCardPreview()">
-                    Превью как HOLO
+                    <input type="checkbox" id="preview-holo-toggle" onchange="updateCardPreview()"> Предпросмотр HOLO
                   </label>
                 </div>
-                <div class="form-row">
-                  <button class="primary-btn" onclick="saveEditedCard()">Сохранить изменения</button>
-                  <button class="secondary-btn" style="color:#f87171;" onclick="deleteEditingCard()">Удалить карту</button>
-                </div>
+                <button class="primary-btn" onclick="adminAddCard()">+ Добавить карточку</button>
               </div>
-              <div class="creator-preview-box">
-                <div class="slot-label">Предпросмотр</div>
-                <div id="edit-card-preview"></div>
-              </div>
+              <div id="card-creator-preview" class="creator-preview-box"></div>
             </div>
           </div>
 
+          <!-- РЕДАКТИРОВАНИЕ И СПИСОК КАРТОЧЕК -->
           <div class="admin-block">
-            <div class="section-header">
-              <h3>Все карточки в базе (<span id="admin-cards-count">0</span>)</h3>
-              <span class="hint-text">Перетаскивай карточки мышкой для смены места в топе (UPCOMING остаются UPCOMING), клик — редактировать</span>
+            <h3>Все карточки (<span id="admin-cards-count">0</span>) — кликни для редактирования или перетащи для смены топа</h3>
+            <div id="admin-edit-card-panel" class="hidden" style="margin-bottom:18px;padding:14px;border:1px solid var(--accent-gold);border-radius:12px;">
+              <div class="section-header">
+                <h4>Редактирование карты: <span id="edit-card-heading"></span></h4>
+                <button class="secondary-btn" onclick="cancelEditCard()">Закрыть</button>
+              </div>
+              <div class="card-creator-layout">
+                <div>
+                  <div class="form-row">
+                    <input type="number" id="edit-card-top" placeholder="Топ # (0 = UPCOMING)" oninput="updateEditCardPreview()">
+                    <input type="text" id="edit-card-name" placeholder="Название" oninput="updateEditCardPreview()">
+                    <select id="edit-card-rarity" onchange="updateEditCardPreview()"></select>
+                    <input type="number" id="edit-card-price" placeholder="Цена" oninput="updateEditCardPreview()">
+                    <input type="text" id="edit-card-img" placeholder="URL картинки" oninput="updateEditCardPreview()">
+                    <label class="holo-check-label">
+                      <input type="checkbox" id="edit-preview-holo-toggle" onchange="updateEditCardPreview()"> Предпросмотр HOLO
+                    </label>
+                  </div>
+                  <div class="form-row">
+                    <button class="primary-btn" onclick="saveEditedCard()">Сохранить карту</button>
+                    <button class="secondary-btn" style="color:#f87171;" onclick="deleteEditingCard()">Удалить карту</button>
+                  </div>
+                </div>
+                <div id="edit-card-preview" class="creator-preview-box"></div>
+              </div>
             </div>
-            <div id="admin-all-cards" class="cards-grid collection-compact-grid"></div>
+            <div id="admin-all-cards" class="cards-grid small-grid"></div>
           </div>
         </div>
       </section>
-
     </main>
   </div>
 
-  <!-- 3D-ИНСПЕКТОР КАРТОЧКИ ПРИ КЛИКЕ В КОЛЛЕКЦИИ -->
-  <div id="card-3d-modal" class="modal hidden" onclick="closeCard3DModal(event)">
-    <div class="modal-3d-dialog" onclick="event.stopPropagation()">
-      <button class="modal-close-x" onclick="closeCard3DModal()">✕</button>
-      <div class="stage-3d" id="stage-3d">
-        <div class="card-3d-flipper" id="card-3d-flipper">
-          <div class="card-3d-front" id="card-3d-front"></div>
-          <div class="card-3d-back">
-            <div class="back-brand">GD<span>LUDKA</span></div>
-            <small>Зажми и потяни мышкой для вращения в 3D</small>
-          </div>
-        </div>
-      </div>
-      <div class="card-3d-info" id="card-3d-info"></div>
+  <!-- МОДАЛКА ВЫИГРЫША -->
+  <div id="win-modal" class="modal hidden" onclick="if(event.target===this)closeWinModal()">
+    <div class="modal-content">
+      <h3 id="win-modal-title">Тебе выпало!</h3>
+      <div id="win-card-container" class="win-cards-stage"></div>
       <div class="modal-actions">
-        <button class="secondary-btn" onclick="reset3DRotation()">Сбросить угол</button>
-        <button class="primary-btn" onclick="closeCard3DModal()">Закрыть</button>
+        <button id="sell-won-btn" class="secondary-btn" onclick="sellWonCard()">Продать</button>
+        <button class="primary-btn" onclick="closeWinModal()">Забрать в коллекцию</button>
       </div>
     </div>
   </div>
 
-  <!-- МОДАЛЬНОЕ ОКНО ВЫИГРЫША -->
-  <div id="win-modal" class="modal hidden">
-    <div class="modal-content multi-win-content">
-      <h2 id="win-modal-title">Тебе выпало!</h2>
-      <div id="win-card-container" class="win-cards-stage"></div>
-      <div class="modal-actions">
-        <button class="primary-btn" onclick="closeWinModal()">Забрать в коллекцию</button>
-        <button class="secondary-btn" id="sell-won-btn" onclick="sellWonCard()">Продать</button>
+  <!-- 3D МОДАЛКА ПРОСМОТРА КАРТОЧКИ -->
+  <div id="card-3d-modal" class="modal hidden" onclick="closeCard3DModal(event)">
+    <div class="modal-3d-dialog">
+      <button class="modal-close-x" onclick="closeCard3DModal()">✕</button>
+      <div id="stage-3d" class="stage-3d">
+        <div id="card-3d-flipper" class="card-3d-flipper">
+          <div id="card-3d-front" class="card-3d-front"></div>
+          <div class="card-3d-back">
+            <div class="back-brand">GD<span>LUDKA</span></div>
+            <small>Покрути карточку мышью или пальцем</small>
+          </div>
+        </div>
       </div>
+      <div id="card-3d-info" class="card-3d-info"></div>
     </div>
   </div>
 
