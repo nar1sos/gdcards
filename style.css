@@ -74,7 +74,7 @@ body {
 .user-panel {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .nick-input {
@@ -173,7 +173,8 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   font-weight: 700;
   cursor: pointer;
 }
-.secondary-btn:hover { border-color: var(--accent-gold); }
+.secondary-btn:hover:not(:disabled) { border-color: var(--accent-gold); }
+.secondary-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .admin-cloud-actions {
   display: flex;
@@ -336,11 +337,12 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.98), 0 0 5px rgba(0, 0, 0, 0.95);
 }
 
-/* СТАРЫЙ HOLO ПЕРЕЛИВ */
+/* ЯРКИЙ HOLO ПЕРЕЛИВ */
 .gd-card.is-holo {
   box-shadow:
-    0 0 16px rgba(244, 114, 182, 0.24),
-    0 0 24px rgba(56, 189, 248, 0.2);
+    0 0 22px rgba(244, 114, 182, 0.55),
+    0 0 34px rgba(56, 189, 248, 0.45),
+    0 0 18px rgba(250, 204, 21, 0.35);
 }
 
 .gd-card.is-holo .holo-full-overlay {
@@ -352,28 +354,28 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   background:
     linear-gradient(
       125deg,
-      rgba(190, 55, 125, 0.25) 0%,
-      rgba(185, 130, 35, 0.22) 24%,
-      rgba(35, 155, 110, 0.24) 48%,
-      rgba(45, 115, 195, 0.26) 72%,
-      rgba(120, 65, 175, 0.25) 100%
+      rgba(255, 64, 160, 0.52) 0%,
+      rgba(255, 212, 38, 0.48) 24%,
+      rgba(34, 235, 165, 0.5) 48%,
+      rgba(56, 189, 248, 0.54) 72%,
+      rgba(186, 85, 255, 0.52) 100%
     ),
     repeating-linear-gradient(
       -35deg,
-      rgba(255, 255, 255, 0.06) 0px,
-      rgba(255, 255, 255, 0.06) 3px,
+      rgba(255, 255, 255, 0.16) 0px,
+      rgba(255, 255, 255, 0.16) 3px,
       transparent 3px,
-      transparent 11px
+      transparent 10px
     );
   background-size: 260% 260%, 100% 100%;
   mix-blend-mode: screen;
-  animation: holoCardShift 6s ease-in-out infinite;
+  animation: holoCardShift 5s ease-in-out infinite;
 }
 
 .holo-pill {
   align-self: flex-start;
-  background: linear-gradient(90deg, #f472b6, #facc15, #38bdf8);
-  color: #0b0d12;
+  background: linear-gradient(90deg, #ff4da6, #facc15, #38bdf8);
+  color: #090b10;
   font-size: 9px;
   font-weight: 900;
   padding: 2px 8px;
@@ -381,20 +383,23 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   letter-spacing: 0.4px;
   position: relative;
   z-index: 8;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 2px 10px rgba(244, 114, 182, 0.55);
 }
 
 /* ЭФФЕКТ "РАДУЖНЫЙ ФОЙЛ" */
 .gd-card.effect-prismatic-foil {
-  border-color: #c05684;
+  border-color: #f472b6;
   background: linear-gradient(
     152deg,
-    rgba(138, 38, 74, 0.72) 0%,
-    rgba(126, 76, 24, 0.68) 28%,
-    rgba(32, 98, 66, 0.7) 56%,
-    rgba(32, 82, 138, 0.72) 80%,
-    rgba(84, 42, 126, 0.74) 100%
+    rgba(236, 72, 153, 0.85) 0%,
+    rgba(245, 158, 11, 0.82) 28%,
+    rgba(16, 185, 129, 0.84) 56%,
+    rgba(59, 130, 246, 0.86) 80%,
+    rgba(168, 85, 247, 0.88) 100%
   );
+  box-shadow:
+    0 0 20px rgba(236, 72, 153, 0.45),
+    0 0 28px rgba(59, 130, 246, 0.35);
 }
 
 .gd-card.effect-prismatic-foil::before {
@@ -407,21 +412,21 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   background:
     linear-gradient(
       180deg,
-      rgba(10, 12, 18, 0.42) 0%,
-      rgba(10, 12, 18, 0.22) 50%,
-      rgba(10, 12, 18, 0.48) 100%
+      rgba(10, 12, 18, 0.26) 0%,
+      rgba(10, 12, 18, 0.08) 50%,
+      rgba(10, 12, 18, 0.34) 100%
     ),
     linear-gradient(
       138deg,
-      rgba(165, 48, 90, 0.34) 0%,
-      rgba(165, 98, 34, 0.3) 35%,
-      rgba(38, 112, 74, 0.3) 68%,
-      rgba(42, 96, 156, 0.34) 100%
+      rgba(255, 82, 168, 0.52) 0%,
+      rgba(250, 204, 21, 0.46) 35%,
+      rgba(45, 212, 191, 0.46) 68%,
+      rgba(96, 165, 250, 0.52) 100%
     );
 }
 
 .gd-card.effect-prismatic-foil .card-rarity-badge {
-  background: linear-gradient(90deg, #e86ca0, #eab308, #2dd4bf, #60a5fa);
+  background: linear-gradient(90deg, #ff5ca8, #facc15, #2dd4bf, #60a5fa);
   color: #0b0d12;
 }
 
@@ -475,7 +480,71 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 .spark-dot:nth-child(3) { top: 58%; left: 22%; animation-delay: 0.8s; }
 .spark-dot:nth-child(4) { bottom: 24%; right: 16%; animation-delay: 1.2s; }
 
-/* КЕЙСЫ И МУЛЬТИ-РУЛЕТКА */
+/* КАТЕГОРИИ И КЕЙСЫ */
+.case-category-section {
+  margin-bottom: 28px;
+}
+
+.case-category-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.case-category-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.admin-categories-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.admin-cat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-dark);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  flex-wrap: wrap;
+  cursor: grab;
+}
+
+.admin-cat-row:active {
+  cursor: grabbing;
+}
+
+.admin-cat-row.drag-over {
+  outline: 2px dashed var(--accent-gold);
+}
+
+.admin-cat-title {
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.admin-cat-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+.admin-cat-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
 .cases-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
