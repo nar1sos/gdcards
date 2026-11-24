@@ -9,6 +9,126 @@ const PACK_PRICE = 1000;
 const INITIAL_BALANCE = 1500;
 const MAX_CASE_OPEN_COUNT = 3;
 
+const DEFAULT_CASE_CATEGORIES = [
+  { id: 'cat_featured', name: 'Основные кейсы' },
+  { id: 'cat_players', name: 'Кейсы игроков' }
+];
+
+// === ЗВУКОВОЙ ДВИЖОК (WEB AUDIO API) ===
+const SoundFX = (() => {
+  let ctx = null;
+  let muted = localStorage.getItem('gd_muted') === '1';
+  let volume = Number(localStorage.getItem('gd_volume') ?? 0.45);
+  if (!Number.isFinite(volume) || volume < 0 || volume > 1) volume = 0.45;
+
+  function ensureCtx() {
+    if (muted || volume <= 0) return null;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!ctx) ctx = new AudioCtx();
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+    return ctx;
+  }
+
+  function tone({ freq = 440, endFreq = null, type = 'triangle', duration = 0.12, gain = 0.25, delay = 0 }) {
+    const c = ensureCtx();
+    if (!c) return;
+    const now = c.currentTime + delay;
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    if (endFreq !== null) {
+      osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), now + duration);
+    }
+    const peak = Math.max(0.0001, gain * volume);
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(peak, now + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.connect(g);
+    g.connect(c.destination);
+    osc.start(now);
+    osc.stop(now + duration + 0.02);
+  }
+
+  return {
+    isMuted: () => muted,
+    getVolume: () => volume,
+    setMuted(val) {
+      muted = Boolean(val);
+      localStorage.setItem('gd_muted', muted ? '1' : '0');
+      if (!muted) ensureCtx();
+    },
+    setVolume(pct) {
+      const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
+      volume = clamped / 100;
+      localStorage.setItem('gd_volume', String(volume));
+      if (volume > 0 && muted) {
+        muted = false;
+        localStorage.setItem('gd_muted', '0');
+      }
+      ensureCtx();
+    },
+    click() {
+      tone({ freq: 620, endFreq: 780, type: 'sine', duration: 0.045, gain: 0.12 });
+    },
+    tick(pitchBoost = 0) {
+      tone({ freq: 520 + pitchBoost * 18, endFreq: 340, type: 'triangle', duration: 0.04, gain: 0.14 });
+    },
+    win(isHolo = false) {
+      const notes = isHolo ? [523.25, 659.25, 783.99, 1046.5, 1318.5] : [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((f, i) => {
+        tone({ freq: f, type: 'triangle', duration: 0.22, gain: 0.24, delay: i * 0.075 });
+      });
+    },
+    sell() {
+      tone({ freq: 880, endFreq: 1174.66, type: 'sine', duration: 0.09, gain: 0.18, delay: 0 });
+      tone({ freq: 1174.66, endFreq: 1318.5, type: 'sine', duration: 0.12, gain: 0.18, delay: 0.07 });
+    },
+    packOpen() {
+      [330, 440, 554.37, 659.25].forEach((f, i) => {
+        tone({ freq: f, type: 'sawtooth', duration: 0.11, gain: 0.1, delay: i * 0.06 });
+      });
+    },
+    upgradeSuccess() {
+      [440, 554.37, 659.25, 880].forEach((f, i) => {
+        tone({ freq: f, type: 'triangle', duration: 0.2, gain: 0.22, delay: i * 0.08 });
+      });
+    },
+    upgradeFail() {
+      tone({ freq: 260, endFreq: 130, type: 'sawtooth', duration: 0.28, gain: 0.2, delay: 0 });
+    },
+    trade() {
+      tone({ freq: 587.33, type: 'triangle', duration: 0.12, gain: 0.2, delay: 0 });
+      tone({ freq: 880, type: 'triangle', duration: 0.18, gain: 0.2, delay: 0.1 });
+    }
+  };
+})();
+
+function updateSoundUI() {
+  const btn = document.getElementById('sound-toggle-btn');
+  if (btn) {
+    btn.textContent = SoundFX.isMuted() ? '🔇' : '🔊';
+  }
+  const slider = document.getElementById('sound-volume-slider');
+  const label = document.getElementById('sound-volume-label');
+  const pct = Math.round(SoundFX.getVolume() * 100);
+  if (slider) slider.value = String(pct);
+  if (label) label.textContent = pct + '%';
+}
+
+function toggleSoundMute() {
+  SoundFX.setMuted(!SoundFX.isMuted());
+  updateSoundUI();
+  if (!SoundFX.isMuted()) SoundFX.click();
+}
+
+function setSoundVolume(val) {
+  SoundFX.setVolume(val);
+  updateSoundUI();
+  SoundFX.tick(4);
+}
+
 // === СОСТОЯНИЕ И СОХРАНЕНИЕ ===
 const savedCloud = JSON.parse(localStorage.getItem('gd_cloud') || 'null');
 const initialCloud = {
@@ -19,6 +139,7 @@ const initialCloud = {
 const hasSavedRarities = localStorage.getItem('gd_rarities') !== null;
 const hasSavedCards = localStorage.getItem('gd_cards') !== null;
 const hasSavedCases = localStorage.getItem('gd_cases') !== null;
+const hasSavedCategories = localStorage.getItem('gd_case_categories') !== null;
 
 let state = {
   nickname: localStorage.getItem('gd_nick') || 'Player_' + Math.floor(100 + Math.random() * 900),
@@ -28,6 +149,7 @@ let state = {
   rarities: hasSavedRarities ? JSON.parse(localStorage.getItem('gd_rarities')) : JSON.parse(JSON.stringify(DEFAULT_RARITIES)),
   cards: hasSavedCards ? JSON.parse(localStorage.getItem('gd_cards')) : JSON.parse(JSON.stringify(DEFAULT_CARDS)),
   cases: hasSavedCases ? JSON.parse(localStorage.getItem('gd_cases')) : JSON.parse(JSON.stringify(DEFAULT_CASES)),
+  caseCategories: hasSavedCategories ? JSON.parse(localStorage.getItem('gd_case_categories')) : JSON.parse(JSON.stringify(DEFAULT_CASE_CATEGORIES)),
   cloud: initialCloud,
   holoMultiplier: Number(localStorage.getItem('gd_holo_mult') ?? 2.5),
   holoChance: Number(localStorage.getItem('gd_holo_chance') ?? 0.12)
@@ -50,6 +172,7 @@ let cloudSyncInProgress = false;
 
 let draggedRarityId = null;
 let draggedCardId = null;
+let draggedCategoryId = null;
 
 let upgSelectedSourceUid = null;
 let upgSelectedTargetId = null;
@@ -73,6 +196,21 @@ let cardMapCache = new Map();
 function rebuildLookupCaches() {
   rarityMapCache = new Map(state.rarities.map(r => [r.id, r]));
   cardMapCache = new Map(state.cards.map(c => [c.id, c]));
+}
+
+function normalizeCaseCategoriesAndCases() {
+  if (!Array.isArray(state.caseCategories) || state.caseCategories.length === 0) {
+    state.caseCategories = JSON.parse(JSON.stringify(DEFAULT_CASE_CATEGORIES));
+  }
+  const validCatIds = new Set(state.caseCategories.map(c => c.id));
+  const fallbackCatId = state.caseCategories[0].id;
+
+  if (!Array.isArray(state.cases)) state.cases = [];
+  state.cases.forEach(c => {
+    if (!c.categoryId || !validCatIds.has(c.categoryId)) {
+      c.categoryId = fallbackCatId;
+    }
+  });
 }
 
 // === РАСЧЁТ ШАНСА АПГРЕЙДА (ПОДДЕРЖКА < 1%, МАКСИМУМ 85%) ===
@@ -190,10 +328,12 @@ function formatChancePercent(weight, mode = 'case') {
 
 recalculateRarityHierarchy();
 normalizeCardsAndRanks();
+normalizeCaseCategoriesAndCases();
 
 function saveState(markCatalogDirty = false) {
   recalculateRarityHierarchy();
   normalizeCardsAndRanks();
+  normalizeCaseCategoriesAndCases();
   if (markCatalogDirty) {
     hasLocalCatalogEdits = true;
     localStorage.setItem('gd_dirty_catalog', '1');
@@ -205,6 +345,7 @@ function saveState(markCatalogDirty = false) {
   localStorage.setItem('gd_rarities', JSON.stringify(state.rarities));
   localStorage.setItem('gd_cards', JSON.stringify(state.cards));
   localStorage.setItem('gd_cases', JSON.stringify(state.cases));
+  localStorage.setItem('gd_case_categories', JSON.stringify(state.caseCategories));
   localStorage.setItem('gd_holo_mult', String(state.holoMultiplier));
   localStorage.setItem('gd_holo_chance', String(state.holoChance));
   updateTopBar();
@@ -232,6 +373,7 @@ function saveNickname() {
 
 // === НАВИГАЦИЯ ПО ВКЛАДКАМ ===
 function switchTab(tabName) {
+  SoundFX.click();
   document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
   document.getElementById('tab-' + tabName).classList.add('active');
@@ -378,6 +520,7 @@ async function pushCatalogToCloud() {
   try {
     recalculateRarityHierarchy();
     normalizeCardsAndRanks();
+    normalizeCaseCategoriesAndCases();
     let currentRecord = {};
     try {
       currentRecord = (await readCloudRecord()) || {};
@@ -389,6 +532,7 @@ async function pushCatalogToCloud() {
       cards: state.cards,
       rarities: state.rarities,
       cases: state.cases,
+      caseCategories: state.caseCategories,
       holoMultiplier: state.holoMultiplier,
       holoChance: state.holoChance,
       updatedAt: Date.now()
@@ -398,6 +542,7 @@ async function pushCatalogToCloud() {
     hasLocalCatalogEdits = false;
     localStorage.setItem('gd_dirty_catalog', '0');
     updateCloudSyncBadge();
+    SoundFX.sell();
   } catch (e) {
     console.warn('Ошибка загрузки в облако:', e);
   } finally {
@@ -425,6 +570,10 @@ async function syncCatalogFromCloud(forceOverwriteLocal = false) {
       if (Array.isArray(cat.rarities) && cat.rarities.length > 0) {
         state.rarities = cat.rarities;
         recalculateRarityHierarchy();
+        changed = true;
+      }
+      if (Array.isArray(cat.caseCategories) && cat.caseCategories.length > 0) {
+        state.caseCategories = cat.caseCategories;
         changed = true;
       }
       if (Array.isArray(cat.cases) && cat.cases.length > 0) {
@@ -461,21 +610,40 @@ async function syncCatalogFromCloud(forceOverwriteLocal = false) {
   }
 }
 
-// === КЕЙСЫ И МУЛЬТИ-РУЛЕТКА (МАКСИМУМ x3) ===
+// === КЕЙСЫ, КАТЕГОРИИ И МУЛЬТИ-РУЛЕТКА (МАКСИМУМ x3) ===
 function renderCasesList() {
+  normalizeCaseCategoriesAndCases();
   const sortMode = document.getElementById('cases-sort').value;
-  const sorted = [...state.cases].sort((a, b) => sortMode === 'price-asc' ? a.price - b.price : b.price - a.price);
-  document.getElementById('cases-list').innerHTML = sorted.map(c => `
-    <div class="case-item" onclick="openCaseView('${c.id}')">
-      <img src="${c.img}" alt="${c.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=CASE'">
-      <h3>${c.name}</h3>
-      <div class="case-price-tag">${c.price} ₽</div>
-    </div>
-  `).join('');
+  const sortFn = (a, b) => sortMode === 'price-asc' ? a.price - b.price : b.price - a.price;
+
+  const listEl = document.getElementById('cases-list');
+  const sectionsHtml = state.caseCategories.map(cat => {
+    const catCases = state.cases.filter(c => c.categoryId === cat.id).sort(sortFn);
+    if (catCases.length === 0) return '';
+    const cardsHtml = catCases.map(c => `
+      <div class="case-item" onclick="openCaseView('${c.id}')">
+        <img src="${c.img}" alt="${c.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=CASE'">
+        <h3>${c.name}</h3>
+        <div class="case-price-tag">${c.price} ₽</div>
+      </div>
+    `).join('');
+
+    return `
+      <div class="case-category-section">
+        <div class="case-category-header">
+          <h3 class="case-category-title">${cat.name}</h3>
+        </div>
+        <div class="cases-grid">${cardsHtml}</div>
+      </div>
+    `;
+  }).join('');
+
+  listEl.innerHTML = sectionsHtml || '<div class="hint-text">Кейсов пока нет</div>';
 }
 
 function setCaseOpenCount(count) {
   if (isSpinning) return;
+  SoundFX.click();
   const clamped = Math.max(1, Math.min(MAX_CASE_OPEN_COUNT, Number(count) || 1));
   caseOpenCount = clamped;
   document.querySelectorAll('#case-count-selector .count-chip').forEach(btn => {
@@ -536,6 +704,7 @@ function buildMultiRouletteTracks(caseObj, winners = null) {
 }
 
 function openCaseView(caseId) {
+  SoundFX.click();
   currentCaseId = caseId;
   const c = state.cases.find(x => x.id === caseId);
   if (!c) {
@@ -552,6 +721,7 @@ function openCaseView(caseId) {
 
 function closeCaseView() {
   if (isSpinning) return;
+  SoundFX.click();
   currentCaseId = null;
   document.getElementById('case-open-view').classList.add('hidden');
   document.getElementById('cases-grid-view').classList.remove('hidden');
@@ -597,6 +767,17 @@ function setCaseControlsDisabled(disabled) {
   });
 }
 
+function playRouletteTicks(durationMs, fast) {
+  const ticksCount = fast ? 10 : 28;
+  for (let i = 0; i < ticksCount; i++) {
+    const progress = i / ticksCount;
+    const delay = durationMs * (1 - Math.pow(1 - progress, 1.85));
+    setTimeout(() => {
+      if (isSpinning) SoundFX.tick(Math.floor(progress * 6));
+    }, delay);
+  }
+}
+
 function spinCurrentCase(fast = false) {
   if (isSpinning) return;
   const c = state.cases.find(x => x.id === currentCaseId);
@@ -627,6 +808,7 @@ function spinCurrentCase(fast = false) {
 
   const { cardW, stepW } = getRouletteStepWidth();
   const durationSec = fast ? 0.85 : 4.2;
+  playRouletteTicks(durationSec * 1000, fast);
 
   setTimeout(() => {
     for (let row = 0; row < count; row++) {
@@ -646,6 +828,7 @@ function spinCurrentCase(fast = false) {
       const added = giveCardToPlayer(w.card, w.isHolo);
       return { card: w.card, isHolo: w.isHolo, uid: added.uid };
     });
+    SoundFX.win(addedEntries.some(e => e.isHolo));
     showWinModal(addedEntries);
   }, fast ? 950 : 4350);
 }
@@ -654,6 +837,7 @@ function spinCurrentCase(fast = false) {
 function buyPack() {
   if (isOpeningPack || state.balance < PACK_PRICE) return;
   isOpeningPack = true;
+  SoundFX.packOpen();
   const buyBtn = document.getElementById('buy-pack-btn');
   if (buyBtn) buyBtn.disabled = true;
 
@@ -674,6 +858,7 @@ function buyPack() {
 
   pulledCards.forEach((entry, idx) => {
     setTimeout(() => {
+      SoundFX.tick(idx + 2);
       const temp = document.createElement('div');
       temp.innerHTML = createCardHTML(entry.card, entry.isHolo);
       const wrap = temp.firstElementChild;
@@ -682,6 +867,7 @@ function buyPack() {
         revealArea.appendChild(wrap);
       }
       if (idx === pulledCards.length - 1) {
+        SoundFX.win(pulledCards.some(p => p.isHolo));
         isOpeningPack = false;
         if (buyBtn) buyBtn.disabled = false;
       }
@@ -689,7 +875,7 @@ function buyPack() {
   });
 }
 
-// === АПГРЕЙДЫ (ОПТИМИЗИРОВАННЫЙ РЕНДЕР БЕЗ ПЕРЕРИСОВКИ ВСЕГО ДЕРЕВА ПРИ КЛИКЕ) ===
+// === АПГРЕЙДЫ ===
 function renderUpgradeUI() {
   renderUpgradeMyInventory();
   renderUpgradeTargets();
@@ -759,6 +945,7 @@ function renderUpgradeTargets() {
 
 function selectUpgradeSource(uid) {
   if (isUpgrading) return;
+  SoundFX.click();
   const prevUid = upgSelectedSourceUid;
   upgSelectedSourceUid = uid;
 
@@ -772,6 +959,7 @@ function selectUpgradeSource(uid) {
 
 function selectUpgradeTarget(cardId, isHolo) {
   if (isUpgrading) return;
+  SoundFX.click();
   const prevKey = upgSelectedTargetId ? `${upgSelectedTargetId}_${upgSelectedTargetHolo}` : null;
   upgSelectedTargetId = cardId;
   upgSelectedTargetHolo = isHolo;
@@ -844,6 +1032,7 @@ function executeUpgrade() {
   rotor.style.transform = `rotate(${currentWheelAngle}deg)`;
 
   isUpgrading = true;
+  playRouletteTicks(durationMs, speedMode === 'fast');
   document.getElementById('do-upgrade-btn').disabled = true;
   document.getElementById('upgrade-result-msg').innerHTML = '<span style="color:var(--text-muted);">Крутим...</span>';
 
@@ -854,10 +1043,12 @@ function executeUpgrade() {
 
     const msg = document.getElementById('upgrade-result-msg');
     if (chance > 0 && roll < chance) {
+      SoundFX.upgradeSuccess();
       state.stats.upgrades += 1;
       giveCardToPlayer(tgtCard, upgSelectedTargetHolo);
       msg.innerHTML = `<span style="color:#4ade80; font-weight:800;">УСПЕХ! Выпал ${tgtCard.name}</span>`;
     } else {
+      SoundFX.upgradeFail();
       msg.innerHTML = `<span style="color:#f87171; font-weight:800;">НЕУДАЧА! Карточка сгорела</span>`;
     }
     saveState(false);
@@ -867,6 +1058,7 @@ function executeUpgrade() {
 
 // === ТРЕЙД С БОТОМ ===
 function startBotTrade() {
+  SoundFX.click();
   tradeMyOfferUids = [];
   tradeBotOffer = [];
   document.getElementById('trade-arena').classList.remove('hidden');
@@ -874,6 +1066,7 @@ function startBotTrade() {
 }
 
 function toggleTradeCard(uid) {
+  SoundFX.click();
   const idx = tradeMyOfferUids.indexOf(uid);
   if (idx > -1) tradeMyOfferUids.splice(idx, 1);
   else tradeMyOfferUids.push(uid);
@@ -954,6 +1147,7 @@ function renderTradeUI() {
 }
 
 function confirmTrade() {
+  SoundFX.trade();
   state.inventory = state.inventory.filter(x => !tradeMyOfferUids.includes(x.uid));
   tradeBotOffer.forEach(b => {
     if (b && b.card) giveCardToPlayer(b.card, b.isHolo);
@@ -999,6 +1193,7 @@ function renderCraftUI() {
 }
 
 function toggleCraftCard(uid) {
+  SoundFX.click();
   const idx = craftSelectedUids.indexOf(uid);
   if (idx > -1) {
     craftSelectedUids.splice(idx, 1);
@@ -1050,6 +1245,7 @@ function executeCraft() {
   craftSelectedUids = [];
 
   const added = giveCardToPlayer(craftedCard, isHolo);
+  SoundFX.win(isHolo);
   showWinModal([{ card: craftedCard, isHolo, uid: added.uid }]);
   renderCraftUI();
 }
@@ -1101,6 +1297,7 @@ function sellBySelectedRarity() {
   });
 
   if (earned > 0) {
+    SoundFX.sell();
     state.balance += earned;
     saveState(false);
     renderCollection();
@@ -1118,6 +1315,7 @@ function sellAllInventoryCards() {
     }
   });
 
+  if (earned > 0) SoundFX.sell();
   state.inventory = [];
   state.balance += earned;
   saveState(false);
@@ -1140,6 +1338,7 @@ function getCardDropChancePercentText(card, isHolo) {
 function openCard3DModal(cardId, isHolo) {
   const card = getCardById(cardId);
   if (!card) return;
+  SoundFX.click();
   const rar = getRarityObj(card.rarity);
 
   isDragging3D = false;
@@ -1214,7 +1413,10 @@ function sellInventoryCard(uid) {
   if (idx === -1) return;
   const item = state.inventory[idx];
   const card = getCardById(item.cardId);
-  if (card) state.balance += getCardPrice(card, item.isHolo);
+  if (card) {
+    SoundFX.sell();
+    state.balance += getCardPrice(card, item.isHolo);
+  }
   state.inventory.splice(idx, 1);
   saveState(false);
   renderCollection();
@@ -1233,6 +1435,7 @@ function sellAllDuplicates() {
     seen.add(key);
     return true;
   });
+  if (earned > 0) SoundFX.sell();
   state.balance += earned;
   saveState(false);
   renderCollection();
@@ -1242,6 +1445,7 @@ function sellAllDuplicates() {
 function checkAdminPass() {
   const pass = document.getElementById('admin-pass-input').value;
   if (pass === '12356790') {
+    SoundFX.click();
     document.getElementById('admin-login-box').classList.add('hidden');
     document.getElementById('admin-panel-content').classList.remove('hidden');
     renderAdminUI();
@@ -1249,12 +1453,100 @@ function checkAdminPass() {
 }
 
 function saveCloudConfig() {
+  SoundFX.click();
   state.cloud.binId = document.getElementById('cfg-bin-id').value.trim();
   state.cloud.apiKey = document.getElementById('cfg-api-key').value.trim();
   localStorage.setItem('gd_cloud', JSON.stringify(state.cloud));
   if (!hasLocalCatalogEdits) {
     syncCatalogFromCloud(false);
   }
+}
+
+function adminAddCaseCategory() {
+  const input = document.getElementById('new-case-cat-name');
+  const name = (input?.value || '').trim();
+  if (!name) return;
+
+  const id = 'cat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
+  state.caseCategories.push({ id, name });
+  input.value = '';
+  SoundFX.click();
+  saveState(true);
+  renderAdminUI();
+  renderCasesList();
+}
+
+function moveCaseCategory(catId, direction) {
+  const idx = state.caseCategories.findIndex(c => c.id === catId);
+  if (idx === -1) return;
+  const targetIdx = idx + direction;
+  if (targetIdx < 0 || targetIdx >= state.caseCategories.length) return;
+
+  const [moved] = state.caseCategories.splice(idx, 1);
+  state.caseCategories.splice(targetIdx, 0, moved);
+  SoundFX.click();
+  saveState(true);
+  renderAdminUI();
+  renderCasesList();
+}
+
+function handleCategoryDrop(targetCatId) {
+  if (!draggedCategoryId || draggedCategoryId === targetCatId) return;
+  const fromIdx = state.caseCategories.findIndex(c => c.id === draggedCategoryId);
+  const toIdx = state.caseCategories.findIndex(c => c.id === targetCatId);
+  draggedCategoryId = null;
+  if (fromIdx === -1 || toIdx === -1) return;
+
+  const [moved] = state.caseCategories.splice(fromIdx, 1);
+  state.caseCategories.splice(toIdx, 0, moved);
+  SoundFX.click();
+  saveState(true);
+  renderAdminUI();
+  renderCasesList();
+}
+
+function adminDeleteCaseCategory(catId) {
+  if (state.caseCategories.length <= 1) return;
+  const idx = state.caseCategories.findIndex(c => c.id === catId);
+  if (idx === -1) return;
+
+  const fallbackCat = state.caseCategories[idx === 0 ? 1 : idx - 1];
+  state.cases.forEach(c => {
+    if (c.categoryId === catId) c.categoryId = fallbackCat.id;
+  });
+  state.caseCategories.splice(idx, 1);
+  SoundFX.click();
+  saveState(true);
+  renderAdminUI();
+  renderCasesList();
+}
+
+function renderAdminCaseCategories() {
+  const listEl = document.getElementById('admin-case-categories-list');
+  if (!listEl) return;
+
+  listEl.innerHTML = state.caseCategories.map((cat, idx) => {
+    const count = state.cases.filter(c => c.categoryId === cat.id).length;
+    return `
+      <div class="admin-cat-row"
+           draggable="true"
+           ondragstart="draggedCategoryId='${cat.id}'; this.style.opacity='0.5';"
+           ondragend="this.style.opacity='1'; draggedCategoryId=null; document.querySelectorAll('.admin-cat-row').forEach(el=>el.classList.remove('drag-over'));"
+           ondragover="event.preventDefault(); this.classList.add('drag-over');"
+           ondragleave="this.classList.remove('drag-over');"
+           ondrop="event.preventDefault(); this.classList.remove('drag-over'); handleCategoryDrop('${cat.id}');">
+        <div>
+          <span class="admin-cat-title">#${idx + 1} ${cat.name}</span>
+          <span class="admin-cat-meta">(${count} кейсов)</span>
+        </div>
+        <div class="admin-cat-actions">
+          <button class="secondary-btn" style="padding:5px 9px;font-size:12px;" ${idx === 0 ? 'disabled' : ''} onclick="moveCaseCategory('${cat.id}', -1)" title="Выше">▲</button>
+          <button class="secondary-btn" style="padding:5px 9px;font-size:12px;" ${idx === state.caseCategories.length - 1 ? 'disabled' : ''} onclick="moveCaseCategory('${cat.id}', 1)" title="Ниже">▼</button>
+          <button class="secondary-btn" style="padding:5px 9px;font-size:12px;color:#f87171;" ${state.caseCategories.length <= 1 ? 'disabled' : ''} onclick="adminDeleteCaseCategory('${cat.id}')">✕</button>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 function handleRarityDrop(targetId) {
@@ -1314,13 +1606,15 @@ function updateCasePreview() {
   const name = document.getElementById('new-case-name')?.value.trim() || 'Новый кейс';
   const price = Math.max(0, Number(document.getElementById('new-case-price')?.value) || 500);
   const img = document.getElementById('new-case-img')?.value.trim() || 'https://placehold.co/320x180/181a20/ffffff?text=CASE';
+  const catId = document.getElementById('new-case-category')?.value || state.caseCategories[0]?.id;
+  const catName = state.caseCategories.find(c => c.id === catId)?.name || '';
   const selectedCount = document.querySelectorAll('.case-card-cb:checked').length;
 
   previewBox.innerHTML = `
     <div class="case-item" style="width:100%;cursor:default;transform:none;">
       <img src="${img}" alt="${name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=CASE'">
       <h3>${name}</h3>
-      <div class="admin-case-meta">Карточек в пуле: ${selectedCount}</div>
+      <div class="admin-case-meta">${catName} • Карточек: ${selectedCount}</div>
       <div class="case-price-tag">${price} ₽</div>
     </div>
   `;
@@ -1330,12 +1624,19 @@ function openEditCasePanel(caseId) {
   const caseObj = state.cases.find(c => c.id === caseId);
   if (!caseObj) return;
 
+  SoundFX.click();
   editingCaseId = caseObj.id;
   document.getElementById('admin-edit-case-panel').classList.remove('hidden');
   document.getElementById('edit-case-heading').textContent = caseObj.name;
   document.getElementById('edit-case-name').value = caseObj.name ?? '';
   document.getElementById('edit-case-price').value = caseObj.price ?? 500;
   document.getElementById('edit-case-img').value = caseObj.img ?? '';
+
+  const editCatSel = document.getElementById('edit-case-category');
+  if (editCatSel) {
+    editCatSel.innerHTML = state.caseCategories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
+    editCatSel.value = caseObj.categoryId || state.caseCategories[0].id;
+  }
 
   const currentSet = new Set(Array.isArray(caseObj.cardIds) ? caseObj.cardIds : []);
   document.getElementById('admin-edit-case-cards-selector').innerHTML = state.cards.map(c => `
@@ -1362,13 +1663,15 @@ function updateEditCasePreview() {
   const name = document.getElementById('edit-case-name')?.value.trim() || 'Кейс';
   const price = Math.max(0, Number(document.getElementById('edit-case-price')?.value) || 500);
   const img = document.getElementById('edit-case-img')?.value.trim() || 'https://placehold.co/320x180/181a20/ffffff?text=CASE';
+  const catId = document.getElementById('edit-case-category')?.value || state.caseCategories[0]?.id;
+  const catName = state.caseCategories.find(c => c.id === catId)?.name || '';
   const selectedCount = document.querySelectorAll('.edit-case-card-cb:checked').length;
 
   previewBox.innerHTML = `
     <div class="case-item" style="width:100%;cursor:default;transform:none;">
       <img src="${img}" alt="${name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=CASE'">
       <h3>${name}</h3>
-      <div class="admin-case-meta">Карточек в пуле: ${selectedCount}</div>
+      <div class="admin-case-meta">${catName} • Карточек: ${selectedCount}</div>
       <div class="case-price-tag">${price} ₽</div>
     </div>
   `;
@@ -1382,6 +1685,7 @@ function saveEditedCase() {
   const name = document.getElementById('edit-case-name').value.trim();
   const price = Math.max(0, Number(document.getElementById('edit-case-price').value) || 500);
   const img = document.getElementById('edit-case-img').value.trim() || 'https://placehold.co/320x180/181a20/ffffff?text=CASE';
+  const categoryId = document.getElementById('edit-case-category')?.value || state.cases[idx].categoryId || state.caseCategories[0].id;
   const selectedIds = Array.from(document.querySelectorAll('.edit-case-card-cb:checked')).map(cb => cb.value);
 
   if (!name || selectedIds.length === 0) return;
@@ -1391,12 +1695,15 @@ function saveEditedCase() {
     name,
     price,
     img,
+    categoryId,
     cardIds: selectedIds
   };
 
+  SoundFX.click();
   saveState(true);
   document.getElementById('edit-case-heading').textContent = name;
   renderAdminCasesList();
+  renderAdminCaseCategories();
   renderCasesList();
   if (currentCaseId === editingCaseId) {
     openCaseView(editingCaseId);
@@ -1424,11 +1731,12 @@ function renderAdminCasesList() {
 
   listEl.innerHTML = state.cases.map(c => {
     const isEditing = c.id === editingCaseId ? 'editing-target' : '';
+    const catName = state.caseCategories.find(cat => cat.id === c.categoryId)?.name || '';
     return `
       <div class="admin-case-card ${isEditing}">
         <img src="${c.img}" alt="${c.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=CASE'">
         <b>${c.name}</b>
-        <div class="admin-case-meta">${c.price} ₽ • ${Array.isArray(c.cardIds) ? c.cardIds.length : 0} карт</div>
+        <div class="admin-case-meta">${catName} • ${c.price} ₽ • ${Array.isArray(c.cardIds) ? c.cardIds.length : 0} карт</div>
         <div class="admin-case-btns">
           <button class="secondary-btn" style="padding:6px 10px;font-size:12px;" onclick="openEditCasePanel('${c.id}')">Изменить</button>
           <button class="secondary-btn" style="color:#f87171;padding:6px 10px;font-size:12px;" onclick="adminDeleteCase('${c.id}')">Удалить</button>
@@ -1439,6 +1747,7 @@ function renderAdminCasesList() {
 }
 
 function adminDeleteCase(caseId) {
+  SoundFX.click();
   state.cases = state.cases.filter(c => c.id !== caseId);
   if (editingCaseId === caseId) {
     editingCaseId = null;
@@ -1451,14 +1760,27 @@ function adminDeleteCase(caseId) {
   saveState(true);
   renderCasesList();
   renderAdminCasesList();
+  renderAdminCaseCategories();
 }
 
 function renderAdminUI() {
   recalculateRarityHierarchy();
   normalizeCardsAndRanks();
+  normalizeCaseCategoriesAndCases();
   updateCloudSyncBadge();
+  updateSoundUI();
   document.getElementById('cfg-bin-id').value = state.cloud.binId || '';
   document.getElementById('cfg-api-key').value = state.cloud.apiKey || '';
+
+  renderAdminCaseCategories();
+
+  const catOptionsHTML = state.caseCategories.map(cat => `<option value="${cat.id}">${cat.name}</option>`).join('');
+  const newCatSel = document.getElementById('new-case-category');
+  if (newCatSel) {
+    const prevCat = newCatSel.value;
+    newCatSel.innerHTML = catOptionsHTML;
+    if (prevCat && state.caseCategories.some(c => c.id === prevCat)) newCatSel.value = prevCat;
+  }
 
   const totalRars = state.rarities.length;
   document.getElementById('admin-rarities-list').innerHTML = state.rarities.map((r, idx) => {
@@ -1541,6 +1863,11 @@ function renderAdminUI() {
 
   if (editingCaseId && state.cases.some(c => c.id === editingCaseId)) {
     const activeCase = state.cases.find(c => c.id === editingCaseId);
+    const editCatSel = document.getElementById('edit-case-category');
+    if (editCatSel) {
+      editCatSel.innerHTML = catOptionsHTML;
+      editCatSel.value = activeCase.categoryId || state.caseCategories[0].id;
+    }
     const activeSet = new Set(activeCase.cardIds || []);
     document.getElementById('admin-edit-case-cards-selector').innerHTML = state.cards.map(c => `
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;">
@@ -1580,6 +1907,7 @@ function openEditCardPanel(cardId) {
   const card = getCardById(cardId);
   if (!card) return;
 
+  SoundFX.click();
   editingCardId = card.id;
   document.getElementById('admin-edit-card-panel').classList.remove('hidden');
   document.getElementById('edit-card-heading').textContent = card.name;
@@ -1652,6 +1980,7 @@ function saveEditedCard() {
     state.cards.push(updated);
   }
 
+  SoundFX.click();
   saveState(true);
   document.getElementById('edit-card-heading').textContent = name;
   renderAdminUI();
@@ -1727,12 +2056,14 @@ function adminAddRarity() {
   } else {
     state.rarities.push({ id, name, color, bg, order: 1, weight, packWeight, effect });
   }
+  SoundFX.click();
   saveState(true);
   renderAdminUI();
 }
 
 function adminDeleteRarity(id) {
   if (state.rarities.length <= 1) return;
+  SoundFX.click();
   state.rarities = state.rarities.filter(r => r.id !== id);
   saveState(true);
   renderAdminUI();
@@ -1770,11 +2101,13 @@ function adminAddCard() {
     state.cards.push(newCard);
   }
 
+  SoundFX.click();
   saveState(true);
   renderAdminUI();
 }
 
 function adminDeleteCard(id) {
+  SoundFX.click();
   state.cards = state.cards.filter(c => c.id !== id);
   saveState(true);
   renderAdminUI();
@@ -1784,10 +2117,12 @@ function adminAddCase() {
   const name = document.getElementById('new-case-name').value.trim();
   const price = Number(document.getElementById('new-case-price').value) || 500;
   const img = document.getElementById('new-case-img').value.trim() || 'https://placehold.co/320x180/181a20/ffffff?text=CASE';
+  const categoryId = document.getElementById('new-case-category')?.value || state.caseCategories[0].id;
   const selectedIds = Array.from(document.querySelectorAll('.case-card-cb:checked')).map(cb => cb.value);
 
   if (!name || selectedIds.length === 0) return;
-  state.cases.push({ id: 'case_' + Date.now(), name, price, img, cardIds: selectedIds });
+  SoundFX.click();
+  state.cases.push({ id: 'case_' + Date.now(), name, price, img, categoryId, cardIds: selectedIds });
   saveState(true);
   renderAdminUI();
   renderCasesList();
@@ -1818,6 +2153,7 @@ function showWinModal(itemsList) {
 }
 
 function closeWinModal() {
+  SoundFX.click();
   lastWonItems = [];
   document.getElementById('win-modal').classList.add('hidden');
 }
@@ -1838,6 +2174,7 @@ function sellWonCard() {
   });
 
   if (earned > 0) {
+    SoundFX.sell();
     state.balance += earned;
     saveState(false);
     if (document.getElementById('tab-collection').classList.contains('active')) {
@@ -1851,6 +2188,7 @@ function sellWonCard() {
 // === ЗАПУСК ===
 updateTopBar();
 updateCloudSyncBadge();
+updateSoundUI();
 renderCasesList();
 if (!hasLocalCatalogEdits) {
   syncCatalogFromCloud(false);
