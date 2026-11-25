@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GD LUDKA — GD CASE</title>
+  <title>GD LUDKA — Geometry Dash Extreme Demon Case & Card Simulator</title>
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,6 +19,7 @@
       <button class="nav-btn active" data-tab="cases" onclick="switchTab('cases')">Кейсы</button>
       <button class="nav-btn" data-tab="packs" onclick="switchTab('packs')">Паки</button>
       <button class="nav-btn" data-tab="upgrade" onclick="switchTab('upgrade')">Апгрейд</button>
+      <button class="nav-btn" data-tab="duels" onclick="switchTab('duels')">Дуэли</button>
       <button class="nav-btn" data-tab="trade" onclick="switchTab('trade')">Трейды</button>
       <button class="nav-btn" data-tab="collection" onclick="switchTab('collection')">Коллекция</button>
       <button class="nav-btn" data-tab="craft" onclick="switchTab('craft')">Крафты</button>
@@ -41,7 +42,7 @@
       <section id="tab-cases" class="tab-content active">
         <div id="cases-grid-view">
           <div class="section-header">
-            <h2>Все кейсы:</h2>
+            <h2>Кейсы уровней</h2>
             <div class="sort-controls">
               <select id="cases-sort" onchange="renderCasesList()">
                 <option value="price-asc">Сначала дешевле</option>
@@ -182,6 +183,54 @@
             </div>
             <div id="upgrade-target-cards" class="cards-grid small-grid upgrade-all-targets-scroll"></div>
           </div>
+        </div>
+      </section>
+
+      <!-- ВКЛАДКА: ДУЭЛИ -->
+      <section id="tab-duels" class="tab-content">
+        <div class="section-header">
+          <h2>Дуэли кейсов</h2>
+          <div id="duel-status-badge" class="hint-text">Лобби готово</div>
+        </div>
+
+        <!-- ЭТАП 1: ЛОББИ -->
+        <div id="duel-lobby-view" class="duel-panel">
+          <div class="duel-lobby-top">
+            <div>
+              <h3>Лобби дуэли</h3>
+              <p class="hint-text">Выбери количество ботов (1 или 2), нажми «Начать матч», выбери свой кейс — бот выберет свой, и крутим одновременно. Победитель забирает дроп и +400 ₽ сверху!</p>
+            </div>
+            <div class="multi-open-selector" id="duel-bot-count-selector">
+              <button class="count-chip active" data-bots="1" onclick="setDuelBotCount(1)">1 бот</button>
+              <button class="count-chip" data-bots="2" onclick="setDuelBotCount(2)">2 бота</button>
+            </div>
+          </div>
+
+          <div id="duel-lobby-slots" class="duel-slots-grid"></div>
+
+          <div class="duel-actions-row">
+            <button id="duel-start-match-btn" class="primary-btn big-btn" onclick="startDuelMatch()">Начать матч</button>
+          </div>
+        </div>
+
+        <!-- ЭТАП 2: ВЫБОР КЕЙСА ИГРОКОМ И БОТОМ -->
+        <div id="duel-case-select-view" class="duel-panel hidden">
+          <div class="section-header">
+            <h3>Выбери свой кейс (списание с баланса)</h3>
+            <button class="secondary-btn" onclick="resetDuelToLobby()">← В лобби</button>
+          </div>
+          <div id="duel-bot-picks-info" class="duel-picks-banner"></div>
+          <div id="duel-cases-grid" class="cases-grid"></div>
+        </div>
+
+        <!-- ЭТАП 3: ОДНОВРЕМЕННЫЙ ПРОКРУТ И ИТОГИ -->
+        <div id="duel-arena-view" class="duel-panel hidden">
+          <div class="section-header">
+            <h3>Бой на кейсах</h3>
+            <button id="duel-rematch-btn" class="secondary-btn hidden" onclick="resetDuelToLobby()">Новый матч</button>
+          </div>
+          <div id="duel-verdict-banner" class="duel-verdict-banner">Крутим кейсы...</div>
+          <div id="duel-competitors-grid" class="duel-competitors-grid"></div>
         </div>
       </section>
 
@@ -435,6 +484,32 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <!-- МОДАЛКА СТАРТОВОГО БАЛАНСА (1..1500 ₽) -->
+  <div id="start-balance-modal" class="modal hidden">
+    <div class="modal-content start-balance-modal-box">
+      <h3>Выбор стартового баланса</h3>
+      <p class="hint-text">Выбери стартовую сумму от <b>1 ₽</b> до <b>1500 ₽</b> для начала игры.</p>
+
+      <div class="start-balance-readout">
+        <span id="start-balance-display">1500</span> ₽
+      </div>
+
+      <input type="range" id="start-balance-range" min="1" max="1500" value="1500" class="start-balance-slider" oninput="syncStartBalanceFromRange(this.value)">
+      <input type="number" id="start-balance-input" min="1" max="1500" value="1500" style="width:140px;text-align:center;" oninput="syncStartBalanceFromInput(this.value)">
+
+      <div class="start-balance-presets">
+        <button type="button" class="secondary-btn" onclick="setStartBalanceValue(1)">1 ₽</button>
+        <button type="button" class="secondary-btn" onclick="setStartBalanceValue(500)">500 ₽</button>
+        <button type="button" class="secondary-btn" onclick="setStartBalanceValue(1000)">1000 ₽</button>
+        <button type="button" class="secondary-btn" onclick="setStartBalanceValue(1500)">1500 ₽</button>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="primary-btn big-btn" onclick="confirmStartBalance()">Начать игру</button>
+      </div>
+    </div>
   </div>
 
   <!-- МОДАЛКА ВЫИГРЫША -->
