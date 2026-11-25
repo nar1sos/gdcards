@@ -7,12 +7,17 @@ const SHARED_CLOUD_CONFIG = {
 
 const PACK_PRICE = 1000;
 const INITIAL_BALANCE = 1500;
+const MIN_START_BALANCE = 1;
+const MAX_START_BALANCE = 1500;
+const DUEL_WIN_BONUS = 400;
 const MAX_CASE_OPEN_COUNT = 3;
 
 const DEFAULT_CASE_CATEGORIES = [
   { id: 'cat_featured', name: 'Основные кейсы' },
   { id: 'cat_players', name: 'Кейсы игроков' }
 ];
+
+const DUEL_BOT_NAMES = ['Bot_ZoinK', 'Bot_Pupuf', 'Bot_Vortex', 'Bot_Kuzure'];
 
 // === ЗВУКОВОЙ ДВИЖОК (WEB AUDIO API) ===
 const SoundFX = (() => {
@@ -71,6 +76,11 @@ const SoundFX = (() => {
     },
     click() {
       tone({ freq: 620, endFreq: 780, type: 'sine', duration: 0.045, gain: 0.12 });
+    },
+    cardPass(stepIndex = 0) {
+      const pitchShift = Math.min(200, (stepIndex % 10) * 18);
+      tone({ freq: 860 + pitchShift, endFreq: 290, type: 'triangle', duration: 0.05, gain: 0.25 });
+      tone({ freq: 1450 + pitchShift, endFreq: 680, type: 'sine', duration: 0.025, gain: 0.12 });
     },
     tick(pitchBoost = 0) {
       tone({ freq: 520 + pitchBoost * 18, endFreq: 340, type: 'triangle', duration: 0.04, gain: 0.14 });
@@ -136,6 +146,9 @@ const initialCloud = {
   apiKey: (savedCloud && savedCloud.apiKey) || SHARED_CLOUD_CONFIG.apiKey || ''
 };
 
+const rawSavedBalance = localStorage.getItem('gd_balance');
+const isBrandNewPlayer = rawSavedBalance === null;
+
 const hasSavedRarities = localStorage.getItem('gd_rarities') !== null;
 const hasSavedCards = localStorage.getItem('gd_cards') !== null;
 const hasSavedCases = localStorage.getItem('gd_cases') !== null;
@@ -143,7 +156,7 @@ const hasSavedCategories = localStorage.getItem('gd_case_categories') !== null;
 
 let state = {
   nickname: localStorage.getItem('gd_nick') || 'Player_' + Math.floor(100 + Math.random() * 900),
-  balance: Number(localStorage.getItem('gd_balance') ?? INITIAL_BALANCE),
+  balance: isBrandNewPlayer ? INITIAL_BALANCE : Number(rawSavedBalance),
   inventory: JSON.parse(localStorage.getItem('gd_inventory') || '[]'),
   stats: JSON.parse(localStorage.getItem('gd_stats') || '{"opened":0,"upgrades":0}'),
   rarities: hasSavedRarities ? JSON.parse(localStorage.getItem('gd_rarities')) : JSON.parse(JSON.stringify(DEFAULT_RARITIES)),
@@ -164,6 +177,10 @@ let caseOpenCount = 1;
 let isSpinning = false;
 let isUpgrading = false;
 let isOpeningPack = false;
+let isDuelRunning = false;
+let duelBotCount = 1;
+let duelCompetitors = [];
+let rouletteSoundRafId = null;
 let lastWonItems = [];
 let editingCardId = null;
 let editingCaseId = null;
@@ -211,6 +228,56 @@ function normalizeCaseCategoriesAndCases() {
       c.categoryId = fallbackCatId;
     }
   });
+}
+
+// === ВЫБОР СТАРТОВОГО БАЛАНСА (1..1500 ₽) ===
+function clampStartBalance(val) {
+  const num = Math.floor(Number(val));
+  if (!Number.isFinite(num)) return MAX_START_BALANCE;
+  return Math.max(MIN_START_BALANCE, Math.min(MAX_START_BALANCE, num));
+}
+
+function openStartBalanceModal() {
+  setStartBalanceValue(MAX_START_BALANCE);
+  const modal = document.getElementById('start-balance-modal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function setStartBalanceValue(val) {
+  const clamped = clampStartBalance(val);
+  const disp = document.getElementById('start-balance-display');
+  const rng = document.getElementById('start-balance-range');
+  const inp = document.getElementById('start-balance-input');
+  if (disp) disp.textContent = String(clamped);
+  if (rng) rng.value = String(clamped);
+  if (inp) inp.value = String(clamped);
+}
+
+function syncStartBalanceFromRange(val) {
+  const clamped = clampStartBalance(val);
+  const disp = document.getElementById('start-balance-display');
+  const inp = document.getElementById('start-balance-input');
+  if (disp) disp.textContent = String(clamped);
+  if (inp) inp.value = String(clamped);
+}
+
+function syncStartBalanceFromInput(val) {
+  const raw = Number(val);
+  const clamped = clampStartBalance(raw);
+  const disp = document.getElementById('start-balance-display');
+  const rng = document.getElementById('start-balance-range');
+  if (disp) disp.textContent = String(clamped);
+  if (rng) rng.value = String(clamped);
+}
+
+function confirmStartBalance() {
+  const inp = document.getElementById('start-balance-input');
+  const chosen = clampStartBalance(inp ? inp.value : MAX_START_BALANCE);
+  state.balance = chosen;
+  saveState(false);
+  SoundFX.sell();
+  const modal = document.getElementById('start-balance-modal');
+  if (modal) modal.classList.add('hidden');
 }
 
 // === РАСЧЁТ ШАНСА АПГРЕЙДА (ПОДДЕРЖКА < 1%, МАКСИМУМ 85%) ===
@@ -368,6 +435,9 @@ function saveNickname() {
   if (val) {
     state.nickname = val;
     saveState(false);
+    if (document.getElementById('tab-duels').classList.contains('active') && !isDuelRunning) {
+      renderDuelLobby();
+    }
   }
 }
 
@@ -381,6 +451,7 @@ function switchTab(tabName) {
 
   if (tabName === 'cases') renderCasesList();
   if (tabName === 'upgrade') renderUpgradeUI();
+  if (tabName === 'duels') renderDuelLobby();
   if (tabName === 'trade') {
     if (document.getElementById('trade-arena').classList.contains('hidden')) {
       startBotTrade();
@@ -752,11 +823,11 @@ function rollWeightedCard(poolCards, mode = 'case') {
   return poolCards[poolCards.length - 1];
 }
 
-function getRouletteStepWidth() {
-  const firstCard = document.querySelector('.roulette-track .card-wrap');
-  const cardW = firstCard ? firstCard.getBoundingClientRect().width : 180;
-  const gapW = window.innerWidth <= 768 ? 8 : 12;
-  return { cardW, stepW: cardW + gapW };
+function getRouletteStepWidth(trackSelector = '.roulette-track .card-wrap', defaultW = 180, gapW = null) {
+  const firstCard = document.querySelector(trackSelector);
+  const cardW = firstCard ? firstCard.getBoundingClientRect().width : defaultW;
+  const resolvedGap = gapW !== null ? gapW : (window.innerWidth <= 768 ? 8 : 12);
+  return { cardW, stepW: cardW + resolvedGap };
 }
 
 function setCaseControlsDisabled(disabled) {
@@ -767,15 +838,50 @@ function setCaseControlsDisabled(disabled) {
   });
 }
 
-function playRouletteTicks(durationMs, fast) {
-  const ticksCount = fast ? 10 : 28;
-  for (let i = 0; i < ticksCount; i++) {
-    const progress = i / ticksCount;
-    const delay = durationMs * (1 - Math.pow(1 - progress, 1.85));
-    setTimeout(() => {
-      if (isSpinning) SoundFX.tick(Math.floor(progress * 6));
-    }, delay);
+function stopRouletteCardSoundTracker() {
+  if (rouletteSoundRafId !== null) {
+    cancelAnimationFrame(rouletteSoundRafId);
+    rouletteSoundRafId = null;
   }
+}
+
+function trackRouletteCardsPassingPointer(durationSec, isActiveCheck = () => isSpinning, trackId = 'roulette-track-0') {
+  stopRouletteCardSoundTracker();
+  const track = document.getElementById(trackId);
+  const wrapper = track ? track.parentElement : null;
+  const pointer = wrapper ? wrapper.querySelector('.roulette-pointer') : null;
+  if (!track || !pointer) return;
+
+  const cards = Array.from(track.querySelectorAll('.card-wrap'));
+  if (cards.length === 0) return;
+
+  const startTime = performance.now();
+  const durationMs = durationSec * 1000;
+  let lastTriggeredIdx = -1;
+
+  function checkCards() {
+    const pointerX = pointer.getBoundingClientRect().left;
+    for (let i = 0; i < cards.length; i++) {
+      const rect = cards[i].getBoundingClientRect();
+      const cardCenterX = rect.left + rect.width * 0.5;
+      if (cardCenterX <= pointerX && i > lastTriggeredIdx) {
+        lastTriggeredIdx = i;
+        SoundFX.cardPass(i);
+      }
+    }
+  }
+
+  function frame(now) {
+    checkCards();
+    if (now - startTime < durationMs + 60 && isActiveCheck()) {
+      rouletteSoundRafId = requestAnimationFrame(frame);
+    } else {
+      checkCards();
+      stopRouletteCardSoundTracker();
+    }
+  }
+
+  rouletteSoundRafId = requestAnimationFrame(frame);
 }
 
 function spinCurrentCase(fast = false) {
@@ -808,7 +914,6 @@ function spinCurrentCase(fast = false) {
 
   const { cardW, stepW } = getRouletteStepWidth();
   const durationSec = fast ? 0.85 : 4.2;
-  playRouletteTicks(durationSec * 1000, fast);
 
   setTimeout(() => {
     for (let row = 0; row < count; row++) {
@@ -819,9 +924,11 @@ function spinCurrentCase(fast = false) {
       track.style.transition = `transform ${durationSec}s cubic-bezier(0.12, 0.88, 0.22, 1)`;
       track.style.transform = `translateX(-${offset}px)`;
     }
+    trackRouletteCardsPassingPointer(durationSec, () => isSpinning, 'roulette-track-0');
   }, 30);
 
   setTimeout(() => {
+    stopRouletteCardSoundTracker();
     isSpinning = false;
     setCaseControlsDisabled(false);
     const addedEntries = rolledWinners.map(w => {
@@ -875,7 +982,7 @@ function buyPack() {
   });
 }
 
-// === АПГРЕЙДЫ ===
+// === АПГРЕЙДЫ (ОПТИМИЗИРОВАННЫЕ) ===
 function renderUpgradeUI() {
   renderUpgradeMyInventory();
   renderUpgradeTargets();
@@ -889,10 +996,17 @@ function renderUpgradeMyInventory() {
     .filter(x => x.card);
 
   const sortedMy = sortItems(myMapped, invSort);
-  document.getElementById('upgrade-my-cards').innerHTML = sortedMy.map(item => {
+  const frag = document.createDocumentFragment();
+  sortedMy.forEach(item => {
     const sel = item.uid === upgSelectedSourceUid ? 'selected' : '';
-    return createCardHTML(item.card, item.isHolo, sel, `data-upg-uid="${item.uid}" onclick="selectUpgradeSource('${item.uid}')"`);
-  }).join('');
+    const temp = document.createElement('div');
+    temp.innerHTML = createCardHTML(item.card, item.isHolo, sel, `data-upg-uid="${item.uid}" onclick="selectUpgradeSource('${item.uid}')"`);
+    if (temp.firstElementChild) frag.appendChild(temp.firstElementChild);
+  });
+
+  const gridEl = document.getElementById('upgrade-my-cards');
+  gridEl.innerHTML = '';
+  gridEl.appendChild(frag);
 }
 
 function renderUpgradeTargets() {
@@ -930,17 +1044,26 @@ function renderUpgradeTargets() {
   const gridEl = document.getElementById('upgrade-target-cards');
   if (sortedTargets.length === 0) {
     gridEl.innerHTML = '<div class="hint-text">Карточки по запросу не найдены</div>';
-  } else {
-    gridEl.innerHTML = sortedTargets.map(t => {
-      const sel = (t.card.id === upgSelectedTargetId && t.isHolo === upgSelectedTargetHolo) ? 'selected' : '';
-      return createCardHTML(
-        t.card,
-        t.isHolo,
-        sel,
-        `data-upg-target="${t.card.id}_${t.isHolo}" onclick="selectUpgradeTarget('${t.card.id}', ${t.isHolo})"`
-      );
-    }).join('');
+    return;
   }
+
+  const frag = document.createDocumentFragment();
+  sortedTargets.forEach(t => {
+    const sel = (t.card.id === upgSelectedTargetId && t.isHolo === upgSelectedTargetHolo) ? 'selected' : '';
+    const temp = document.createElement('div');
+    temp.innerHTML = createCardHTML(
+      t.card,
+      t.isHolo,
+      sel,
+      `data-upg-target="${t.card.id}_${t.isHolo}" onclick="selectUpgradeTarget('${t.card.id}', ${t.isHolo})"`,
+      '',
+      `data-upg-wrap="${t.card.id}_${t.isHolo}"`
+    );
+    if (temp.firstElementChild) frag.appendChild(temp.firstElementChild);
+  });
+
+  gridEl.innerHTML = '';
+  gridEl.appendChild(frag);
 }
 
 function selectUpgradeSource(uid) {
@@ -950,9 +1073,9 @@ function selectUpgradeSource(uid) {
   upgSelectedSourceUid = uid;
 
   if (prevUid) {
-    document.querySelectorAll(`[data-upg-uid="${prevUid}"]`).forEach(el => el.classList.remove('selected'));
+    document.querySelectorAll(`#upgrade-my-cards [data-upg-uid="${prevUid}"] .gd-card`).forEach(el => el.classList.remove('selected'));
   }
-  document.querySelectorAll(`[data-upg-uid="${uid}"]`).forEach(el => el.classList.add('selected'));
+  document.querySelectorAll(`#upgrade-my-cards [data-upg-uid="${uid}"] .gd-card`).forEach(el => el.classList.add('selected'));
 
   updateUpgradeSlotsAndChance();
 }
@@ -966,9 +1089,9 @@ function selectUpgradeTarget(cardId, isHolo) {
   const nextKey = `${cardId}_${isHolo}`;
 
   if (prevKey) {
-    document.querySelectorAll(`[data-upg-target="${prevKey}"]`).forEach(el => el.classList.remove('selected'));
+    document.querySelectorAll(`#upgrade-target-cards [data-upg-target="${prevKey}"]`).forEach(el => el.classList.remove('selected'));
   }
-  document.querySelectorAll(`[data-upg-target="${nextKey}"]`).forEach(el => el.classList.add('selected'));
+  document.querySelectorAll(`#upgrade-target-cards [data-upg-target="${nextKey}"]`).forEach(el => el.classList.add('selected'));
 
   updateUpgradeSlotsAndChance();
 }
@@ -1032,7 +1155,7 @@ function executeUpgrade() {
   rotor.style.transform = `rotate(${currentWheelAngle}deg)`;
 
   isUpgrading = true;
-  playRouletteTicks(durationMs, speedMode === 'fast');
+  playUpgradeTicks(durationMs, speedMode === 'fast');
   document.getElementById('do-upgrade-btn').disabled = true;
   document.getElementById('upgrade-result-msg').innerHTML = '<span style="color:var(--text-muted);">Крутим...</span>';
 
@@ -1052,8 +1175,247 @@ function executeUpgrade() {
       msg.innerHTML = `<span style="color:#f87171; font-weight:800;">НЕУДАЧА! Карточка сгорела</span>`;
     }
     saveState(false);
-    renderUpgradeUI();
+    renderUpgradeMyInventory();
+    updateUpgradeSlotsAndChance();
   }, durationMs + 80);
+}
+
+function playUpgradeTicks(durationMs, fast) {
+  const ticksCount = fast ? 8 : 22;
+  for (let i = 0; i < ticksCount; i++) {
+    const progress = i / ticksCount;
+    const delay = durationMs * (1 - Math.pow(1 - progress, 1.85));
+    setTimeout(() => {
+      if (isUpgrading) SoundFX.tick(Math.floor(progress * 6));
+    }, delay);
+  }
+}
+
+// === ДУЭЛИ КЕЙСОВ ===
+function getDuelCardScore(card, isHolo) {
+  if (!card) return 0;
+  const rarOrder = Number(getRarityObj(card.rarity)?.order || 0);
+  const price = getCardPrice(card, isHolo);
+  return rarOrder * 100000000 + price * 10 + (isHolo ? 5000 : 0);
+}
+
+function setDuelBotCount(count) {
+  if (isDuelRunning) return;
+  SoundFX.click();
+  duelBotCount = count === 2 ? 2 : 1;
+  document.querySelectorAll('#duel-bot-count-selector .count-chip').forEach(btn => {
+    btn.classList.toggle('active', Number(btn.dataset.bots) === duelBotCount);
+  });
+  renderDuelLobby();
+}
+
+function renderDuelLobby() {
+  if (isDuelRunning) return;
+  document.getElementById('duel-lobby-view').classList.remove('hidden');
+  document.getElementById('duel-case-select-view').classList.add('hidden');
+  document.getElementById('duel-arena-view').classList.add('hidden');
+  document.getElementById('duel-status-badge').textContent = `Ботов в лобби: ${duelBotCount} • Приз победителю: +${DUEL_WIN_BONUS} ₽`;
+
+  const slots = [
+    `<div class="duel-slot-card is-player">
+      <div class="duel-slot-role">Игрок (Ты)</div>
+      <div class="duel-slot-name">${state.nickname}</div>
+      <div class="hint-text">Баланс: ${Math.floor(state.balance)} ₽</div>
+    </div>`
+  ];
+
+  for (let i = 0; i < duelBotCount; i++) {
+    slots.push(`
+      <div class="duel-slot-card">
+        <div class="duel-slot-role">Соперник #${i + 1}</div>
+        <div class="duel-slot-name">${DUEL_BOT_NAMES[i] || 'Bot_' + (i + 1)}</div>
+        <div class="hint-text">Выберет кейс после твоего хода</div>
+      </div>
+    `);
+  }
+
+  document.getElementById('duel-lobby-slots').innerHTML = slots.join('');
+}
+
+function resetDuelToLobby() {
+  if (isDuelRunning) return;
+  SoundFX.click();
+  duelCompetitors = [];
+  renderDuelLobby();
+}
+
+function startDuelMatch() {
+  if (isDuelRunning) return;
+  const playableCases = state.cases.filter(c => c.cardIds.map(getCardById).filter(Boolean).length > 0);
+  if (playableCases.length === 0) return;
+
+  SoundFX.click();
+  document.getElementById('duel-lobby-view').classList.add('hidden');
+  document.getElementById('duel-case-select-view').classList.remove('hidden');
+  document.getElementById('duel-arena-view').classList.add('hidden');
+  document.getElementById('duel-status-badge').textContent = 'Шаг 1/2: Выбери кейс для дуэли';
+  document.getElementById('duel-bot-picks-info').textContent = 'Сначала выбери свой кейс за деньги — затем бот подберёт свой кейс.';
+
+  const grid = document.getElementById('duel-cases-grid');
+  grid.innerHTML = playableCases.map(c => {
+    const canAfford = state.balance >= c.price;
+    return `
+      <div class="case-item" style="${canAfford ? '' : 'opacity:0.45;cursor:not-allowed;'}" onclick="${canAfford ? `pickDuelCaseAndSpin('${c.id}')` : ''}">
+        <img src="${c.img}" alt="${c.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=CASE'">
+        <h3>${c.name}</h3>
+        <div class="case-price-tag">${c.price} ₽</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function pickDuelCaseAndSpin(playerCaseId) {
+  if (isDuelRunning) return;
+  const playerCase = state.cases.find(c => c.id === playerCaseId);
+  if (!playerCase || state.balance < playerCase.price) return;
+
+  const playableCases = state.cases.filter(c => c.cardIds.map(getCardById).filter(Boolean).length > 0);
+  if (playableCases.length === 0) return;
+
+  state.balance -= playerCase.price;
+  state.stats.opened += 1 + duelBotCount;
+  saveState(false);
+
+  duelCompetitors = [
+    {
+      id: 'player',
+      name: state.nickname,
+      isPlayer: true,
+      caseObj: playerCase,
+      pool: playerCase.cardIds.map(getCardById).filter(Boolean),
+      winnerEntry: null,
+      score: 0
+    }
+  ];
+
+  for (let i = 0; i < duelBotCount; i++) {
+    const botCase = playableCases[Math.floor(Math.random() * playableCases.length)];
+    duelCompetitors.push({
+      id: 'bot_' + i,
+      name: DUEL_BOT_NAMES[i] || 'Bot_' + (i + 1),
+      isPlayer: false,
+      caseObj: botCase,
+      pool: botCase.cardIds.map(getCardById).filter(Boolean),
+      winnerEntry: null,
+      score: 0
+    });
+  }
+
+  duelCompetitors.forEach(comp => {
+    const card = rollWeightedCard(comp.pool, 'case');
+    const isHolo = Math.random() < state.holoChance;
+    comp.winnerEntry = { card, isHolo };
+    comp.score = getDuelCardScore(card, isHolo);
+  });
+
+  document.getElementById('duel-case-select-view').classList.add('hidden');
+  document.getElementById('duel-arena-view').classList.remove('hidden');
+  document.getElementById('duel-rematch-btn').classList.add('hidden');
+  const verdictEl = document.getElementById('duel-verdict-banner');
+  verdictEl.className = 'duel-verdict-banner';
+  verdictEl.textContent = 'Кейсы выбраны! Одновременно крутим рулетки...';
+  document.getElementById('duel-status-badge').textContent = 'Шаг 2/2: Идёт прокрут кейсов';
+
+  const competitorsGrid = document.getElementById('duel-competitors-grid');
+  competitorsGrid.innerHTML = duelCompetitors.map((comp, idx) => {
+    let cardsHtml = '';
+    for (let i = 0; i < 45; i++) {
+      if (i === 38) {
+        cardsHtml += createCardHTML(comp.winnerEntry.card, comp.winnerEntry.isHolo);
+      } else {
+        const rnd = comp.pool[Math.floor(Math.random() * comp.pool.length)];
+        cardsHtml += createCardHTML(rnd, Math.random() < state.holoChance);
+      }
+    }
+    return `
+      <div id="duel-lane-${idx}" class="duel-lane">
+        <div class="duel-lane-head">
+          <b>${comp.name}</b>
+          <span class="duel-lane-case">${comp.caseObj.name} (${comp.caseObj.price} ₽)</span>
+        </div>
+        <div class="duel-roulette-box">
+          <div class="roulette-pointer"></div>
+          <div id="duel-track-${idx}" class="duel-roulette-track">${cardsHtml}</div>
+        </div>
+        <div id="duel-lane-result-${idx}" class="duel-lane-result">Крутится...</div>
+      </div>
+    `;
+  }).join('');
+
+  isDuelRunning = true;
+  const durationSec = 4.2;
+
+  setTimeout(() => {
+    const { cardW, stepW } = getRouletteStepWidth('.duel-roulette-track .card-wrap', 152, 10);
+    duelCompetitors.forEach((_, idx) => {
+      const track = document.getElementById(`duel-track-${idx}`);
+      if (!track) return;
+      const jitter = Math.random() * 14 - 7;
+      const offset = 38 * stepW + jitter + cardW / 2;
+      track.style.transition = `transform ${durationSec}s cubic-bezier(0.12, 0.88, 0.22, 1)`;
+      track.style.transform = `translateX(-${offset}px)`;
+    });
+    trackRouletteCardsPassingPointer(durationSec, () => isDuelRunning, 'duel-track-0');
+  }, 30);
+
+  setTimeout(() => {
+    stopRouletteCardSoundTracker();
+    finishDuelMatch(playerCase.price);
+  }, 4350);
+}
+
+function finishDuelMatch(spentCasePrice) {
+  let maxScore = -1;
+  duelCompetitors.forEach(comp => {
+    if (comp.score > maxScore) maxScore = comp.score;
+  });
+
+  const topCompetitors = duelCompetitors.filter(comp => comp.score === maxScore);
+  const playerComp = duelCompetitors[0];
+  const playerWon = topCompetitors.some(c => c.isPlayer) && topCompetitors.length === 1;
+  const isTie = topCompetitors.length > 1;
+
+  duelCompetitors.forEach((comp, idx) => {
+    const resEl = document.getElementById(`duel-lane-result-${idx}`);
+    const laneEl = document.getElementById(`duel-lane-${idx}`);
+    const price = getCardPrice(comp.winnerEntry.card, comp.winnerEntry.isHolo);
+    if (resEl) {
+      resEl.textContent = `${comp.winnerEntry.card.name}${comp.winnerEntry.isHolo ? ' [HOLO]' : ''} — ${price} ₽`;
+    }
+    if (laneEl && topCompetitors.some(t => t.id === comp.id)) {
+      laneEl.classList.add('is-winner');
+    }
+  });
+
+  const verdictEl = document.getElementById('duel-verdict-banner');
+  if (playerWon) {
+    SoundFX.win(playerComp.winnerEntry.isHolo);
+    giveCardToPlayer(playerComp.winnerEntry.card, playerComp.winnerEntry.isHolo);
+    state.balance += DUEL_WIN_BONUS;
+    saveState(false);
+    verdictEl.className = 'duel-verdict-banner win';
+    verdictEl.textContent = `Победа! Ты забрал ${playerComp.winnerEntry.card.name} и +${DUEL_WIN_BONUS} ₽ сверху.`;
+  } else if (isTie && topCompetitors.some(c => c.isPlayer)) {
+    SoundFX.win(playerComp.winnerEntry.isHolo);
+    giveCardToPlayer(playerComp.winnerEntry.card, playerComp.winnerEntry.isHolo);
+    saveState(false);
+    verdictEl.className = 'duel-verdict-banner';
+    verdictEl.textContent = `Ничья по очкам — ты забрал свой дроп (${playerComp.winnerEntry.card.name}), бонус +${DUEL_WIN_BONUS} ₽ не начислен.`;
+  } else {
+    SoundFX.upgradeFail();
+    const winner = topCompetitors[0];
+    verdictEl.className = 'duel-verdict-banner lose';
+    verdictEl.textContent = `Поражение! Выиграл ${winner ? winner.name : 'соперник'}. Ты потерял дроп и ${spentCasePrice} ₽ за кейс.`;
+  }
+
+  isDuelRunning = false;
+  document.getElementById('duel-status-badge').textContent = 'Матч завершён';
+  document.getElementById('duel-rematch-btn').classList.remove('hidden');
 }
 
 // === ТРЕЙД С БОТОМ ===
@@ -2190,6 +2552,9 @@ updateTopBar();
 updateCloudSyncBadge();
 updateSoundUI();
 renderCasesList();
+if (isBrandNewPlayer) {
+  openStartBalanceModal();
+}
 if (!hasLocalCatalogEdits) {
   syncCatalogFromCloud(false);
 }
