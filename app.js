@@ -17,7 +17,7 @@ const DEFAULT_CASE_CATEGORIES = [
   { id: 'cat_players', name: 'Кейсы игроков' }
 ];
 
-const DUEL_BOT_NAMES = ['Bot_ZoinK', 'Bot_Pupuf', 'Bot_Vortex', 'Bot_Kuzure'];
+const DUEL_BOT_NAMES = ['Бот 1', 'Бот 2'];
 
 // === ЗВУКОВОЙ ДВИЖОК (WEB AUDIO API) ===
 const SoundFX = (() => {
