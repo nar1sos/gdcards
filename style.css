@@ -225,7 +225,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   position: relative;
   width: 100%;
   aspect-ratio: 3 / 4.25;
-  background: linear-gradient(160deg, color-mix(in srgb, var(--rar-color) 32%, var(--rar-bg)) 0%, var(--rar-bg, #14161c) 100%);
+  background: var(--rar-gradient, linear-gradient(160deg, color-mix(in srgb, var(--rar-color) 32%, var(--rar-bg)) 0%, var(--rar-bg, #14161c) 100%));
   border: 3px solid var(--rar-color, #e14b5a);
   border-radius: 15px;
   padding: 12px;
@@ -480,23 +480,6 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 .spark-dot:nth-child(3) { top: 58%; left: 22%; animation-delay: 0.8s; }
 .spark-dot:nth-child(4) { bottom: 24%; right: 16%; animation-delay: 1.2s; }
 
-/* ОПТИМИЗАЦИЯ СПИСКОВ АПГРЕЙДА */
-#upgrade-my-cards .gd-card,
-.upgrade-all-targets-scroll .gd-card {
-  animation: none !important;
-  box-shadow: none !important;
-  transition: transform 0.1s ease;
-}
-
-#upgrade-my-cards .gd-card .holo-full-overlay,
-#upgrade-my-cards .gd-card .shine-sweep-layer,
-#upgrade-my-cards .gd-card .sparkle-layer,
-.upgrade-all-targets-scroll .gd-card .holo-full-overlay,
-.upgrade-all-targets-scroll .gd-card .shine-sweep-layer,
-.upgrade-all-targets-scroll .gd-card .sparkle-layer {
-  display: none;
-}
-
 /* КАТЕГОРИИ И КЕЙСЫ */
 .case-category-section {
   margin-bottom: 28px;
@@ -745,7 +728,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   gap: 8px;
 }
 
-/* АПГРЕЙД */
+/* АПГРЕЙД — ПОЛНЫЕ КАРТЫ В СЛОТАХ КОЛЕСА */
 .upgrade-arena {
   display: grid;
   grid-template-columns: 1fr 270px 1fr;
@@ -862,6 +845,156 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   min-width: 195px;
 }
 
+/* КВАДРАТНЫЕ ЯЧЕЙКИ ДЛЯ ДОБАВЛЕНИЯ КАРТОЧЕК В АПГРЕЙД */
+.upg-square-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.upg-square-tile {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  border-radius: 10px;
+  border: 2px solid var(--rar-color, #2a2e39);
+  background: var(--rar-gradient, linear-gradient(155deg, color-mix(in srgb, var(--rar-color) 28%, var(--rar-bg, #14161c)) 0%, var(--rar-bg, #14161c) 100%));
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  overflow: hidden;
+  user-select: none;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+  contain: layout style paint;
+}
+
+.upg-square-tile:hover {
+  transform: translateY(-2px);
+}
+
+.upg-square-tile.selected {
+  border-color: var(--accent-gold);
+  box-shadow: 0 0 0 2px rgba(245, 185, 21, 0.35);
+}
+
+.upg-tile-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  z-index: 3;
+  position: relative;
+}
+
+.upg-tile-price {
+  font-size: 11px;
+  font-weight: 900;
+  color: #a3e635;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+  white-space: nowrap;
+}
+
+.upg-tile-check {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--accent-gold);
+  color: #0e0f12;
+  font-size: 11px;
+  font-weight: 900;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.upg-square-tile.selected .upg-tile-check {
+  display: flex;
+}
+
+.upg-tile-img {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  position: relative;
+  z-index: 4;
+}
+
+.upg-tile-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  z-index: 3;
+  position: relative;
+}
+
+.upg-tile-holo {
+  font-size: 8px;
+  font-weight: 900;
+  color: #f472b6;
+  letter-spacing: 0.4px;
+}
+
+.upg-tile-name {
+  font-size: 10px;
+  font-weight: 800;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+}
+
+.upg-plus-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(14, 15, 18, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s ease;
+  z-index: 8;
+}
+
+.upg-square-tile:hover .upg-plus-overlay {
+  opacity: 1;
+}
+
+.upg-plus-box {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 2px solid var(--accent-gold);
+  background: rgba(22, 24, 29, 0.92);
+  color: var(--accent-gold);
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.65);
+}
+
+/* ПУСТЫЕ ЯЧЕЙКИ-СЛОТЫ В СЕТКЕ АПГРЕЙДА */
+.upg-empty-tile {
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(14, 15, 18, 0.55);
+  pointer-events: none;
+  user-select: none;
+}
+
+.upgrade-my-inv-scroll,
 .upgrade-all-targets-scroll {
   max-height: 620px;
   overflow-y: auto;
@@ -1151,6 +1284,22 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   border: 1px solid var(--border);
 }
 
+.rar-colors-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rar-colors-inline input[type="color"] {
+  width: 34px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
 .admin-rarities-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(265px, 1fr));
@@ -1158,7 +1307,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   margin-top: 12px;
 }
 .rar-manage-card {
-  background: linear-gradient(150deg, color-mix(in srgb, var(--rar-color) 20%, var(--rar-bg)) 0%, var(--rar-bg, #111318) 100%);
+  background: var(--rar-gradient, linear-gradient(150deg, color-mix(in srgb, var(--rar-color) 20%, var(--rar-bg)) 0%, var(--rar-bg, #111318) 100%));
   border: 2px solid var(--rar-color, #3b82f6);
   border-radius: 10px;
   padding: 10px 12px;
@@ -1589,6 +1738,11 @@ select, input[type="text"], input[type="number"], input[type="password"] {
     font-size: 18px;
   }
 
+  .upg-square-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
   .upgrade-target-controls {
     width: 100%;
   }
@@ -1603,6 +1757,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
     font-size: 12px;
   }
 
+  .upgrade-my-inv-scroll,
   .upgrade-all-targets-scroll {
     max-height: 440px;
   }
