@@ -1195,7 +1195,6 @@ function updateUpgradeSlotsAndChance() {
   const srcCard = srcItem ? getCardById(srcItem.cardId) : null;
   const tgtCard = upgSelectedTargetId ? getCardById(upgSelectedTargetId) : null;
 
-  // В верхних слотах апгрейда у колеса показываем полные карты
   srcSlot.innerHTML = srcCard ? createCardHTML(srcCard, srcItem.isHolo) : 'Выбери карту снизу';
   tgtSlot.innerHTML = tgtCard ? createCardHTML(tgtCard, upgSelectedTargetHolo) : 'Выбери цель справа';
 
@@ -1890,6 +1889,64 @@ function sellAllDuplicates() {
   state.balance += earned;
   saveState(false);
   renderCollection();
+}
+
+// === ВЫДАЧА БАЛАНСА В АДМИНКЕ ===
+function setAdminBalanceStatus(message, isError = false) {
+  const el = document.getElementById('admin-balance-status');
+  if (!el) return;
+  el.textContent = message;
+  el.style.color = isError ? '#f87171' : '#4ade80';
+}
+
+function adminGiveBalance(mode = 'add') {
+  const targetInput = document.getElementById('admin-balance-target');
+  const amountInput = document.getElementById('admin-balance-amount');
+
+  const currentNick =
+    document.getElementById('nickname-input')?.value?.trim() ||
+    state.nickname ||
+    'Player';
+  const targetNick = (targetInput?.value || '').trim() || currentNick;
+  const amount = Number(amountInput?.value);
+
+  if (!Number.isFinite(amount)) {
+    setAdminBalanceStatus('Введи корректную сумму', true);
+    return;
+  }
+
+  const prevBalance = Number(state.balance) || 0;
+  const nextBalance =
+    mode === 'set'
+      ? Math.max(0, amount)
+      : Math.max(0, prevBalance + amount);
+
+  if (targetNick !== currentNick && targetInput?.value.trim()) {
+    state.nickname = targetNick;
+  }
+
+  state.balance = nextBalance;
+  SoundFX.sell();
+  saveState(false);
+
+  if (document.getElementById('tab-duels').classList.contains('active') && !isDuelRunning) {
+    renderDuelLobby();
+  }
+  if (document.getElementById('tab-collection').classList.contains('active')) {
+    renderCollection();
+  }
+
+  setAdminBalanceStatus(
+    mode === 'set'
+      ? `Баланс аккаунта ${state.nickname}: ${Math.floor(nextBalance).toLocaleString('ru-RU')} ₽`
+      : `Выдано ${amount >= 0 ? '+' : ''}${amount.toLocaleString('ru-RU')} ₽ аккаунту ${state.nickname} (итого: ${Math.floor(nextBalance).toLocaleString('ru-RU')} ₽)`
+  );
+}
+
+function adminQuickGiveBalance(amount) {
+  const amountInput = document.getElementById('admin-balance-amount');
+  if (amountInput) amountInput.value = String(amount);
+  adminGiveBalance('add');
 }
 
 // === АДМИН-ПАНЕЛЬ ===
