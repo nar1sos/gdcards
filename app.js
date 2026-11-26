@@ -230,6 +230,29 @@ function normalizeCaseCategoriesAndCases() {
   });
 }
 
+// === ЦВЕТА ГРАДИЕНТА РЕДКОСТИ (ОТ 1 ДО 5 ЦВЕТОВ) ===
+function getRarityGradientColors(rar) {
+  if (!rar) return ['#e14b5a', '#14161c'];
+  if (Array.isArray(rar.gradientColors) && rar.gradientColors.length > 0) {
+    return rar.gradientColors.slice(0, 5).map(c => String(c || '#14161c'));
+  }
+  const c1 = rar.color || '#e14b5a';
+  const c2 = rar.bg || '#14161c';
+  return [c1, c2];
+}
+
+function buildRarityGradientCSS(rar) {
+  const colors = getRarityGradientColors(rar);
+  if (colors.length === 1) {
+    return `linear-gradient(155deg, ${colors[0]} 0%, ${colors[0]} 100%)`;
+  }
+  const stops = colors.map((col, idx) => {
+    const pct = Math.round((idx / (colors.length - 1)) * 100);
+    return `${col} ${pct}%`;
+  });
+  return `linear-gradient(155deg, ${stops.join(', ')})`;
+}
+
 // === ВЫБОР СТАРТОВОГО БАЛАНСА (1..1500 ₽) ===
 function clampStartBalance(val) {
   const num = Math.floor(Number(val));
@@ -309,6 +332,9 @@ function recalculateRarityHierarchy() {
     r.weight = caseW;
     r.packWeight = packW;
     r.order = total - idx;
+    const gColors = getRarityGradientColors(r);
+    r.color = gColors[0];
+    r.bg = gColors[gColors.length - 1];
   });
 
   const caseSum = state.rarities.reduce((acc, r) => acc + sanitizeChanceInput(r.weight), 0);
@@ -511,6 +537,7 @@ function createCardHTML(card, isHolo = false, extraClass = '', clickAttr = '', a
   const rankHTML = upcoming
     ? '<span class="card-rank is-upcoming">UPCOMING</span>'
     : `<span class="card-rank">#${Number(card.top)}</span>`;
+  const gradCSS = buildRarityGradientCSS(rar);
 
   const sweepLayer = rar.effect === 'shine-sweep' ? '<div class="shine-sweep-layer"></div>' : '';
   const sparkleLayer = rar.effect === 'sparkle'
@@ -521,7 +548,7 @@ function createCardHTML(card, isHolo = false, extraClass = '', clickAttr = '', a
   return `
     <div class="card-wrap" ${wrapAttr}>
       <div class="gd-card ${holoClass} ${effectClass} ${extraClass}"
-           style="--rar-color: ${rar.color}; --rar-bg: ${rar.bg};"
+           style="--rar-color: ${rar.color}; --rar-bg: ${rar.bg}; --rar-gradient: ${gradCSS};"
            ${clickAttr}>
         ${holoLayer}
         ${sweepLayer}
@@ -540,6 +567,65 @@ function createCardHTML(card, isHolo = false, extraClass = '', clickAttr = '', a
       ${actionBtnHTML}
     </div>
   `;
+}
+
+// Квадратная ячейка с плюсиком при наведении — ТОЛЬКО для добавления карточек в апгрейде
+function createUpgradeSquareTileHTML(card, isHolo = false, isSelected = false, clickAttr = '', extraAttr = '') {
+  const rar = getRarityObj(card.rarity);
+  const price = getCardPrice(card, isHolo);
+  const gradCSS = buildRarityGradientCSS(rar);
+  const selClass = isSelected ? 'selected' : '';
+
+  return `
+    <div class="upg-square-tile ${selClass}"
+         style="--rar-color: ${rar.color}; --rar-bg: ${rar.bg}; --rar-gradient: ${gradCSS};"
+         ${extraAttr}
+         ${clickAttr}>
+      <div class="upg-tile-top">
+        <span class="upg-tile-price">${price} ₽</span>
+        <span class="upg-tile-check">✓</span>
+      </div>
+      <img class="upg-tile-img" loading="lazy" decoding="async" draggable="false" src="${card.img}" alt="${card.name}" onerror="this.src='https://placehold.co/320x180/181a20/ffffff?text=GD'">
+      <div class="upg-tile-bottom">
+        ${isHolo ? '<span class="upg-tile-holo">✦ HOLO</span>' : ''}
+        <span class="upg-tile-name">${card.name}</span>
+      </div>
+      <div class="upg-plus-overlay">
+        <span class="upg-plus-box">+</span>
+      </div>
+    </div>
+  `;
+}
+
+function createEmptyUpgradeTileHTML() {
+  return '<div class="upg-empty-tile" aria-hidden="true"></div>';
+}
+
+function getUpgradeGridColumnsCount(gridEl) {
+  if (!gridEl) return 4;
+  const width = gridEl.getBoundingClientRect().width;
+  if (!width) return window.innerWidth <= 768 ? 3 : 4;
+  const minColW = window.innerWidth <= 768 ? 90 : 112;
+  const gap = window.innerWidth <= 768 ? 8 : 10;
+  return Math.max(2, Math.floor((width + gap) / (minColW + gap)));
+}
+
+function appendEmptyUpgradeSlots(container, itemCount, minRows = 3) {
+  if (!container) return;
+  const cols = getUpgradeGridColumnsCount(container);
+  const currentRows = Math.ceil(itemCount / cols);
+  const targetRows = Math.max(minRows, currentRows);
+  const totalSlots = targetRows * cols;
+  const emptyCount = Math.max(0, totalSlots - itemCount);
+
+  if (emptyCount <= 0) return;
+  const emptyFrag = document.createDocumentFragment();
+  for (let i = 0; i < emptyCount; i++) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = createEmptyUpgradeTileHTML();
+    if (tmp.firstElementChild) emptyFrag.appendChild(tmp.firstElementChild);
+  }
+  container.appendChild(emptyFrag);
 }
 
 function giveCardToPlayer(card, isHolo) {
@@ -982,7 +1068,7 @@ function buyPack() {
   });
 }
 
-// === АПГРЕЙДЫ (ОПТИМИЗИРОВАННЫЕ) ===
+// === АПГРЕЙДЫ (КВАДРАТНЫЕ ЯЧЕЙКИ С ПЛЮСИКОМ В СПИСКАХ, ПОЛНЫЕ КАРТЫ У КОЛЕСА) ===
 function renderUpgradeUI() {
   renderUpgradeMyInventory();
   renderUpgradeTargets();
@@ -998,15 +1084,22 @@ function renderUpgradeMyInventory() {
   const sortedMy = sortItems(myMapped, invSort);
   const frag = document.createDocumentFragment();
   sortedMy.forEach(item => {
-    const sel = item.uid === upgSelectedSourceUid ? 'selected' : '';
+    const isSel = item.uid === upgSelectedSourceUid;
     const temp = document.createElement('div');
-    temp.innerHTML = createCardHTML(item.card, item.isHolo, sel, `data-upg-uid="${item.uid}" onclick="selectUpgradeSource('${item.uid}')"`);
+    temp.innerHTML = createUpgradeSquareTileHTML(
+      item.card,
+      item.isHolo,
+      isSel,
+      `onclick="selectUpgradeSource('${item.uid}')"`,
+      `data-upg-uid="${item.uid}"`
+    );
     if (temp.firstElementChild) frag.appendChild(temp.firstElementChild);
   });
 
   const gridEl = document.getElementById('upgrade-my-cards');
   gridEl.innerHTML = '';
   gridEl.appendChild(frag);
+  appendEmptyUpgradeSlots(gridEl, sortedMy.length, 3);
 }
 
 function renderUpgradeTargets() {
@@ -1042,28 +1135,23 @@ function renderUpgradeTargets() {
   if (countEl) countEl.textContent = sortedTargets.length;
 
   const gridEl = document.getElementById('upgrade-target-cards');
-  if (sortedTargets.length === 0) {
-    gridEl.innerHTML = '<div class="hint-text">Карточки по запросу не найдены</div>';
-    return;
-  }
-
   const frag = document.createDocumentFragment();
   sortedTargets.forEach(t => {
-    const sel = (t.card.id === upgSelectedTargetId && t.isHolo === upgSelectedTargetHolo) ? 'selected' : '';
+    const isSel = (t.card.id === upgSelectedTargetId && t.isHolo === upgSelectedTargetHolo);
     const temp = document.createElement('div');
-    temp.innerHTML = createCardHTML(
+    temp.innerHTML = createUpgradeSquareTileHTML(
       t.card,
       t.isHolo,
-      sel,
-      `data-upg-target="${t.card.id}_${t.isHolo}" onclick="selectUpgradeTarget('${t.card.id}', ${t.isHolo})"`,
-      '',
-      `data-upg-wrap="${t.card.id}_${t.isHolo}"`
+      isSel,
+      `onclick="selectUpgradeTarget('${t.card.id}', ${t.isHolo})"`,
+      `data-upg-target="${t.card.id}_${t.isHolo}"`
     );
     if (temp.firstElementChild) frag.appendChild(temp.firstElementChild);
   });
 
   gridEl.innerHTML = '';
   gridEl.appendChild(frag);
+  appendEmptyUpgradeSlots(gridEl, sortedTargets.length, 3);
 }
 
 function selectUpgradeSource(uid) {
@@ -1073,9 +1161,9 @@ function selectUpgradeSource(uid) {
   upgSelectedSourceUid = uid;
 
   if (prevUid) {
-    document.querySelectorAll(`#upgrade-my-cards [data-upg-uid="${prevUid}"] .gd-card`).forEach(el => el.classList.remove('selected'));
+    document.querySelectorAll(`#upgrade-my-cards [data-upg-uid="${prevUid}"]`).forEach(el => el.classList.remove('selected'));
   }
-  document.querySelectorAll(`#upgrade-my-cards [data-upg-uid="${uid}"] .gd-card`).forEach(el => el.classList.add('selected'));
+  document.querySelectorAll(`#upgrade-my-cards [data-upg-uid="${uid}"]`).forEach(el => el.classList.add('selected'));
 
   updateUpgradeSlotsAndChance();
 }
@@ -1107,6 +1195,7 @@ function updateUpgradeSlotsAndChance() {
   const srcCard = srcItem ? getCardById(srcItem.cardId) : null;
   const tgtCard = upgSelectedTargetId ? getCardById(upgSelectedTargetId) : null;
 
+  // В верхних слотах апгрейда у колеса показываем полные карты
   srcSlot.innerHTML = srcCard ? createCardHTML(srcCard, srcItem.isHolo) : 'Выбери карту снизу';
   tgtSlot.innerHTML = tgtCard ? createCardHTML(tgtCard, upgSelectedTargetHolo) : 'Выбери цель справа';
 
@@ -1228,7 +1317,7 @@ function renderDuelLobby() {
     slots.push(`
       <div class="duel-slot-card">
         <div class="duel-slot-role">Соперник #${i + 1}</div>
-        <div class="duel-slot-name">${DUEL_BOT_NAMES[i] || 'Bot_' + (i + 1)}</div>
+        <div class="duel-slot-name">${DUEL_BOT_NAMES[i] || 'Бот ' + (i + 1)}</div>
         <div class="hint-text">Выберет кейс после твоего хода</div>
       </div>
     `);
@@ -1297,7 +1386,7 @@ function pickDuelCaseAndSpin(playerCaseId) {
     const botCase = playableCases[Math.floor(Math.random() * playableCases.length)];
     duelCompetitors.push({
       id: 'bot_' + i,
-      name: DUEL_BOT_NAMES[i] || 'Bot_' + (i + 1),
+      name: DUEL_BOT_NAMES[i] || 'Бот ' + (i + 1),
       isPlayer: false,
       caseObj: botCase,
       pool: botCase.cardIds.map(getCardById).filter(Boolean),
@@ -1804,6 +1893,24 @@ function sellAllDuplicates() {
 }
 
 // === АДМИН-ПАНЕЛЬ ===
+const DEFAULT_RARITY_PALETTE = ['#f59e0b', '#ec4899', '#38bdf8', '#22c55e', '#a855f7'];
+
+function renderNewRarityColorInputs(presetColors = null) {
+  const box = document.getElementById('new-rar-colors-box');
+  const countSel = document.getElementById('new-rar-color-count');
+  if (!box || !countSel) return;
+
+  const existingInputs = Array.from(box.querySelectorAll('input[type="color"]')).map(inp => inp.value);
+  const count = Math.max(1, Math.min(5, Number(countSel.value) || 2));
+
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    const val = (presetColors && presetColors[i]) || existingInputs[i] || DEFAULT_RARITY_PALETTE[i % DEFAULT_RARITY_PALETTE.length];
+    html += `<input type="color" class="new-rar-grad-color" value="${val}" title="Цвет ${i + 1}">`;
+  }
+  box.innerHTML = html;
+}
+
 function checkAdminPass() {
   const pass = document.getElementById('admin-pass-input').value;
   if (pass === '12356790') {
@@ -2125,12 +2232,43 @@ function adminDeleteCase(caseId) {
   renderAdminCaseCategories();
 }
 
+function setRarityGradientColorCount(rarityId, newCount) {
+  const rar = state.rarities.find(r => r.id === rarityId);
+  if (!rar) return;
+  const count = Math.max(1, Math.min(5, Number(newCount) || 2));
+  const currentColors = getRarityGradientColors(rar);
+  const nextColors = [];
+  for (let i = 0; i < count; i++) {
+    nextColors.push(currentColors[i] || DEFAULT_RARITY_PALETTE[i % DEFAULT_RARITY_PALETTE.length]);
+  }
+  rar.gradientColors = nextColors;
+  rar.color = nextColors[0];
+  rar.bg = nextColors[nextColors.length - 1];
+  saveState(true);
+  renderAdminUI();
+  updateCardPreview();
+}
+
+function updateRarityGradientColorAt(rarityId, idx, hexVal) {
+  const rar = state.rarities.find(r => r.id === rarityId);
+  if (!rar) return;
+  const colors = [...getRarityGradientColors(rar)];
+  colors[idx] = hexVal;
+  rar.gradientColors = colors;
+  rar.color = colors[0];
+  rar.bg = colors[colors.length - 1];
+  saveState(true);
+  renderAdminUI();
+  updateCardPreview();
+}
+
 function renderAdminUI() {
   recalculateRarityHierarchy();
   normalizeCardsAndRanks();
   normalizeCaseCategoriesAndCases();
   updateCloudSyncBadge();
   updateSoundUI();
+  renderNewRarityColorInputs();
   document.getElementById('cfg-bin-id').value = state.cloud.binId || '';
   document.getElementById('cfg-api-key').value = state.cloud.apiKey || '';
 
@@ -2149,6 +2287,13 @@ function renderAdminUI() {
     const casePctText = formatChancePercent(r.weight, 'case');
     const packPctText = formatChancePercent(r.packWeight ?? r.weight, 'pack');
     const tierLabel = idx === 0 ? 'МАКС' : (idx === totalRars - 1 ? 'НИЗ' : `#${idx + 1}`);
+    const gradColors = getRarityGradientColors(r);
+    const gradCSS = buildRarityGradientCSS(r);
+
+    const colorPickersHtml = gradColors.map((col, cIdx) =>
+      `<input type="color" value="${col}" title="Цвет ${cIdx + 1}" onchange="updateRarityGradientColorAt('${r.id}', ${cIdx}, this.value)">`
+    ).join('');
+
     return `
       <div class="rar-manage-card"
            draggable="true"
@@ -2157,7 +2302,7 @@ function renderAdminUI() {
            ondragover="event.preventDefault(); this.classList.add('drag-over');"
            ondragleave="this.classList.remove('drag-over');"
            ondrop="event.preventDefault(); this.classList.remove('drag-over'); handleRarityDrop('${r.id}');"
-           style="--rar-color:${r.color}; --rar-bg:${r.bg};">
+           style="--rar-color:${r.color}; --rar-bg:${r.bg}; --rar-gradient:${gradCSS};">
         <div class="rar-manage-top">
           <div>
             <span class="rar-rank-pill">${tierLabel}</span>
@@ -2174,10 +2319,15 @@ function renderAdminUI() {
           <input type="text" value="${r.packWeight ?? r.weight ?? 10}" onchange="updateRarityWeight('${r.id}', this.value, 'pack')">
         </div>
         <div class="rar-chance-row">
-          <span>Градиент (2 цвета):</span>
-          <div style="display:flex;gap:6px;">
-            <input type="color" value="${r.color}" title="Цвет 1 (рамка и верх градиента)" onchange="updateRarityColors('${r.id}', this.value, null)">
-            <input type="color" value="${r.bg}" title="Цвет 2 (низ градиента)" onchange="updateRarityColors('${r.id}', null, this.value)">
+          <span>Цветов (1–5):</span>
+          <select style="padding:4px 8px;font-size:12px;" onchange="setRarityGradientColorCount('${r.id}', this.value)">
+            ${[1, 2, 3, 4, 5].map(n => `<option value="${n}" ${gradColors.length === n ? 'selected' : ''}>${n}</option>`).join('')}
+          </select>
+        </div>
+        <div class="rar-chance-row">
+          <span>Градиент:</span>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end;">
+            ${colorPickersHtml}
           </div>
         </div>
         <div class="rar-chance-row">
@@ -2355,16 +2505,6 @@ function deleteEditingCard() {
   adminDeleteCard(idToDelete);
 }
 
-function updateRarityColors(id, newColor1, newColor2) {
-  const rar = state.rarities.find(r => r.id === id);
-  if (!rar) return;
-  if (newColor1) rar.color = newColor1;
-  if (newColor2) rar.bg = newColor2;
-  saveState(true);
-  renderAdminUI();
-  updateCardPreview();
-}
-
 function updateRarityWeight(id, rawVal, mode = 'case') {
   const rar = state.rarities.find(r => r.id === id);
   if (!rar) return;
@@ -2404,8 +2544,13 @@ function updateCardPreview() {
 
 function adminAddRarity() {
   const name = document.getElementById('new-rar-name').value.trim();
-  const color = document.getElementById('new-rar-color').value;
-  const bg = document.getElementById('new-rar-bg').value;
+  const gradientColors = Array.from(document.querySelectorAll('#new-rar-colors-box .new-rar-grad-color'))
+    .map(inp => inp.value)
+    .slice(0, 5);
+  if (gradientColors.length === 0) gradientColors.push('#f59e0b');
+
+  const color = gradientColors[0];
+  const bg = gradientColors[gradientColors.length - 1];
   const weight = sanitizeChanceInput(document.getElementById('new-rar-weight').value);
   const packWeight = sanitizeChanceInput(document.getElementById('new-rar-pack-weight').value);
   const effect = document.getElementById('new-rar-effect').value;
@@ -2414,9 +2559,9 @@ function adminAddRarity() {
   const id = name.toLowerCase().replace(/\s+/g, '_');
   const existing = state.rarities.find(r => r.id === id);
   if (existing) {
-    Object.assign(existing, { name, color, bg, weight, packWeight, effect });
+    Object.assign(existing, { name, color, bg, gradientColors, weight, packWeight, effect });
   } else {
-    state.rarities.push({ id, name, color, bg, order: 1, weight, packWeight, effect });
+    state.rarities.push({ id, name, color, bg, gradientColors, order: 1, weight, packWeight, effect });
   }
   SoundFX.click();
   saveState(true);
@@ -2551,6 +2696,7 @@ function sellWonCard() {
 updateTopBar();
 updateCloudSyncBadge();
 updateSoundUI();
+renderNewRarityColorInputs();
 renderCasesList();
 if (isBrandNewPlayer) {
   openStartBalanceModal();
