@@ -10,7 +10,7 @@ const INITIAL_BALANCE = 1500;
 const MIN_START_BALANCE = 1;
 const MAX_START_BALANCE = 1500;
 const DUEL_WIN_BONUS = 400;
-const MAX_CASE_OPEN_COUNT = 3;
+const MAX_CASE_OPEN_COUNT = 10;
 
 const DEFAULT_CASE_CATEGORIES = [
   { id: 'cat_featured', name: 'Основные кейсы' },
@@ -767,7 +767,7 @@ async function syncCatalogFromCloud(forceOverwriteLocal = false) {
   }
 }
 
-// === КЕЙСЫ, КАТЕГОРИИ И МУЛЬТИ-РУЛЕТКА (МАКСИМУМ x3) ===
+// === КЕЙСЫ, КАТЕГОРИИ И МУЛЬТИ-РУЛЕТКА (x1..x10, СЕТКА СПРАВА СЛЕВА ПРИ >1) ===
 function renderCasesList() {
   normalizeCaseCategoriesAndCases();
   const sortMode = document.getElementById('cases-sort').value;
@@ -820,9 +820,19 @@ function updateCaseOpenCostLabel() {
   if (totalPriceEl) totalPriceEl.textContent = c.price * caseOpenCount;
 }
 
+function applyRouletteGridLayout(container, count) {
+  if (!container) return;
+  container.classList.toggle('is-multi', count > 1);
+  container.classList.toggle('cols-3', count === 3 || count === 5 || count === 6);
+  container.classList.toggle('cols-4', count === 7 || count === 8);
+  container.classList.toggle('cols-5', count >= 9);
+}
+
 function buildMultiRouletteTracks(caseObj, winners = null) {
   const container = document.getElementById('roulettes-multi-container');
   if (!container || !caseObj) return;
+
+  applyRouletteGridLayout(container, caseOpenCount);
 
   const pool = caseObj.cardIds.map(getCardById).filter(Boolean);
   if (pool.length === 0) {
@@ -911,8 +921,21 @@ function rollWeightedCard(poolCards, mode = 'case') {
 
 function getRouletteStepWidth(trackSelector = '.roulette-track .card-wrap', defaultW = 180, gapW = null) {
   const firstCard = document.querySelector(trackSelector);
+  const trackEl = firstCard ? firstCard.parentElement : null;
   const cardW = firstCard ? firstCard.getBoundingClientRect().width : defaultW;
-  const resolvedGap = gapW !== null ? gapW : (window.innerWidth <= 768 ? 8 : 12);
+
+  let resolvedGap = gapW;
+  if (resolvedGap === null) {
+    if (trackEl) {
+      const computedGap = parseFloat(getComputedStyle(trackEl).columnGap || getComputedStyle(trackEl).gap);
+      if (Number.isFinite(computedGap) && computedGap >= 0) {
+        resolvedGap = computedGap;
+      }
+    }
+    if (resolvedGap === null) {
+      resolvedGap = window.innerWidth <= 768 ? 8 : 12;
+    }
+  }
   return { cardW, stepW: cardW + resolvedGap };
 }
 
