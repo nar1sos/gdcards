@@ -160,7 +160,7 @@
                 <option value="top-asc">По топу</option>
               </select>
             </div>
-            <div id="upgrade-my-cards" class="cards-grid small-grid"></div>
+            <div id="upgrade-my-cards" class="upg-square-grid upgrade-my-inv-scroll"></div>
           </div>
 
           <div class="inv-column">
@@ -181,7 +181,7 @@
                 </select>
               </div>
             </div>
-            <div id="upgrade-target-cards" class="cards-grid small-grid upgrade-all-targets-scroll"></div>
+            <div id="upgrade-target-cards" class="upg-square-grid upgrade-all-targets-scroll"></div>
           </div>
         </div>
       </section>
@@ -359,13 +359,22 @@
             <div id="admin-case-categories-list" class="admin-categories-list"></div>
           </div>
 
-          <!-- УПРАВЛЕНИЕ РЕДКОСТЯМИ -->
+          <!-- УПРАВЛЕНИЕ РЕДКОСТЯМИ (1..5 ЦВЕТОВ В ГРАДИЕНТЕ) -->
           <div class="admin-block">
             <h3>Редкости (перетащи карточку для изменения иерархии)</h3>
             <div class="form-row">
               <input type="text" id="new-rar-name" placeholder="Название (напр. Mythic)">
-              <label class="color-pick-label">Цвет 1: <input type="color" id="new-rar-color" value="#f59e0b"></label>
-              <label class="color-pick-label">Цвет 2: <input type="color" id="new-rar-bg" value="#1e1b2e"></label>
+              <label class="color-pick-label">
+                <span>Цветов:</span>
+                <select id="new-rar-color-count" onchange="renderNewRarityColorInputs()">
+                  <option value="1">1 цвет</option>
+                  <option value="2" selected>2 цвета</option>
+                  <option value="3">3 цвета</option>
+                  <option value="4">4 цвета</option>
+                  <option value="5">5 цветов</option>
+                </select>
+              </label>
+              <div id="new-rar-colors-box" class="rar-colors-inline"></div>
               <input type="text" id="new-rar-weight" placeholder="Вес кейсы (10)" style="width:130px;">
               <input type="text" id="new-rar-pack-weight" placeholder="Вес паки (10)" style="width:130px;">
               <select id="new-rar-effect">
