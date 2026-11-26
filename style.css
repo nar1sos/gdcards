@@ -583,7 +583,8 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 
 .multi-open-selector {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px;
   background: var(--bg-panel);
   padding: 6px;
   border-radius: 10px;
@@ -594,8 +595,9 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   background: transparent;
   color: var(--text-muted);
   border: 1px solid transparent;
-  padding: 7px 14px;
+  padding: 6px 11px;
   border-radius: 8px;
+  font-size: 13px;
   font-weight: 800;
   cursor: pointer;
   transition: background-color 0.15s, color 0.15s;
@@ -616,11 +618,109 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   cursor: not-allowed;
 }
 
+/* КОНТЕЙНЕР РУЛЕТОК: x1 = НА ВСЮ ШИРИНУ, >1 = СЕТКА СПРАВА СЛЕВА + УМЕНЬШЕННЫЙ МАСШТАБ */
 .roulettes-multi-container {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 12px;
   margin: 18px 0;
+}
+
+.roulettes-multi-container.is-multi {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.roulettes-multi-container.is-multi.cols-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.roulettes-multi-container.is-multi.cols-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.roulettes-multi-container.is-multi.cols-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.roulettes-multi-container.is-multi .roulette-wrapper {
+  height: 176px;
+  border-radius: 10px;
+}
+
+.roulettes-multi-container.is-multi .roulette-pointer {
+  width: 3px;
+}
+
+.roulettes-multi-container.is-multi .roulette-track {
+  gap: 6px;
+}
+
+.roulettes-multi-container.is-multi .roulette-track .card-wrap {
+  width: 104px;
+  min-width: 104px;
+}
+
+.roulettes-multi-container.is-multi .roulette-track .gd-card {
+  padding: 6px;
+  border-radius: 9px;
+  border-width: 2px;
+}
+
+.roulettes-multi-container.is-multi .roulette-track .card-top-row {
+  margin-bottom: 4px;
+  gap: 3px;
+}
+
+.roulettes-multi-container.is-multi .roulette-track .card-rank {
+  font-size: 11px;
+}
+
+.roulettes-multi-container.is-multi .roulette-track .card-rank.is-upcoming {
+  font-size: 7px;
+  padding: 1px 4px;
+}
+
+.roulettes-multi-container.is-multi .roulette-track .card-rarity-badge {
+  font-size: 7px;
+  padding: 2px 4px;
+  max-width: 54px;
+}
+
+.roulettes-multi-container.is-multi .roulette-track .card-thumb {
+  margin-bottom: 4px;
+  border-radius: 5px;
+}
+
+.roulettes-multi-container.is-multi .roulette-track .card-title {
+  font-size: 10px;
+  margin-bottom: 2px;
+}
+
+.roulettes-multi-container.is-multi .roulette-track .card-bottom-area {
+  gap: 2px;
+}
+
+.roulettes-multi-container.is-multi .roulette-track .card-price {
+  font-size: 10px;
+}
+
+.roulettes-multi-container.is-multi .roulette-track .holo-pill {
+  font-size: 7px;
+  padding: 1px 5px;
+}
+
+@media (max-width: 1280px) {
+  .roulettes-multi-container.is-multi.cols-5 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1024px) {
+  .roulettes-multi-container.is-multi.cols-4,
+  .roulettes-multi-container.is-multi.cols-5 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .admin-cases-manage-grid {
@@ -667,6 +767,7 @@ select, input[type="text"], input[type="number"], input[type="password"] {
 .roulette-wrapper {
   position: relative;
   width: 100%;
+  min-width: 0;
   height: 292px;
   background: var(--bg-panel);
   border: 2px solid var(--border);
@@ -1678,6 +1779,28 @@ select, input[type="text"], input[type="number"], input[type="password"] {
   .roulette-track .card-wrap {
     width: 148px;
     min-width: 148px;
+  }
+
+  /* НА МОБИЛКЕ ПРИ >1 КЕЙСЕ — 2 КОЛОНКИ РЯДОМ И ЕЩЁ КОМПАКТНЕЕ */
+  .roulettes-multi-container.is-multi,
+  .roulettes-multi-container.is-multi.cols-3,
+  .roulettes-multi-container.is-multi.cols-4,
+  .roulettes-multi-container.is-multi.cols-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .roulettes-multi-container.is-multi .roulette-wrapper {
+    height: 148px;
+  }
+
+  .roulettes-multi-container.is-multi .roulette-track {
+    gap: 5px;
+  }
+
+  .roulettes-multi-container.is-multi .roulette-track .card-wrap {
+    width: 88px;
+    min-width: 88px;
   }
 
   .roulette-controls {
